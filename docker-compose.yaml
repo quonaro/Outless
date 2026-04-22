@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: outless
+      POSTGRES_USER: outless
+      POSTGRES_PASSWORD: outless
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+
+  xray:
+    image: teddysun/xray
+    restart: unless-stopped
+    ports:
+      - "10085:10085"
+      - "1080:1080"
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["xray", "run", "-config", "/etc/xray/config.json"]
+
+volumes:
+  postgres_data:
