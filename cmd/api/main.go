@@ -11,6 +11,7 @@ import (
 
 	httpadapter "outless/internal/adapters/http"
 	"outless/internal/adapters/postgres"
+	"outless/internal/app/auth"
 	"outless/internal/app/subscription"
 
 	"golang.org/x/sync/errgroup"
@@ -20,6 +21,8 @@ import (
 type Config struct {
 	DatabaseURL     string
 	HTTPAddress     string
+	JWTSecret       string
+	JWTExpiry       time.Duration
 	ShutdownTimeout time.Duration
 }
 
@@ -43,9 +46,12 @@ func main() {
 
 	nodeRepo := postgres.NewGormNodeRepository(db, logger)
 	tokenRepo := postgres.NewGormTokenRepository(db, logger)
+	adminRepo := postgres.NewGormAdminRepository(db, logger)
+	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo)
-	handler := httpadapter.NewSubscriptionHandler(subscriptionService, logger)
-	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, handler)
+	authHandler := httpadapter.NewAuthHandler(adminRepo, jwtService, logger)
+	subscriptionHandler := httpadapter.NewSubscriptionHandler(subscriptionService, logger)
+	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, subscriptionHandler, authHandler)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
@@ -79,11 +85,20 @@ func loadConfig() (Config, error) {
 		httpAddress = ":41220"
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return Config{}, fmt.Errorf("JWT_SECRET is required")
+	}
+
+	jwtExpiry := 24 * time.Hour
+
 	shutdownTimeout := 10 * time.Second
 
 	return Config{
 		DatabaseURL:     databaseURL,
 		HTTPAddress:     httpAddress,
+		JWTSecret:       jwtSecret,
+		JWTExpiry:       jwtExpiry,
 		ShutdownTimeout: shutdownTimeout,
 	}, nil
 }

@@ -22,11 +22,12 @@ type Config struct {
 	Address string
 }
 
-// NewServer builds HTTP server with injected handler.
-func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *SubscriptionHandler) *Server {
+// NewServer builds HTTP server with injected handlers.
+func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *SubscriptionHandler, authHandler *AuthHandler) *Server {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, huma.DefaultConfig("Outless API", "0.1.0"))
 	subscriptionHandler.Register(humaAPI)
+	authHandler.Register(humaAPI)
 
 	srv := &http.Server{
 		Addr:              cfg.Address,

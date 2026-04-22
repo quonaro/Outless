@@ -23,3 +23,8 @@ type TokenRepository interface {
 type ProxyEngine interface {
 	ProbeNode(ctx context.Context, node Node) (ProbeResult, error)
 }
+
+// AdminRepository provides persistence operations for admin users.
+type AdminRepository interface {
+	FindByUsername(ctx context.Context, username string) (Admin, error)
+}
