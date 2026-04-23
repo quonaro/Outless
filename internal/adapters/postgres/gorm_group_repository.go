@@ -17,6 +17,9 @@ type groupModel struct {
 	Name                  string     `gorm:"column:name"`
 	SourceURL             *string    `gorm:"column:source_url"`
 	TotalNodes            int64      `gorm:"column:total_nodes"`
+	HealthyNodes          int64      `gorm:"column:healthy_nodes"`
+	UnhealthyNodes        int64      `gorm:"column:unhealthy_nodes"`
+	UnknownNodes          int64      `gorm:"column:unknown_nodes"`
 	AutoDeleteUnavailable bool       `gorm:"column:auto_delete_unavailable"`
 	LastSyncedAt          *time.Time `gorm:"column:last_synced_at"`
 	CreatedAt             time.Time  `gorm:"column:created_at"`
@@ -81,7 +84,13 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 	var models []groupModel
 	err := r.db.WithContext(ctx).
 		Model(&groupModel{}).
-		Select("groups.id", "groups.name", "groups.source_url", "groups.auto_delete_unavailable", "groups.last_synced_at", "groups.created_at", "COUNT(nodes.id) AS total_nodes").
+		Select(
+			"groups.id", "groups.name", "groups.source_url", "groups.auto_delete_unavailable", "groups.last_synced_at", "groups.created_at",
+			"COUNT(nodes.id) AS total_nodes",
+			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'healthy') AS healthy_nodes",
+			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'unhealthy') AS unhealthy_nodes",
+			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'unknown') AS unknown_nodes",
+		).
 		Joins("LEFT JOIN nodes ON nodes.group_id = groups.id").
 		Group("groups.id").
 		Order("created_at DESC").
@@ -97,6 +106,9 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 			Name:                  model.Name,
 			SourceURL:             derefGroupString(model.SourceURL),
 			TotalNodes:            int(model.TotalNodes),
+			HealthyNodes:          int(model.HealthyNodes),
+			UnhealthyNodes:        int(model.UnhealthyNodes),
+			UnknownNodes:          int(model.UnknownNodes),
 			AutoDeleteUnavailable: model.AutoDeleteUnavailable,
 			LastSyncedAt:          model.LastSyncedAt,
 			CreatedAt:             model.CreatedAt,

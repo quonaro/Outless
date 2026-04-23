@@ -31,7 +31,6 @@ type Handlers struct {
 	Token        *TokenManagementHandler
 	Node         *NodeManagementHandler
 	Group        *GroupManagementHandler
-	GroupSync    *GroupSyncHandler
 	PublicSource *PublicSourceManagementHandler
 	Settings     *SettingsHandler
 	Admin        *AdminManagementHandler
@@ -39,7 +38,7 @@ type Handlers struct {
 }
 
 // NewServer builds HTTP server with injected handlers.
-func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, handlers Handlers) *Server {
+func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, realtime *RealtimeHandler, handlers Handlers) *Server {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, huma.DefaultConfig("Outless API", "0.1.0"))
 	handlers.Subscription.Register(humaAPI)
@@ -55,9 +54,9 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, han
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	loggingMiddleware := NewLoggingMiddleware(logger)
 	routedHandler := http.Handler(mux)
-	if handlers.GroupSync != nil {
+	if realtime != nil {
 		routedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if handlers.GroupSync.HandleStream(w, r) {
+			if realtime.HandleWebSocket(w, r) {
 				return
 			}
 			mux.ServeHTTP(w, r)

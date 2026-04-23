@@ -19,13 +19,15 @@ import (
 type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
+	realtime  *RealtimeHandler
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
+		realtime:  realtime,
 		logger:    logger,
 	}
 }
@@ -120,6 +122,9 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		h.logger.Error("failed to create node", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create node")
 	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
+	}
 
 	out := &CreateNodeOutput{}
 	out.Body.ID = nodeID
@@ -204,6 +209,9 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 		h.logger.Error("failed to update node", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update node")
 	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
+	}
 
 	return nil, nil
 }
@@ -212,6 +220,9 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	if err := h.nodeRepo.Delete(ctx, input.ID); err != nil {
 		h.logger.Error("failed to delete node", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to delete node")
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
 	}
 
 	return nil, nil
@@ -231,6 +242,9 @@ func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeI
 	if err = h.nodeRepo.UpdateProbeResult(ctx, result); err != nil {
 		h.logger.Error("failed to save probe result", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to save probe result")
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
 	}
 
 	return nil, nil

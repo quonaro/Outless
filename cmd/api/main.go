@@ -84,19 +84,19 @@ func main() {
 		Fingerprint: cfg.HubFingerprint,
 	}, logger)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, logger)
+	realtime := httpadapter.NewRealtimeHandler(publicService, groupRepo, logger)
 	handlers := httpadapter.Handlers{
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, logger),
-		GroupSync:    httpadapter.NewGroupSyncHandler(groupRepo, publicService, logger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, realtime, logger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, realtime, logger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),
 		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
 		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, logger),
 	}
-	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, jwtService, handlers)
+	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, jwtService, realtime, handlers)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {

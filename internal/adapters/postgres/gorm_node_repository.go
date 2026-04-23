@@ -285,6 +285,34 @@ func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int
 	return nodes, nil
 }
 
+// ListNonHealthyByGroup returns nodes in a group with status unknown or unhealthy.
+func (r *GormNodeRepository) ListNonHealthyByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
+	var models []nodeModel
+	err := r.db.WithContext(ctx).
+		Where("group_id = ? AND status IN ?", groupID, []string{
+			string(domain.NodeStatusUnknown),
+			string(domain.NodeStatusUnhealthy),
+		}).
+		Order("created_at DESC").
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing non-healthy nodes by group: %w", err)
+	}
+
+	nodes := make([]domain.Node, 0, len(models))
+	for _, model := range models {
+		nodes = append(nodes, domain.Node{
+			ID:      model.ID,
+			URL:     model.URL,
+			GroupID: derefString(model.GroupID),
+			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
+			Status:  domain.NodeStatus(model.Status),
+			Country: model.Country,
+		})
+	}
+	return nodes, nil
+}
+
 // DeleteUnavailableByGroup removes non-healthy nodes of a group and returns affected rows.
 func (r *GormNodeRepository) DeleteUnavailableByGroup(ctx context.Context, groupID string) (int64, error) {
 	result := r.db.WithContext(ctx).

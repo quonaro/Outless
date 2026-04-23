@@ -1,7 +1,9 @@
 package httpadapter
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -57,9 +59,8 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		token := ""
 		if authHeader == "" {
-			// EventSource cannot attach custom Authorization headers in browsers,
-			// so sync streams accept token via query parameter.
-			if strings.HasSuffix(r.URL.Path, "/sync/stream") {
+			// Browser EventSource / WebSocket cannot attach Authorization; allow token in query.
+			if strings.HasSuffix(r.URL.Path, "/sync/stream") || r.URL.Path == "/v1/ws" {
 				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
 			}
 			if token == "" {
@@ -106,6 +107,16 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(statusCode int) {
 	r.statusCode = statusCode
 	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+// Hijack delegates to the underlying ResponseWriter so WebSocket upgrades work
+// through this middleware (coder/websocket requires http.Hijacker).
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
+	}
+	return hj.Hijack()
 }
 
 func extractRemoteIP(remoteAddr string) string {

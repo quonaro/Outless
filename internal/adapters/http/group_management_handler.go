@@ -16,13 +16,15 @@ import (
 type GroupManagementHandler struct {
 	groupRepo domain.GroupRepository
 	nodeRepo  domain.NodeRepository
+	realtime  *RealtimeHandler
 	logger    *slog.Logger
 }
 
-func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, logger *slog.Logger) *GroupManagementHandler {
+func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *RealtimeHandler, logger *slog.Logger) *GroupManagementHandler {
 	return &GroupManagementHandler{
 		groupRepo: groupRepo,
 		nodeRepo:  nodeRepo,
+		realtime:  realtime,
 		logger:    logger,
 	}
 }
@@ -73,11 +75,24 @@ type DeleteUnavailableNodesOutput struct {
 	}
 }
 
+type ProbeUnavailableNodesInput struct {
+	ID string `path:"id" required:"true"`
+}
+
+type ProbeUnavailableNodesOutput struct {
+	Body struct {
+		Probed int `json:"probed"`
+	}
+}
+
 type GroupItem struct {
 	ID                    string     `json:"id"`
 	Name                  string     `json:"name"`
 	SourceURL             string     `json:"source_url"`
 	TotalNodes            int        `json:"total_nodes"`
+	HealthyNodes          int        `json:"healthy_nodes"`
+	UnhealthyNodes        int        `json:"unhealthy_nodes"`
+	UnknownNodes          int        `json:"unknown_nodes"`
 	AutoDeleteUnavailable bool       `json:"auto_delete_unavailable"`
 	LastSyncedAt          *time.Time `json:"last_synced_at"`
 	CreatedAt             time.Time  `json:"created_at"`
@@ -88,6 +103,7 @@ func (h *GroupManagementHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/groups", h.ListGroups)
 	huma.Put(api, "/v1/groups/{id}", h.UpdateGroup)
 	huma.Post(api, "/v1/groups/{id}/nodes/delete-unavailable", h.DeleteUnavailableNodes)
+	huma.Post(api, "/v1/groups/{id}/nodes/probe-unavailable", h.ProbeUnavailableNodes)
 	huma.Delete(api, "/v1/groups/{id}", h.DeleteGroup)
 }
 
@@ -114,6 +130,9 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	if err := h.groupRepo.Create(ctx, group); err != nil {
 		h.logger.Error("failed to create group", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create group")
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(false, true)
 	}
 
 	out := &CreateGroupOutput{}
@@ -142,6 +161,9 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 			Name:                  g.Name,
 			SourceURL:             g.SourceURL,
 			TotalNodes:            g.TotalNodes,
+			HealthyNodes:          g.HealthyNodes,
+			UnhealthyNodes:        g.UnhealthyNodes,
+			UnknownNodes:          g.UnknownNodes,
 			AutoDeleteUnavailable: g.AutoDeleteUnavailable,
 			LastSyncedAt:          g.LastSyncedAt,
 			CreatedAt:             g.CreatedAt,
@@ -176,6 +198,9 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 		h.logger.Error("failed to update group", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update group")
 	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(false, true)
+	}
 
 	return nil, nil
 }
@@ -197,6 +222,43 @@ func (h *GroupManagementHandler) DeleteUnavailableNodes(ctx context.Context, inp
 
 	out := &DeleteUnavailableNodesOutput{}
 	out.Body.Deleted = deleted
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
+	}
+	return out, nil
+}
+
+func (h *GroupManagementHandler) ProbeUnavailableNodes(ctx context.Context, input *ProbeUnavailableNodesInput) (*ProbeUnavailableNodesOutput, error) {
+	if _, err := h.groupRepo.FindByID(ctx, input.ID); err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			return nil, huma.Error404NotFound("group not found")
+		}
+		h.logger.Error("failed to find group", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to find group")
+	}
+
+	nodes, err := h.nodeRepo.ListNonHealthyByGroup(ctx, input.ID)
+	if err != nil {
+		h.logger.Error("failed to list non-healthy nodes", slog.String("group_id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to list nodes")
+	}
+
+	for _, node := range nodes {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		result := quickProbe(node)
+		if saveErr := h.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
+			h.logger.Warn("probe unavailable save failed", slog.String("node_id", node.ID), slog.String("error", saveErr.Error()))
+		}
+	}
+
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
+	}
+
+	out := &ProbeUnavailableNodesOutput{}
+	out.Body.Probed = len(nodes)
 	return out, nil
 }
 
@@ -204,6 +266,9 @@ func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteG
 	if err := h.groupRepo.Delete(ctx, input.ID); err != nil {
 		h.logger.Error("failed to delete group", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to delete group")
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
 	}
 
 	return nil, nil

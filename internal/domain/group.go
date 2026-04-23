@@ -8,6 +8,9 @@ type Group struct {
 	Name                  string
 	SourceURL             string
 	TotalNodes            int
+	HealthyNodes          int
+	UnhealthyNodes        int
+	UnknownNodes          int
 	AutoDeleteUnavailable bool
 	LastSyncedAt          *time.Time
 	CreatedAt             time.Time

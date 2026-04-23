@@ -46,6 +46,26 @@ type SyncEvent struct {
 	Error     string         `json:"error,omitempty"`
 }
 
+// ProbeUnavailableNodeStatus describes per-node status while probing unavailable nodes.
+type ProbeUnavailableNodeStatus string
+
+const (
+	ProbeUnavailableNodeStatusQueued  ProbeUnavailableNodeStatus = "queued"
+	ProbeUnavailableNodeStatusProbing ProbeUnavailableNodeStatus = "probing"
+	ProbeUnavailableNodeStatusReady   ProbeUnavailableNodeStatus = "ready"
+	ProbeUnavailableNodeStatusError   ProbeUnavailableNodeStatus = "error"
+)
+
+// ProbeUnavailableEvent is emitted for each unavailable node probe lifecycle.
+type ProbeUnavailableEvent struct {
+	NodeID     string                     `json:"node_id"`
+	URL        string                     `json:"url"`
+	Status     ProbeUnavailableNodeStatus `json:"status"`
+	LatencyMS  int64                      `json:"latency_ms"`
+	NodeStatus string                     `json:"node_status,omitempty"`
+	Error      string                     `json:"error,omitempty"`
+}
+
 type SyncResult struct {
 	SyncedAt                time.Time
 	DeletedUnavailableCount int64
@@ -143,6 +163,10 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 
 	vlessURLs := s.parseVLESSLines(content)
 	for _, rawURL := range vlessURLs {
+		if err = ctx.Err(); err != nil {
+			return SyncResult{}, err
+		}
+
 		nodeID := s.generateNodeID(rawURL)
 		if onEvent != nil {
 			onEvent(SyncEvent{
@@ -160,6 +184,9 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 		}
 
 		if err = s.nodeRepo.Upsert(ctx, node); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return SyncResult{}, err
+			}
 			if onEvent != nil {
 				onEvent(SyncEvent{
 					NodeID: nodeID,
@@ -171,14 +198,19 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 			continue
 		}
 
-		result := s.probeNodeQuick(rawURL, nodeID)
-		if updateErr := s.nodeRepo.UpdateProbeResult(ctx, result); updateErr != nil && onEvent != nil {
-			onEvent(SyncEvent{
-				NodeID: nodeID,
-				URL:    rawURL,
-				Status: SyncNodeStatusError,
-				Error:  updateErr.Error(),
-			})
+		result := s.probeNodeQuick(ctx, rawURL, nodeID)
+		if updateErr := s.nodeRepo.UpdateProbeResult(ctx, result); updateErr != nil {
+			if errors.Is(updateErr, context.Canceled) || errors.Is(updateErr, context.DeadlineExceeded) {
+				return SyncResult{}, updateErr
+			}
+			if onEvent != nil {
+				onEvent(SyncEvent{
+					NodeID: nodeID,
+					URL:    rawURL,
+					Status: SyncNodeStatusError,
+					Error:  updateErr.Error(),
+				})
+			}
 			continue
 		}
 
@@ -213,6 +245,81 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 		SyncedAt:                syncedAt,
 		DeletedUnavailableCount: deletedUnavailable,
 	}, nil
+}
+
+// ProbeUnavailableGroup probes all non-healthy nodes in a group and emits lifecycle events.
+func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onEvent func(ProbeUnavailableEvent)) (int, error) {
+	if _, err := s.groupRepo.FindByID(ctx, groupID); err != nil {
+		return 0, fmt.Errorf("finding group: %w", err)
+	}
+
+	nodes, err := s.nodeRepo.ListNonHealthyByGroup(ctx, groupID)
+	if err != nil {
+		return 0, fmt.Errorf("listing non-healthy nodes: %w", err)
+	}
+
+	for _, node := range nodes {
+		if onEvent != nil {
+			onEvent(ProbeUnavailableEvent{
+				NodeID: node.ID,
+				URL:    node.URL,
+				Status: ProbeUnavailableNodeStatusQueued,
+			})
+		}
+	}
+
+	probed := 0
+	for _, node := range nodes {
+		if err := ctx.Err(); err != nil {
+			return probed, err
+		}
+
+		if onEvent != nil {
+			onEvent(ProbeUnavailableEvent{
+				NodeID: node.ID,
+				URL:    node.URL,
+				Status: ProbeUnavailableNodeStatusProbing,
+			})
+		}
+
+		result := s.probeNodeQuick(ctx, node.URL, node.ID)
+		if saveErr := s.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
+			if errors.Is(saveErr, context.Canceled) || errors.Is(saveErr, context.DeadlineExceeded) {
+				return probed, saveErr
+			}
+			if onEvent != nil {
+				onEvent(ProbeUnavailableEvent{
+					NodeID: node.ID,
+					URL:    node.URL,
+					Status: ProbeUnavailableNodeStatusError,
+					Error:  saveErr.Error(),
+				})
+			}
+			continue
+		}
+
+		probed++
+		if onEvent != nil {
+			onEvent(ProbeUnavailableEvent{
+				NodeID:     node.ID,
+				URL:        node.URL,
+				Status:     ProbeUnavailableNodeStatusReady,
+				LatencyMS:  result.Latency.Milliseconds(),
+				NodeStatus: string(result.Status),
+			})
+		}
+	}
+
+	return probed, nil
+}
+
+// CountUnavailableByGroup returns number of non-healthy nodes in group.
+func (s *Service) CountUnavailableByGroup(ctx context.Context, groupID string) (int, error) {
+	nodes, err := s.nodeRepo.ListNonHealthyByGroup(ctx, groupID)
+	if err != nil {
+		return 0, fmt.Errorf("listing non-healthy nodes: %w", err)
+	}
+	return len(nodes), nil
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.
@@ -325,7 +432,7 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 	return created, nil
 }
 
-func (s *Service) probeNodeQuick(rawURL string, nodeID string) domain.ProbeResult {
+func (s *Service) probeNodeQuick(ctx context.Context, rawURL string, nodeID string) domain.ProbeResult {
 	start := time.Now()
 	result := domain.ProbeResult{
 		NodeID:    nodeID,
@@ -338,7 +445,8 @@ func (s *Service) probeNodeQuick(rawURL string, nodeID string) domain.ProbeResul
 		return result
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, 4*time.Second)
+	dialer := net.Dialer{Timeout: 4 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return result
 	}
