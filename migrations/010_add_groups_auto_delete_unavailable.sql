@@ -1,0 +1,2 @@
+ALTER TABLE groups
+    ADD COLUMN IF NOT EXISTS auto_delete_unavailable BOOLEAN NOT NULL DEFAULT FALSE;

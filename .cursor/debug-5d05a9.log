@@ -1,0 +1,2 @@
+{"sessionId":"5d05a9","runId":"pre-fix-1","hypothesisId":"H4","location":"app/components/ui/group-list/group-list.vue:91","message":"group-list mounted","data":{"initialPending":false,"initialDialogOpen":false},"timestamp":1776962081463}
+{"sessionId":"5d05a9","runId":"pre-fix-1","hypothesisId":"H3","location":"app/components/ui/group-list/group-list.vue:85","message":"openCreateDialog","data":{"pendingOnOpen":false,"isDialogOpen":true},"timestamp":1776962082527}

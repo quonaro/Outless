@@ -79,7 +79,7 @@ func (h *GroupSyncHandler) HandleStream(w http.ResponseWriter, r *http.Request) 
 	}
 
 	_ = writeEvent("started", map[string]string{"group_id": groupID})
-	syncedAt, err := h.publicService.SyncGroup(r.Context(), groupID, func(event public.SyncEvent) {
+	result, err := h.publicService.SyncGroup(r.Context(), groupID, func(event public.SyncEvent) {
 		if writeErr := writeEvent("node_status", event); writeErr != nil {
 			h.logger.Warn("failed to write node_status event", slog.String("error", writeErr.Error()))
 		}
@@ -90,6 +90,9 @@ func (h *GroupSyncHandler) HandleStream(w http.ResponseWriter, r *http.Request) 
 		return true
 	}
 
-	_ = writeEvent("done", map[string]string{"synced_at": syncedAt.Format(time.RFC3339)})
+	_ = writeEvent("done", map[string]any{
+		"synced_at":                 result.SyncedAt.Format(time.RFC3339),
+		"deleted_unavailable_count": result.DeletedUnavailableCount,
+	})
 	return true
 }

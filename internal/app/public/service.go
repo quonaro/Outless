@@ -46,6 +46,11 @@ type SyncEvent struct {
 	Error     string         `json:"error,omitempty"`
 }
 
+type SyncResult struct {
+	SyncedAt                time.Time
+	DeletedUnavailableCount int64
+}
+
 // NewService constructs a public sources service.
 func NewService(
 	nodeRepo domain.NodeRepository,
@@ -104,7 +109,13 @@ func (s *Service) ImportAll(ctx context.Context) error {
 
 	total := 0
 	for _, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := s.ImportNodes(ctx, source.ID); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
 			s.logger.Error("failed to import from source", slog.String("source_id", source.ID), slog.String("error", err.Error()))
 			continue
 		}
@@ -116,18 +127,18 @@ func (s *Service) ImportAll(ctx context.Context) error {
 }
 
 // SyncGroup imports nodes for a group source URL and reports progress events.
-func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(SyncEvent)) (time.Time, error) {
+func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(SyncEvent)) (SyncResult, error) {
 	group, err := s.groupRepo.FindByID(ctx, groupID)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("finding group: %w", err)
+		return SyncResult{}, fmt.Errorf("finding group: %w", err)
 	}
 	if strings.TrimSpace(group.SourceURL) == "" {
-		return time.Time{}, fmt.Errorf("group has no source url")
+		return SyncResult{}, fmt.Errorf("group has no source url")
 	}
 
 	content, err := s.fetchSource(ctx, group.SourceURL)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("fetching source %s: %w", group.SourceURL, err)
+		return SyncResult{}, fmt.Errorf("fetching source %s: %w", group.SourceURL, err)
 	}
 
 	vlessURLs := s.parseVLESSLines(content)
@@ -148,7 +159,7 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 			Status:  domain.NodeStatusUnknown,
 		}
 
-		if err = s.createOrUpdateNode(ctx, node); err != nil {
+		if err = s.nodeRepo.Upsert(ctx, node); err != nil {
 			if onEvent != nil {
 				onEvent(SyncEvent{
 					NodeID: nodeID,
@@ -187,10 +198,21 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 
 	syncedAt := time.Now().UTC()
 	if err = s.groupRepo.UpdateSyncedAt(ctx, groupID, syncedAt); err != nil {
-		return time.Time{}, fmt.Errorf("updating group sync timestamp: %w", err)
+		return SyncResult{}, fmt.Errorf("updating group sync timestamp: %w", err)
 	}
 
-	return syncedAt, nil
+	var deletedUnavailable int64
+	if group.AutoDeleteUnavailable {
+		deletedUnavailable, err = s.nodeRepo.DeleteUnavailableByGroup(ctx, groupID)
+		if err != nil {
+			return SyncResult{}, fmt.Errorf("auto-deleting unavailable nodes: %w", err)
+		}
+	}
+
+	return SyncResult{
+		SyncedAt:                syncedAt,
+		DeletedUnavailableCount: deletedUnavailable,
+	}, nil
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.
@@ -273,6 +295,9 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 	created := 0
 
 	for _, url := range urls {
+		if err := ctx.Err(); err != nil {
+			return created, err
+		}
 		nodeID := s.generateNodeID(url)
 
 		node := domain.Node{
@@ -284,33 +309,20 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 			Latency: 0,
 		}
 
-		if err := s.nodeRepo.Create(ctx, node); err != nil {
-			if isDuplicateKeyError(err) {
-				continue
+		createdNow, err := s.nodeRepo.CreateIfAbsent(ctx, node)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return created, err
 			}
 			s.logger.Warn("failed to import node", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			continue
 		}
-		created++
+		if createdNow {
+			created++
+		}
 	}
 
 	return created, nil
-}
-
-func (s *Service) createOrUpdateNode(ctx context.Context, node domain.Node) error {
-	existing, findErr := s.nodeRepo.FindByID(ctx, node.ID)
-	if findErr == nil {
-		existing.URL = node.URL
-		existing.GroupID = node.GroupID
-		return s.nodeRepo.Update(ctx, existing)
-	}
-	if errors.Is(findErr, domain.ErrNodeNotFound) {
-		return s.nodeRepo.Create(ctx, node)
-	}
-	if findErr != nil {
-		return findErr
-	}
-	return nil
 }
 
 func (s *Service) probeNodeQuick(rawURL string, nodeID string) domain.ProbeResult {
@@ -357,19 +369,4 @@ func probeAddressFromVLESS(raw string) (string, error) {
 func (s *Service) generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
-}
-
-// isDuplicateKeyError reports whether err indicates a unique/primary key violation.
-func isDuplicateKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, domain.ErrDuplicateNode) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "unique constraint") ||
-		strings.Contains(msg, "unique_violation") ||
-		strings.Contains(msg, "sqlstate 23505")
 }

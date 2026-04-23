@@ -10,6 +10,7 @@ import (
 	"outless/internal/domain"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type nodeModel struct {
@@ -148,6 +149,63 @@ func (r *GormNodeRepository) Create(ctx context.Context, node domain.Node) error
 	return nil
 }
 
+// CreateIfAbsent inserts a node only when it does not already exist.
+// Returns true when a row was inserted.
+func (r *GormNodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (bool, error) {
+	model := nodeModel{
+		ID:        node.ID,
+		URL:       node.URL,
+		GroupID:   nullableString(node.GroupID),
+		LatencyMS: node.Latency.Milliseconds(),
+		Status:    string(node.Status),
+		Country:   node.Country,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	tx := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).
+		Create(&model)
+	if tx.Error != nil {
+		return false, fmt.Errorf("creating node if absent via gorm: %w", tx.Error)
+	}
+
+	created := tx.RowsAffected > 0
+	if created {
+		r.logger.Debug("node created", slog.String("node_id", node.ID))
+	}
+	return created, nil
+}
+
+// Upsert inserts a new node or updates url and group_id if the node already exists.
+// This is atomic and safe for concurrent syncs.
+func (r *GormNodeRepository) Upsert(ctx context.Context, node domain.Node) error {
+	model := nodeModel{
+		ID:        node.ID,
+		URL:       node.URL,
+		GroupID:   nullableString(node.GroupID),
+		LatencyMS: node.Latency.Milliseconds(),
+		Status:    string(node.Status),
+		Country:   node.Country,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"url", "group_id"}),
+		}).
+		Create(&model).Error
+	if err != nil {
+		return fmt.Errorf("upserting node via gorm: %w", err)
+	}
+
+	r.logger.Debug("node upserted", slog.String("node_id", node.ID))
+	return nil
+}
+
 // FindByID retrieves a node by ID.
 func (r *GormNodeRepository) FindByID(ctx context.Context, id string) (domain.Node, error) {
 	var model nodeModel
@@ -175,6 +233,8 @@ func (r *GormNodeRepository) FindByID(ctx context.Context, id string) (domain.No
 func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 	var models []nodeModel
 	err := r.db.WithContext(ctx).
+		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
+		Order("latency_ms ASC").
 		Order("created_at DESC").
 		Find(&models).Error
 	if err != nil {
@@ -194,6 +254,46 @@ func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 	}
 
 	return nodes, nil
+}
+
+// ListPage returns paginated nodes with backend-level sorting.
+func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int) ([]domain.Node, error) {
+	var models []nodeModel
+	err := r.db.WithContext(ctx).
+		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
+		Order("latency_ms ASC").
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing paged nodes via gorm: %w", err)
+	}
+
+	nodes := make([]domain.Node, 0, len(models))
+	for _, model := range models {
+		nodes = append(nodes, domain.Node{
+			ID:      model.ID,
+			URL:     model.URL,
+			GroupID: derefString(model.GroupID),
+			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
+			Status:  domain.NodeStatus(model.Status),
+			Country: model.Country,
+		})
+	}
+
+	return nodes, nil
+}
+
+// DeleteUnavailableByGroup removes non-healthy nodes of a group and returns affected rows.
+func (r *GormNodeRepository) DeleteUnavailableByGroup(ctx context.Context, groupID string) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("group_id = ? AND status <> ?", groupID, string(domain.NodeStatusHealthy)).
+		Delete(&nodeModel{})
+	if result.Error != nil {
+		return 0, fmt.Errorf("deleting unavailable nodes by group: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // Update updates a node's URL or group.

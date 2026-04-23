@@ -89,7 +89,7 @@ func main() {
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
 		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, logger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, logger),
 		GroupSync:    httpadapter.NewGroupSyncHandler(groupRepo, publicService, logger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),

@@ -12,8 +12,12 @@ type NodeRepository interface {
 	ListVLESSURLs(ctx context.Context, groupID string) ([]string, error)
 	UpdateProbeResult(ctx context.Context, result ProbeResult) error
 	Create(ctx context.Context, node Node) error
+	CreateIfAbsent(ctx context.Context, node Node) (bool, error)
+	Upsert(ctx context.Context, node Node) error
 	FindByID(ctx context.Context, id string) (Node, error)
 	List(ctx context.Context) ([]Node, error)
+	ListPage(ctx context.Context, limit int, offset int) ([]Node, error)
+	DeleteUnavailableByGroup(ctx context.Context, groupID string) (int64, error)
 	Update(ctx context.Context, node Node) error
 	Delete(ctx context.Context, id string) error
 }

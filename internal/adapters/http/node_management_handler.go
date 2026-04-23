@@ -47,7 +47,16 @@ type CreateNodeOutput struct {
 }
 
 type ListNodesOutput struct {
-	Body []NodeItem `json:"nodes"`
+	Body struct {
+		Nodes      []NodeItem `json:"nodes"`
+		NextOffset *int       `json:"next_offset,omitempty"`
+		HasMore    bool       `json:"has_more"`
+	}
+}
+
+type ListNodesInput struct {
+	Limit  int `query:"limit"`
+	Offset int `query:"offset"`
 }
 
 type UpdateNodeInput struct {
@@ -121,11 +130,28 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	return out, nil
 }
 
-func (h *NodeManagementHandler) ListNodes(ctx context.Context, _ *struct{}) (*ListNodesOutput, error) {
-	nodes, err := h.nodeRepo.List(ctx)
+func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesInput) (*ListNodesOutput, error) {
+	limit := input.Limit
+	if limit < 30 {
+		limit = 30
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	offset := input.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	nodes, err := h.nodeRepo.ListPage(ctx, limit+1, offset)
 	if err != nil {
 		h.logger.Error("failed to list nodes", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to list nodes")
+	}
+
+	hasMore := len(nodes) > limit
+	if hasMore {
+		nodes = nodes[:limit]
 	}
 
 	response := make([]NodeItem, 0, len(nodes))
@@ -142,7 +168,12 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, _ *struct{}) (*Li
 	}
 
 	out := &ListNodesOutput{}
-	out.Body = response
+	out.Body.Nodes = response
+	out.Body.HasMore = hasMore
+	if hasMore {
+		nextOffset := offset + limit
+		out.Body.NextOffset = &nextOffset
+	}
 
 	return out, nil
 }
