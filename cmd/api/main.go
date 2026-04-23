@@ -14,6 +14,7 @@ import (
 	"outless/internal/app/auth"
 	"outless/internal/app/subscription"
 
+	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,6 +28,9 @@ type Config struct {
 }
 
 func main() {
+	// Load .env file if present (ignore error if file doesn't exist)
+	_ = godotenv.Load()
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	cfg, err := loadConfig()

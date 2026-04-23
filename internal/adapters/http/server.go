@@ -29,9 +29,12 @@ func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *Subscriptio
 	subscriptionHandler.Register(humaAPI)
 	authHandler.Register(humaAPI)
 
+	loggingMiddleware := NewLoggingMiddleware(logger)
+	handler := loggingMiddleware.Wrap(mux)
+
 	srv := &http.Server{
 		Addr:              cfg.Address,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

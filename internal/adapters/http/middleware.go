@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"outless/internal/app/auth"
 )
@@ -54,6 +55,34 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), claimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// LoggingMiddleware logs all HTTP requests.
+type LoggingMiddleware struct {
+	logger *slog.Logger
+}
+
+// NewLoggingMiddleware constructs a logging middleware.
+func NewLoggingMiddleware(logger *slog.Logger) *LoggingMiddleware {
+	return &LoggingMiddleware{logger: logger}
+}
+
+// Wrap returns an http.Handler that logs requests.
+func (m *LoggingMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		m.logger.Info("request started",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.String("remote_addr", r.RemoteAddr),
+		)
+		next.ServeHTTP(w, r)
+		m.logger.Info("request completed",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Duration("duration", time.Since(start)),
+		)
 	})
 }
 
