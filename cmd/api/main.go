@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,8 +16,10 @@ import (
 	"outless/internal/adapters/postgres"
 	"outless/internal/app/auth"
 	"outless/internal/app/subscription"
+	"outless/internal/domain"
 
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -25,6 +30,8 @@ type Config struct {
 	JWTSecret       string
 	JWTExpiry       time.Duration
 	ShutdownTimeout time.Duration
+	OutlessLogin    string
+	OutlessPassword string
 }
 
 func main() {
@@ -51,6 +58,11 @@ func main() {
 	nodeRepo := postgres.NewGormNodeRepository(db, logger)
 	tokenRepo := postgres.NewGormTokenRepository(db, logger)
 	adminRepo := postgres.NewGormAdminRepository(db, logger)
+	if err = bootstrapAdminFromEnv(ctx, adminRepo, cfg, logger); err != nil {
+		logger.Error("failed to bootstrap admin from env", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo)
 	authHandler := httpadapter.NewAuthHandler(adminRepo, jwtService, logger)
@@ -98,11 +110,67 @@ func loadConfig() (Config, error) {
 
 	shutdownTimeout := 10 * time.Second
 
+	outlessLogin := os.Getenv("OUTLESS_LOGIN")
+	outlessPassword := os.Getenv("OUTLESS_PASSWORD")
+	if (outlessLogin == "") != (outlessPassword == "") {
+		return Config{}, fmt.Errorf("OUTLESS_LOGIN and OUTLESS_PASSWORD must be provided together")
+	}
+
 	return Config{
 		DatabaseURL:     databaseURL,
 		HTTPAddress:     httpAddress,
 		JWTSecret:       jwtSecret,
 		JWTExpiry:       jwtExpiry,
 		ShutdownTimeout: shutdownTimeout,
+		OutlessLogin:    outlessLogin,
+		OutlessPassword: outlessPassword,
 	}, nil
+}
+
+func bootstrapAdminFromEnv(ctx context.Context, adminRepo domain.AdminRepository, cfg Config, logger *slog.Logger) error {
+	if cfg.OutlessLogin == "" || cfg.OutlessPassword == "" {
+		logger.Info("admin env bootstrap disabled")
+		return nil
+	}
+
+	count, err := adminRepo.Count(ctx)
+	if err != nil {
+		return fmt.Errorf("counting admins before env bootstrap: %w", err)
+	}
+
+	if count > 0 {
+		logger.Info("admin env bootstrap skipped because admins already exist")
+		return nil
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(cfg.OutlessPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hashing OUTLESS_PASSWORD: %w", err)
+	}
+
+	admin := domain.Admin{
+		ID:           newAdminID(),
+		Username:     cfg.OutlessLogin,
+		PasswordHash: string(passwordHash),
+	}
+
+	if err := adminRepo.Create(ctx, admin); err != nil {
+		if errors.Is(err, domain.ErrAdminAlreadyExists) {
+			logger.Info("admin env bootstrap skipped due race: first admin already exists")
+			return nil
+		}
+		return fmt.Errorf("creating admin from env: %w", err)
+	}
+
+	logger.Info("admin env bootstrap completed", slog.String("username", cfg.OutlessLogin))
+	return nil
+}
+
+func newAdminID() string {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("admin_%d", time.Now().UTC().UnixNano())
+	}
+
+	return hex.EncodeToString(bytes)
 }

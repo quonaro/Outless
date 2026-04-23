@@ -3,9 +3,9 @@ package httpadapter
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
-	"time"
 
 	"outless/internal/app/auth"
 )
@@ -63,6 +63,25 @@ type LoggingMiddleware struct {
 	logger *slog.Logger
 }
 
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func extractRemoteIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+
+	return host
+}
+
 // NewLoggingMiddleware constructs a logging middleware.
 func NewLoggingMiddleware(logger *slog.Logger) *LoggingMiddleware {
 	return &LoggingMiddleware{logger: logger}
@@ -71,18 +90,18 @@ func NewLoggingMiddleware(logger *slog.Logger) *LoggingMiddleware {
 // Wrap returns an http.Handler that logs requests.
 func (m *LoggingMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		m.logger.Info("request started",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("remote_addr", r.RemoteAddr),
-		)
-		next.ServeHTTP(w, r)
-		m.logger.Info("request completed",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Duration("duration", time.Since(start)),
-		)
+		recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+
+		message := extractRemoteIP(r.RemoteAddr) + " " + r.URL.Path
+		switch {
+		case recorder.statusCode >= http.StatusInternalServerError:
+			m.logger.Error(message)
+		case recorder.statusCode >= http.StatusBadRequest:
+			m.logger.Warn(message)
+		default:
+			m.logger.Info(message)
+		}
 	})
 }
 

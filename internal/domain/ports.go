@@ -27,4 +27,6 @@ type ProxyEngine interface {
 // AdminRepository provides persistence operations for admin users.
 type AdminRepository interface {
 	FindByUsername(ctx context.Context, username string) (Admin, error)
+	Count(ctx context.Context) (int64, error)
+	Create(ctx context.Context, admin Admin) error
 }

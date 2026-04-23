@@ -28,7 +28,8 @@
         "up",
         "-d",
         "--force-recreate",
-        "postgres"
+        "postgres",
+        "--remove-orphans"
       ],
       "group": "build",
       "presentation": {

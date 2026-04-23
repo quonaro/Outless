@@ -1,8 +1,7 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: outless-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: outless
@@ -13,16 +12,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ./migrations/002_add_admins.sql:/docker-entrypoint-initdb.d/002_add_admins.sql:ro
 
   xray:
     image: teddysun/xray
     restart: unless-stopped
+    container_name: outless-xray
     ports:
       - "10085:10085"
       - "1080:1080"
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
-    command: ["xray", "run", "-config", "/etc/xray/config.json"]
+    command: [ "xray", "run", "-config", "/etc/xray/config.json" ]
 
 volumes:
   postgres_data:
+    name: outless-db
