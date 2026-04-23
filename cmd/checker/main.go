@@ -41,18 +41,30 @@ func main() {
 	engine := xray.NewEngine(&http.Client{Timeout: 10 * time.Second}, logger, cfg.ProbeURL, cfg.XrayAdminURL)
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
 
-	if err = service.RunOnce(ctx); err != nil {
-		logger.Error("checker run failed", slog.String("error", err.Error()))
-		os.Exit(1)
+	// Run periodic checks with ticker
+	ticker := time.NewTicker(cfg.CheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err = service.RunOnce(ctx); err != nil {
+				logger.Error("checker run failed", slog.String("error", err.Error()))
+				os.Exit(1)
+			}
+		}
 	}
 }
 
 // Config defines checker process settings.
 type Config struct {
-	DatabaseURL  string
-	Workers      int
-	ProbeURL     string
-	XrayAdminURL string
+	DatabaseURL   string
+	Workers       int
+	ProbeURL      string
+	XrayAdminURL  string
+	CheckInterval time.Duration
 }
 
 func loadConfig(path string, logger *slog.Logger) (Config, error) {
@@ -64,9 +76,10 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL:  yamlCfg.Database.URL,
-		Workers:      yamlCfg.Checker.Workers,
-		ProbeURL:     yamlCfg.Checker.Xray.ProbeURL,
-		XrayAdminURL: yamlCfg.Checker.Xray.AdminURL,
+		DatabaseURL:   yamlCfg.Database.URL,
+		Workers:       yamlCfg.Checker.Workers,
+		ProbeURL:      yamlCfg.Checker.Xray.ProbeURL,
+		XrayAdminURL:  yamlCfg.Checker.Xray.AdminURL,
+		CheckInterval: yamlCfg.Checker.CheckInterval,
 	}, nil
 }

@@ -21,7 +21,7 @@ func NewService(repo domain.NodeRepository, tokenRepo domain.TokenRepository) *S
 	return &Service{repo: repo, tokenRepo: tokenRepo}
 }
 
-// BuildBase64VLESS returns base64 encoded VLESS list.
+// BuildBase64VLESS returns base64 encoded VLESS list filtered by token's group.
 func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, error) {
 	valid, err := s.tokenRepo.ValidateToken(ctx, token, time.Now().UTC())
 	if err != nil {
@@ -31,7 +31,12 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 		return "", domain.ErrUnauthorized
 	}
 
-	urls, err := s.repo.ListVLESSURLs(ctx)
+	groupID, err := s.tokenRepo.GetTokenGroupID(ctx, token, time.Now().UTC())
+	if err != nil {
+		return "", fmt.Errorf("getting token group id: %w", err)
+	}
+
+	urls, err := s.repo.ListVLESSURLs(ctx, groupID)
 	if err != nil {
 		return "", fmt.Errorf("loading vless urls: %w", err)
 	}

@@ -16,6 +16,7 @@ import (
 	httpadapter "outless/internal/adapters/http"
 	"outless/internal/adapters/postgres"
 	"outless/internal/app/auth"
+	"outless/internal/app/public"
 	"outless/internal/app/subscription"
 	"outless/internal/domain"
 	"outless/pkg/config"
@@ -58,6 +59,8 @@ func main() {
 
 	nodeRepo := postgres.NewGormNodeRepository(db, logger)
 	tokenRepo := postgres.NewGormTokenRepository(db, logger)
+	groupRepo := postgres.NewGormGroupRepository(db, logger)
+	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, logger)
 	adminRepo := postgres.NewGormAdminRepository(db, logger)
 	if err = bootstrapAdminFromEnv(ctx, adminRepo, cfg, logger); err != nil {
 		logger.Error("failed to bootstrap admin from env", slog.String("error", err.Error()))
@@ -66,9 +69,16 @@ func main() {
 
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo)
+	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	authHandler := httpadapter.NewAuthHandler(adminRepo, jwtService, logger)
 	subscriptionHandler := httpadapter.NewSubscriptionHandler(subscriptionService, logger)
-	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, subscriptionHandler, authHandler)
+	tokenHandler := httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger)
+	nodeHandler := httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger)
+	groupHandler := httpadapter.NewGroupManagementHandler(groupRepo, logger)
+	publicSourceHandler := httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger)
+	settingsHandler := httpadapter.NewSettingsHandler(*configPath, logger)
+	adminHandler := httpadapter.NewAdminManagementHandler(adminRepo, logger)
+	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, subscriptionHandler, authHandler, tokenHandler, nodeHandler, groupHandler, publicSourceHandler, settingsHandler, adminHandler)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {

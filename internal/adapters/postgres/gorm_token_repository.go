@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"outless/internal/domain"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 type tokenModel struct {
 	ID        string    `gorm:"column:id;primaryKey"`
 	Owner     string    `gorm:"column:owner"`
+	GroupID   string    `gorm:"column:group_id"`
 	TokenHash string    `gorm:"column:token_hash"`
 	IsActive  bool      `gorm:"column:is_active"`
 	ExpiresAt time.Time `gorm:"column:expires_at"`
@@ -39,7 +41,7 @@ func NewGormTokenRepository(db *gorm.DB, logger *slog.Logger) *GormTokenReposito
 }
 
 // IssueToken creates a new token and returns plain token only once.
-func (r *GormTokenRepository) IssueToken(ctx context.Context, owner string, expiresAt time.Time) (string, error) {
+func (r *GormTokenRepository) IssueToken(ctx context.Context, owner string, groupID string, expiresAt time.Time) (string, error) {
 	if strings.TrimSpace(owner) == "" {
 		return "", fmt.Errorf("owner is required")
 	}
@@ -61,6 +63,7 @@ func (r *GormTokenRepository) IssueToken(ctx context.Context, owner string, expi
 	model := tokenModel{
 		ID:        tokenID,
 		Owner:     owner,
+		GroupID:   groupID,
 		TokenHash: tokenHash(plainToken),
 		IsActive:  true,
 		ExpiresAt: expiresAt.UTC(),
@@ -71,7 +74,7 @@ func (r *GormTokenRepository) IssueToken(ctx context.Context, owner string, expi
 		return "", fmt.Errorf("creating token row: %w", err)
 	}
 
-	r.logger.Info("subscription token issued", slog.String("token_id", model.ID), slog.String("owner", owner), slog.Time("expires_at", model.ExpiresAt))
+	r.logger.Info("subscription token issued", slog.String("token_id", model.ID), slog.String("owner", owner), slog.String("group_id", groupID), slog.Time("expires_at", model.ExpiresAt))
 	return plainToken, nil
 }
 
@@ -92,6 +95,73 @@ func (r *GormTokenRepository) ValidateToken(ctx context.Context, token string, a
 	}
 
 	return count > 0, nil
+}
+
+// GetTokenGroupID returns the group ID associated with a token.
+func (r *GormTokenRepository) GetTokenGroupID(ctx context.Context, token string, at time.Time) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", nil
+	}
+
+	var model tokenModel
+	err := r.db.WithContext(ctx).
+		Model(&tokenModel{}).
+		Select("group_id").
+		Where("token_hash = ? AND is_active = ? AND expires_at > ?", tokenHash(token), true, at.UTC()).
+		First(&model).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", nil
+		}
+		return "", fmt.Errorf("getting token group id: %w", err)
+	}
+
+	return model.GroupID, nil
+}
+
+// List returns all tokens.
+func (r *GormTokenRepository) List(ctx context.Context) ([]domain.Token, error) {
+	var models []tokenModel
+	err := r.db.WithContext(ctx).
+		Order("created_at DESC").
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing tokens: %w", err)
+	}
+
+	tokens := make([]domain.Token, 0, len(models))
+	for _, model := range models {
+		tokens = append(tokens, domain.Token{
+			ID:        model.ID,
+			Owner:     model.Owner,
+			GroupID:   model.GroupID,
+			IsActive:  model.IsActive,
+			ExpiresAt: model.ExpiresAt,
+			CreatedAt: model.CreatedAt,
+		})
+	}
+
+	return tokens, nil
+}
+
+// Deactivates a token by ID.
+func (r *GormTokenRepository) Deactivate(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).
+		Model(&tokenModel{}).
+		Where("id = ?", id).
+		Update("is_active", false)
+
+	if result.Error != nil {
+		return fmt.Errorf("deactivating token: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("token not found: %w", domain.ErrNodeNotFound)
+	}
+
+	r.logger.Info("token deactivated", slog.String("id", id))
+	return nil
 }
 
 func tokenHash(token string) string {

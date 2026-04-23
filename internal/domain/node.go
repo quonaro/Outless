@@ -18,6 +18,7 @@ const (
 type Node struct {
 	ID      string
 	URL     string
+	GroupID string
 	Latency time.Duration
 	Status  NodeStatus
 	Country string
@@ -25,9 +26,9 @@ type Node struct {
 
 // ProbeResult stores a single health-check result for a node.
 type ProbeResult struct {
-	NodeID   string
-	Latency  time.Duration
-	Status   NodeStatus
-	Country  string
+	NodeID    string
+	Latency   time.Duration
+	Status    NodeStatus
+	Country   string
 	CheckedAt time.Time
 }

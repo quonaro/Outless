@@ -23,11 +23,17 @@ type Config struct {
 }
 
 // NewServer builds HTTP server with injected handlers.
-func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *SubscriptionHandler, authHandler *AuthHandler) *Server {
+func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *SubscriptionHandler, authHandler *AuthHandler, tokenHandler *TokenManagementHandler, nodeHandler *NodeManagementHandler, groupHandler *GroupManagementHandler, publicSourceHandler *PublicSourceManagementHandler, settingsHandler *SettingsHandler, adminHandler *AdminManagementHandler) *Server {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, huma.DefaultConfig("Outless API", "0.1.0"))
 	subscriptionHandler.Register(humaAPI)
 	authHandler.Register(humaAPI)
+	tokenHandler.Register(humaAPI)
+	nodeHandler.Register(humaAPI)
+	groupHandler.Register(humaAPI)
+	publicSourceHandler.Register(humaAPI)
+	settingsHandler.Register(humaAPI)
+	adminHandler.Register(humaAPI)
 
 	loggingMiddleware := NewLoggingMiddleware(logger)
 	handler := loggingMiddleware.Wrap(mux)

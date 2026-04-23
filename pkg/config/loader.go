@@ -77,6 +77,28 @@ func (l *Loader) createDefault(path string, config any) error {
 	return nil
 }
 
+// Save writes config to file atomically.
+func (l *Loader) Save(path string, config any) error {
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+
+	// Atomic write: write to temp file then rename
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+		return fmt.Errorf("writing temp config: %w", err)
+	}
+
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath) // Clean up on error
+		return fmt.Errorf("renaming temp config: %w", err)
+	}
+
+	l.logger.Info("config saved", slog.String("path", path))
+	return nil
+}
+
 // GenerateRandomSecret creates a random hex string for secrets.
 func GenerateRandomSecret(length int) (string, error) {
 	bytes := make([]byte, length)

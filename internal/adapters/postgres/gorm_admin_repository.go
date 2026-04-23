@@ -90,3 +90,62 @@ func (r *GormAdminRepository) Create(ctx context.Context, admin domain.Admin) er
 		return nil
 	})
 }
+
+// List returns all admins.
+func (r *GormAdminRepository) List(ctx context.Context) ([]domain.Admin, error) {
+	var models []adminModel
+	err := r.db.WithContext(ctx).
+		Order("created_at DESC").
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing admins via gorm: %w", err)
+	}
+
+	admins := make([]domain.Admin, 0, len(models))
+	for _, model := range models {
+		admins = append(admins, domain.Admin{
+			ID:           model.ID,
+			Username:     model.Username,
+			PasswordHash: model.PasswordHash,
+		})
+	}
+
+	return admins, nil
+}
+
+// Update updates an admin's password.
+func (r *GormAdminRepository) Update(ctx context.Context, admin domain.Admin) error {
+	result := r.db.WithContext(ctx).
+		Model(&adminModel{}).
+		Where("id = ?", admin.ID).
+		Update("password_hash", admin.PasswordHash)
+
+	if result.Error != nil {
+		return fmt.Errorf("updating admin via gorm: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("admin not found: %w", domain.ErrNodeNotFound)
+	}
+
+	r.logger.Debug("admin updated", slog.String("id", admin.ID))
+	return nil
+}
+
+// Delete removes an admin by ID.
+func (r *GormAdminRepository) Delete(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		Delete(&adminModel{})
+
+	if result.Error != nil {
+		return fmt.Errorf("deleting admin via gorm: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("admin not found: %w", domain.ErrNodeNotFound)
+	}
+
+	r.logger.Debug("admin deleted", slog.String("id", id))
+	return nil
+}

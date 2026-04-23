@@ -9,14 +9,22 @@ import (
 // NodeRepository provides persistence operations for proxy nodes.
 type NodeRepository interface {
 	IterateNodes(ctx context.Context) iter.Seq2[Node, error]
-	ListVLESSURLs(ctx context.Context) ([]string, error)
+	ListVLESSURLs(ctx context.Context, groupID string) ([]string, error)
 	UpdateProbeResult(ctx context.Context, result ProbeResult) error
+	Create(ctx context.Context, node Node) error
+	FindByID(ctx context.Context, id string) (Node, error)
+	List(ctx context.Context) ([]Node, error)
+	Update(ctx context.Context, node Node) error
+	Delete(ctx context.Context, id string) error
 }
 
 // TokenRepository provides secure operations for subscription tokens.
 type TokenRepository interface {
-	IssueToken(ctx context.Context, owner string, expiresAt time.Time) (string, error)
+	IssueToken(ctx context.Context, owner string, groupID string, expiresAt time.Time) (string, error)
 	ValidateToken(ctx context.Context, token string, at time.Time) (bool, error)
+	GetTokenGroupID(ctx context.Context, token string, at time.Time) (string, error)
+	List(ctx context.Context) ([]Token, error)
+	Deactivate(ctx context.Context, id string) error
 }
 
 // ProxyEngine validates node reachability through Xray.
@@ -29,4 +37,25 @@ type AdminRepository interface {
 	FindByUsername(ctx context.Context, username string) (Admin, error)
 	Count(ctx context.Context) (int64, error)
 	Create(ctx context.Context, admin Admin) error
+	List(ctx context.Context) ([]Admin, error)
+	Update(ctx context.Context, admin Admin) error
+	Delete(ctx context.Context, id string) error
+}
+
+// GroupRepository provides persistence operations for groups.
+type GroupRepository interface {
+	Create(ctx context.Context, group Group) error
+	FindByID(ctx context.Context, id string) (Group, error)
+	List(ctx context.Context) ([]Group, error)
+	Update(ctx context.Context, group Group) error
+	Delete(ctx context.Context, id string) error
+}
+
+// PublicSourceRepository provides persistence operations for public VLESS sources.
+type PublicSourceRepository interface {
+	Create(ctx context.Context, source PublicSource) error
+	FindByID(ctx context.Context, id string) (PublicSource, error)
+	List(ctx context.Context) ([]PublicSource, error)
+	Update(ctx context.Context, source PublicSource) error
+	Delete(ctx context.Context, id string) error
 }

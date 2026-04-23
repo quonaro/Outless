@@ -20,8 +20,11 @@ type APIConfig struct {
 
 // CheckerConfig holds health checker configuration.
 type CheckerConfig struct {
-	Workers int        `yaml:"workers"`
-	Xray    XrayConfig `yaml:"xray"`
+	Workers               int           `yaml:"workers"`
+	LatencyFilter         time.Duration `yaml:"latency_filter"`
+	PublicRefreshInterval time.Duration `yaml:"public_refresh_interval"`
+	CheckInterval         time.Duration `yaml:"check_interval"`
+	Xray                  XrayConfig    `yaml:"xray"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -65,7 +68,10 @@ func DefaultConfig() Config {
 			},
 		},
 		Checker: CheckerConfig{
-			Workers: 16,
+			Workers:               16,
+			LatencyFilter:         500 * time.Millisecond,
+			PublicRefreshInterval: 10 * time.Minute,
+			CheckInterval:         10 * time.Minute,
 			Xray: XrayConfig{
 				AdminURL: "http://xray:10085",
 				ProbeURL: "https://www.google.com/generate_204",

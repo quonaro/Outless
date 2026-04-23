@@ -15,6 +15,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	owner := flag.String("owner", "dev-user", "token owner label")
+	groupID := flag.String("group", "", "token group id")
 	ttl := flag.Duration("ttl", 30*24*time.Hour, "token ttl")
 	flag.Parse()
 
@@ -31,7 +32,7 @@ func main() {
 
 	repo := postgres.NewGormTokenRepository(db, logger)
 	expiresAt := time.Now().UTC().Add(*ttl)
-	token, err := repo.IssueToken(context.Background(), *owner, expiresAt)
+	token, err := repo.IssueToken(context.Background(), *owner, *groupID, expiresAt)
 	if err != nil {
 		logger.Error("failed to issue token", slog.String("error", err.Error()))
 		os.Exit(1)

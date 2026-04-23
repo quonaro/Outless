@@ -6,6 +6,7 @@ import "time"
 type Token struct {
 	ID        string
 	Owner     string
+	GroupID   string
 	IsActive  bool
 	ExpiresAt time.Time
 	CreatedAt time.Time
