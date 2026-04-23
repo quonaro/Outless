@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,8 +18,8 @@ import (
 	"outless/internal/app/auth"
 	"outless/internal/app/subscription"
 	"outless/internal/domain"
+	"outless/pkg/config"
 
-	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
 )
@@ -35,12 +36,12 @@ type Config struct {
 }
 
 func main() {
-	// Load .env file if present (ignore error if file doesn't exist)
-	_ = godotenv.Load()
+	configPath := flag.String("config", "outless.yaml", "path to config file")
+	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	cfg, err := loadConfig()
+	cfg, err := loadConfig(*configPath, logger)
 	if err != nil {
 		logger.Error("invalid config", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -90,40 +91,22 @@ func main() {
 	}
 }
 
-func loadConfig() (Config, error) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		databaseURL = "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
-	}
+func loadConfig(path string, logger *slog.Logger) (Config, error) {
+	loader := config.NewLoader(logger)
+	yamlCfg := config.DefaultConfig()
 
-	httpAddress := os.Getenv("HTTP_ADDR")
-	if httpAddress == "" {
-		httpAddress = ":41220"
-	}
-
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return Config{}, fmt.Errorf("JWT_SECRET is required")
-	}
-
-	jwtExpiry := 24 * time.Hour
-
-	shutdownTimeout := 10 * time.Second
-
-	outlessLogin := os.Getenv("OUTLESS_LOGIN")
-	outlessPassword := os.Getenv("OUTLESS_PASSWORD")
-	if (outlessLogin == "") != (outlessPassword == "") {
-		return Config{}, fmt.Errorf("OUTLESS_LOGIN and OUTLESS_PASSWORD must be provided together")
+	if err := loader.LoadOrCreate(path, &yamlCfg); err != nil {
+		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
 
 	return Config{
-		DatabaseURL:     databaseURL,
-		HTTPAddress:     httpAddress,
-		JWTSecret:       jwtSecret,
-		JWTExpiry:       jwtExpiry,
-		ShutdownTimeout: shutdownTimeout,
-		OutlessLogin:    outlessLogin,
-		OutlessPassword: outlessPassword,
+		DatabaseURL:     yamlCfg.Database.URL,
+		HTTPAddress:     ":41220",
+		JWTSecret:       yamlCfg.API.JWT.Secret,
+		JWTExpiry:       yamlCfg.API.JWT.Expiry,
+		ShutdownTimeout: yamlCfg.API.ShutdownTimeout,
+		OutlessLogin:    yamlCfg.API.Admin.Login,
+		OutlessPassword: yamlCfg.API.Admin.Password,
 	}, nil
 }
 

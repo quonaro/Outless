@@ -1,0 +1,20 @@
+# Outless Configuration File
+# This file is auto-generated on first run if missing
+
+database:
+  url: "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
+
+api:
+  shutdown_timeout: "10s"
+  jwt:
+    secret: "change-this-to-a-random-secret-key"
+    expiry: "24h"
+  admin:
+    login: ""
+    password: ""
+
+checker:
+  workers: 16
+  xray:
+    admin_url: "http://xray:10085"
+    probe_url: "https://www.google.com/generate_204"

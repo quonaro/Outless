@@ -20,6 +20,10 @@ go.work
 # Environment variables with secrets
 .env
 
+# YAML configuration files (keep .example files)
+outless.yaml
+!outless.yaml.example
+
 # IDE
 .idea/
 *.swp
