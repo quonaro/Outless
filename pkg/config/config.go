@@ -89,7 +89,7 @@ func DefaultConfig() Config {
 			PublicRefreshInterval: 10 * time.Minute,
 			CheckInterval:         10 * time.Minute,
 			Xray: XrayConfig{
-				AdminURL: "http://xray:10085",
+				AdminURL: "http://localhost:10085",
 				ProbeURL: "https://www.google.com/generate_204",
 			},
 		},

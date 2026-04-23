@@ -69,6 +69,7 @@ type probeNodeState struct {
 	Status     string `json:"status"`
 	LatencyMS  int64  `json:"latency_ms"`
 	NodeStatus string `json:"node_status,omitempty"`
+	Country    string `json:"country,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
 
@@ -424,6 +425,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 			Status:     string(ev.Status),
 			LatencyMS:  ev.LatencyMS,
 			NodeStatus: ev.NodeStatus,
+			Country:    ev.Country,
 			Error:      ev.Error,
 		}
 		run.nodes[ev.NodeID] = state
@@ -449,6 +451,9 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 		}
 		if ev.NodeStatus != "" {
 			m["node_status"] = ev.NodeStatus
+		}
+		if ev.Country != "" {
+			m["country"] = ev.Country
 		}
 		h.broadcastJSON(m)
 	}

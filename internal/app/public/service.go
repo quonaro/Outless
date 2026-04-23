@@ -8,21 +8,29 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"outless/internal/adapters/postgres"
+	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 )
+
+// syncLoadBatchSize limits rows per INSERT for Load to keep queries and WS fan-out bounded.
+const syncLoadBatchSize = 500
+
+// probeWorkerPoolSize caps concurrent probes for Check all (TCP / Xray).
+const probeWorkerPoolSize = 32
 
 // Service manages public VLESS sources import.
 type Service struct {
 	nodeRepo   domain.NodeRepository
 	sourceRepo domain.PublicSourceRepository
 	groupRepo  domain.GroupRepository
+	engine     domain.ProxyEngine
 	httpClient *http.Client
 	logger     *slog.Logger
 }
@@ -64,6 +72,7 @@ type ProbeUnavailableEvent struct {
 	Status     ProbeUnavailableNodeStatus `json:"status"`
 	LatencyMS  int64                      `json:"latency_ms"`
 	NodeStatus string                     `json:"node_status,omitempty"`
+	Country    string                     `json:"country,omitempty"`
 	Error      string                     `json:"error,omitempty"`
 }
 
@@ -78,12 +87,14 @@ func NewService(
 	nodeRepo domain.NodeRepository,
 	sourceRepo domain.PublicSourceRepository,
 	groupRepo domain.GroupRepository,
+	engine domain.ProxyEngine,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		nodeRepo:   nodeRepo,
 		sourceRepo: sourceRepo,
 		groupRepo:  groupRepo,
+		engine:     engine,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		logger:     logger,
 	}
@@ -182,56 +193,77 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(in
 		onTotal(len(uniqueURLs))
 	}
 	addedTotal := 0
-	for _, rawURL := range uniqueURLs {
+	for start := 0; start < len(uniqueURLs); start += syncLoadBatchSize {
 		if err = ctx.Err(); err != nil {
 			return SyncResult{}, err
 		}
 
-		nodeID := s.generateNodeID(rawURL)
+		end := start + syncLoadBatchSize
+		if end > len(uniqueURLs) {
+			end = len(uniqueURLs)
+		}
+		chunk := uniqueURLs[start:end]
+
+		nodes := make([]domain.Node, len(chunk))
+		for i, rawURL := range chunk {
+			nodes[i] = domain.Node{
+				ID:      s.generateNodeID(rawURL),
+				URL:     rawURL,
+				GroupID: groupID,
+				Status:  domain.NodeStatusUnknown,
+			}
+		}
+
 		if onEvent != nil {
-			onEvent(SyncEvent{
-				NodeID: nodeID,
-				URL:    rawURL,
-				Status: SyncNodeStatusImporting,
-			})
+			for _, rawURL := range chunk {
+				onEvent(SyncEvent{
+					NodeID: s.generateNodeID(rawURL),
+					URL:    rawURL,
+					Status: SyncNodeStatusImporting,
+				})
+			}
 		}
 
-		node := domain.Node{
-			ID:      nodeID,
-			URL:     rawURL,
-			GroupID: groupID,
-			Status:  domain.NodeStatusUnknown,
-		}
-
-		createdNow, createErr := s.nodeRepo.CreateIfAbsent(ctx, node)
-		if createErr != nil {
-			err = createErr
+		insertedIDs, bulkErr := s.nodeRepo.BulkCreateIfAbsent(ctx, nodes)
+		if bulkErr != nil {
+			err = bulkErr
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return SyncResult{}, err
+			}
+			for _, rawURL := range chunk {
+				nodeID := s.generateNodeID(rawURL)
+				if onEvent != nil {
+					onEvent(SyncEvent{
+						NodeID:     nodeID,
+						URL:        rawURL,
+						Status:     SyncNodeStatusError,
+						AddedTotal: addedTotal,
+						Error:      err.Error(),
+					})
+				}
+			}
+			continue
+		}
+
+		inserted := make(map[string]struct{}, len(insertedIDs))
+		for _, id := range insertedIDs {
+			inserted[id] = struct{}{}
+		}
+
+		for _, rawURL := range chunk {
+			nodeID := s.generateNodeID(rawURL)
+			if _, ok := inserted[nodeID]; ok {
+				addedTotal++
 			}
 			if onEvent != nil {
 				onEvent(SyncEvent{
 					NodeID:     nodeID,
 					URL:        rawURL,
-					Status:     SyncNodeStatusError,
+					Status:     SyncNodeStatusDone,
+					LatencyMS:  0,
 					AddedTotal: addedTotal,
-					Error:      err.Error(),
 				})
 			}
-			continue
-		}
-		if createdNow {
-			addedTotal++
-		}
-
-		if onEvent != nil {
-			onEvent(SyncEvent{
-				NodeID:     nodeID,
-				URL:        rawURL,
-				Status:     SyncNodeStatusDone,
-				LatencyMS:  0,
-				AddedTotal: addedTotal,
-			})
 		}
 	}
 
@@ -268,12 +300,25 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 		}
 	}
 
-	probed := 0
-	for _, node := range nodes {
-		if err := ctx.Err(); err != nil {
-			return probed, err
-		}
+	if len(nodes) == 0 {
+		return 0, nil
+	}
 
+	jobs := make(chan domain.Node, len(nodes))
+	for _, node := range nodes {
+		jobs <- node
+	}
+	close(jobs)
+
+	workers := probeWorkerPoolSize
+	if workers > len(nodes) {
+		workers = len(nodes)
+	}
+
+	var wg sync.WaitGroup
+	var probed atomic.Int64
+
+	runProbe := func(node domain.Node) {
 		if onEvent != nil {
 			onEvent(ProbeUnavailableEvent{
 				NodeID: node.ID,
@@ -282,10 +327,10 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 			})
 		}
 
-		result := s.probeNodeQuick(ctx, node.URL, node.ID)
+		result := nodeprobe.ProbeWithEngine(ctx, s.engine, node)
 		if saveErr := s.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
 			if errors.Is(saveErr, context.Canceled) || errors.Is(saveErr, context.DeadlineExceeded) {
-				return probed, saveErr
+				return
 			}
 			if onEvent != nil {
 				onEvent(ProbeUnavailableEvent{
@@ -295,10 +340,10 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 					Error:  saveErr.Error(),
 				})
 			}
-			continue
+			return
 		}
 
-		probed++
+		probed.Add(1)
 		if onEvent != nil {
 			onEvent(ProbeUnavailableEvent{
 				NodeID:     node.ID,
@@ -306,11 +351,29 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 				Status:     ProbeUnavailableNodeStatusReady,
 				LatencyMS:  result.Latency.Milliseconds(),
 				NodeStatus: string(result.Status),
+				Country:    result.Country,
 			})
 		}
 	}
 
-	return probed, nil
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for node := range jobs {
+				if err := ctx.Err(); err != nil {
+					return
+				}
+				runProbe(node)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return int(probed.Load()), err
+	}
+	return int(probed.Load()), nil
 }
 
 // CountUnavailableByGroup returns number of nodes in group.
@@ -430,47 +493,6 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 	}
 
 	return created, nil
-}
-
-func (s *Service) probeNodeQuick(ctx context.Context, rawURL string, nodeID string) domain.ProbeResult {
-	start := time.Now()
-	result := domain.ProbeResult{
-		NodeID:    nodeID,
-		Status:    domain.NodeStatusUnhealthy,
-		CheckedAt: time.Now().UTC(),
-	}
-
-	addr, err := probeAddressFromVLESS(rawURL)
-	if err != nil {
-		return result
-	}
-
-	dialer := net.Dialer{Timeout: 4 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return result
-	}
-	_ = conn.Close()
-
-	result.Status = domain.NodeStatusHealthy
-	result.Latency = time.Since(start)
-	return result
-}
-
-func probeAddressFromVLESS(raw string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return "", fmt.Errorf("vless url host is empty")
-	}
-	port := parsed.Port()
-	if port == "" {
-		port = "443"
-	}
-	return net.JoinHostPort(host, port), nil
 }
 
 // generateNodeID creates a deterministic short ID from URL via SHA-256.

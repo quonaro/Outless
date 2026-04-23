@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"strings"
 	"time"
 
 	"outless/internal/domain"
@@ -177,6 +178,67 @@ func (r *GormNodeRepository) CreateIfAbsent(ctx context.Context, node domain.Nod
 		r.logger.Debug("node created", slog.String("node_id", node.ID))
 	}
 	return created, nil
+}
+
+// BulkCreateIfAbsent inserts multiple nodes in one round-trip; conflicts on id are ignored.
+// Returns node IDs that were newly inserted.
+func (r *GormNodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.Node) ([]string, error) {
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+
+	now := time.Now().UTC()
+	var b strings.Builder
+	b.WriteString(`
+INSERT INTO nodes (id, url, group_id, latency_ms, status, country, created_at)
+VALUES `)
+	args := make([]any, 0, len(nodes)*7)
+	arg := 1
+	for i := range nodes {
+		n := &nodes[i]
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "($%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+			arg, arg+1, arg+2, arg+3, arg+4, arg+5, arg+6)
+		arg += 7
+		modelGroup := nullableString(n.GroupID)
+		args = append(args,
+			n.ID,
+			n.URL,
+			modelGroup,
+			n.Latency.Milliseconds(),
+			string(n.Status),
+			n.Country,
+			now,
+		)
+	}
+	b.WriteString(`
+ON CONFLICT (id) DO NOTHING
+RETURNING id`)
+
+	rows, err := r.db.WithContext(ctx).Raw(b.String(), args...).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("bulk creating nodes if absent: %w", err)
+	}
+	defer rows.Close()
+
+	inserted := make([]string, 0, len(nodes))
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			return nil, fmt.Errorf("scanning inserted node id: %w", scanErr)
+		}
+		inserted = append(inserted, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating bulk insert result: %w", err)
+	}
+
+	if len(inserted) > 0 {
+		r.logger.Debug("nodes bulk-created", slog.Int("count", len(inserted)))
+	}
+	return inserted, nil
 }
 
 // Upsert inserts a new node or updates url and group_id if the node already exists.

@@ -13,6 +13,9 @@ type NodeRepository interface {
 	UpdateProbeResult(ctx context.Context, result ProbeResult) error
 	Create(ctx context.Context, node Node) error
 	CreateIfAbsent(ctx context.Context, node Node) (bool, error)
+	// BulkCreateIfAbsent inserts nodes that do not yet exist (by primary key id).
+	// Returns IDs that were inserted in this call (skipped conflicts omitted).
+	BulkCreateIfAbsent(ctx context.Context, nodes []Node) ([]string, error)
 	Upsert(ctx context.Context, node Node) error
 	FindByID(ctx context.Context, id string) (Node, error)
 	List(ctx context.Context) ([]Node, error)

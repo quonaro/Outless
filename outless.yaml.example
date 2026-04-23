@@ -19,5 +19,5 @@ checker:
   public_refresh_interval: "10m"
   check_interval: "10m"
   xray:
-    admin_url: "http://xray:10085"
+    admin_url: "http://localhost:10085"
     probe_url: "https://www.google.com/generate_204"

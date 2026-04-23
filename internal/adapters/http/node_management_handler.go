@@ -6,11 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
-	"net"
-	"net/url"
-	"strings"
-	"time"
 
+	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -20,14 +17,16 @@ type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
 	realtime  *RealtimeHandler
+	engine    domain.ProxyEngine
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, engine domain.ProxyEngine, logger *slog.Logger) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
 		realtime:  realtime,
+		engine:    engine,
 		logger:    logger,
 	}
 }
@@ -168,7 +167,7 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 			GroupID: n.GroupID,
 			Latency: int64(n.Latency.Milliseconds()),
 			Status:  string(n.Status),
-			Country: n.Country,
+			Country: domain.NormalizeCountryCode(n.Country),
 		})
 	}
 
@@ -238,7 +237,7 @@ func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeI
 		return nil, huma.Error500InternalServerError("failed to find node")
 	}
 
-	result := quickProbe(node)
+	result := nodeprobe.ProbeWithEngine(ctx, h.engine, node)
 	if err = h.nodeRepo.UpdateProbeResult(ctx, result); err != nil {
 		h.logger.Error("failed to save probe result", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to save probe result")
@@ -253,37 +252,4 @@ func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeI
 func generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
-}
-
-func quickProbe(node domain.Node) domain.ProbeResult {
-	result := domain.ProbeResult{
-		NodeID:    node.ID,
-		Status:    domain.NodeStatusUnhealthy,
-		Country:   node.Country,
-		CheckedAt: time.Now().UTC(),
-	}
-
-	parsed, err := url.Parse(strings.TrimSpace(node.URL))
-	if err != nil {
-		return result
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return result
-	}
-	port := parsed.Port()
-	if port == "" {
-		port = "443"
-	}
-
-	start := time.Now()
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 4*time.Second)
-	if err != nil {
-		return result
-	}
-	_ = conn.Close()
-
-	result.Status = domain.NodeStatusHealthy
-	result.Latency = time.Since(start)
-	return result
 }

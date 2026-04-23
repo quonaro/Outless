@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"outless/internal/adapters/postgres"
+	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -17,14 +18,16 @@ type GroupManagementHandler struct {
 	groupRepo domain.GroupRepository
 	nodeRepo  domain.NodeRepository
 	realtime  *RealtimeHandler
+	engine    domain.ProxyEngine
 	logger    *slog.Logger
 }
 
-func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *RealtimeHandler, logger *slog.Logger) *GroupManagementHandler {
+func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *RealtimeHandler, engine domain.ProxyEngine, logger *slog.Logger) *GroupManagementHandler {
 	return &GroupManagementHandler{
 		groupRepo: groupRepo,
 		nodeRepo:  nodeRepo,
 		realtime:  realtime,
+		engine:    engine,
 		logger:    logger,
 	}
 }
@@ -247,7 +250,7 @@ func (h *GroupManagementHandler) ProbeUnavailableNodes(ctx context.Context, inpu
 		if err := ctx.Err(); err != nil {
 			break
 		}
-		result := quickProbe(node)
+		result := nodeprobe.ProbeWithEngine(ctx, h.engine, node)
 		if saveErr := h.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
 			h.logger.Warn("probe unavailable save failed", slog.String("node_id", node.ID), slog.String("error", saveErr.Error()))
 		}

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"outless/internal/domain"
 
@@ -90,16 +92,24 @@ func (s *Service) RunOnce(ctx context.Context) error {
 func (s *Service) checkNode(ctx context.Context, node domain.Node) error {
 	result, err := s.engine.ProbeNode(ctx, node)
 	if err != nil {
-		s.logger.Warn("node probe failed", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-		result = domain.ProbeResult{
-			NodeID:  node.ID,
-			Status:  domain.NodeStatusUnhealthy,
-			Country: node.Country,
+		if !isInfrastructureProbeError(err) {
+			s.logger.Warn("node probe failed", slog.String("node_id", node.ID), slog.String("error", err.Error()))
 		}
+		result = domain.ProbeResult{
+			NodeID:    node.ID,
+			Status:    domain.NodeStatusUnhealthy,
+			Country:   domain.NormalizeCountryCode(node.Country),
+			CheckedAt: time.Now().UTC(),
+		}
+	} else {
+		result.Country = domain.NormalizeCountryCode(result.Country)
 	}
 
 	if result.NodeID == "" {
 		result.NodeID = node.ID
+	}
+	if result.CheckedAt.IsZero() {
+		result.CheckedAt = time.Now().UTC()
 	}
 
 	if err = s.repo.UpdateProbeResult(ctx, result); err != nil {
@@ -108,6 +118,17 @@ func (s *Service) checkNode(ctx context.Context, node domain.Node) error {
 
 	s.logger.Debug("node checked", slog.String("node_id", node.ID), slog.String("status", string(result.Status)))
 	return nil
+}
+
+func isInfrastructureProbeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "dial tcp") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "context canceled")
 }
 
 // RunLoop starts periodic checks until context cancellation.
