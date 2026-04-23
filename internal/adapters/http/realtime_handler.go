@@ -36,9 +36,11 @@ type syncRun struct {
 	running                 bool
 	total                   int
 	processed               int
+	addedCount              int
 	deletedUnavailableCount int64
 	syncedAt                string
 	error                   string
+	finishedAt              time.Time
 	nodes                   map[string]syncNodeState
 }
 
@@ -53,11 +55,12 @@ type syncNodeState struct {
 type probeRun struct {
 	cancel context.CancelFunc
 
-	mu        sync.Mutex
-	running   bool
-	total     int
-	processed int
-	nodes     map[string]probeNodeState
+	mu         sync.Mutex
+	running    bool
+	total      int
+	processed  int
+	finishedAt time.Time
+	nodes      map[string]probeNodeState
 }
 
 type probeNodeState struct {
@@ -244,28 +247,21 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	defer cancel()
 
 	h.syncMu.Lock()
-	if run, busy := h.activeSyncs[groupID]; busy {
+	if run, exists := h.activeSyncs[groupID]; exists && run.running {
 		h.syncMu.Unlock()
 		h.sendSyncGroupStateFromRun(client, groupID, run)
 		return
 	}
 	run := &syncRun{
-		cancel:    cancel,
-		running:   true,
-		total:     0,
-		processed: 0,
-		nodes:     make(map[string]syncNodeState),
+		cancel:     cancel,
+		running:    true,
+		total:      0,
+		processed:  0,
+		addedCount: 0,
+		nodes:      make(map[string]syncNodeState),
 	}
 	h.activeSyncs[groupID] = run
 	h.syncMu.Unlock()
-
-	defer func() {
-		h.syncMu.Lock()
-		if current, ok := h.activeSyncs[groupID]; ok && current == run {
-			delete(h.activeSyncs, groupID)
-		}
-		h.syncMu.Unlock()
-	}()
 
 	h.broadcastJSON(map[string]any{
 		"type":      "sync_started",
@@ -276,7 +272,6 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 
 	writeNode := func(ev public.SyncEvent) {
 		run.mu.Lock()
-		prev, hadPrev := run.nodes[ev.NodeID]
 		state := syncNodeState{
 			NodeID:    ev.NodeID,
 			URL:       ev.URL,
@@ -285,23 +280,27 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 			Error:     ev.Error,
 		}
 		run.nodes[ev.NodeID] = state
-		run.total = len(run.nodes)
-		if isSyncTerminal(string(ev.Status)) && (!hadPrev || !isSyncTerminal(prev.Status)) {
+		if isSyncTerminal(string(ev.Status)) {
 			run.processed++
+		}
+		if ev.AddedTotal > run.addedCount {
+			run.addedCount = ev.AddedTotal
 		}
 		processed := run.processed
 		total := run.total
+		added := run.addedCount
 		run.mu.Unlock()
 
 		m := map[string]any{
-			"type":       "sync_node_status",
-			"group_id":   groupID,
-			"node_id":    ev.NodeID,
-			"url":        ev.URL,
-			"status":     string(ev.Status),
-			"latency_ms": ev.LatencyMS,
-			"processed":  processed,
-			"total":      total,
+			"type":        "sync_node_status",
+			"group_id":    groupID,
+			"node_id":     ev.NodeID,
+			"url":         ev.URL,
+			"status":      string(ev.Status),
+			"latency_ms":  ev.LatencyMS,
+			"processed":   processed,
+			"total":       total,
+			"added_total": added,
 		}
 		if ev.Error != "" {
 			m["error"] = ev.Error
@@ -309,29 +308,46 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 		h.broadcastJSON(m)
 	}
 
-	result, err := h.public.SyncGroup(syncCtx, groupID, writeNode)
+	setTotal := func(total int) {
+		run.mu.Lock()
+		run.total = total
+		processed := run.processed
+		run.mu.Unlock()
+		h.broadcastJSON(map[string]any{
+			"type":      "sync_started",
+			"group_id":  groupID,
+			"processed": processed,
+			"total":     total,
+		})
+	}
+
+	result, err := h.public.SyncGroup(syncCtx, groupID, setTotal, writeNode)
 	if err != nil {
 		run.mu.Lock()
 		run.running = false
 		run.error = err.Error()
+		run.finishedAt = time.Now().UTC()
 		processed := run.processed
 		total := run.total
+		added := run.addedCount
 		run.mu.Unlock()
 
 		if errors.Is(err, context.Canceled) {
 			h.broadcastJSON(map[string]any{
-				"type":      "sync_cancelled",
-				"group_id":  groupID,
-				"processed": processed,
-				"total":     total,
+				"type":        "sync_cancelled",
+				"group_id":    groupID,
+				"processed":   processed,
+				"total":       total,
+				"added_count": added,
 			})
 		} else {
 			h.broadcastJSON(map[string]any{
-				"type":      "sync_error",
-				"group_id":  groupID,
-				"error":     err.Error(),
-				"processed": processed,
-				"total":     total,
+				"type":        "sync_error",
+				"group_id":    groupID,
+				"error":       err.Error(),
+				"processed":   processed,
+				"total":       total,
+				"added_count": added,
 			})
 		}
 		h.NotifyInvalidate(true, true)
@@ -342,8 +358,11 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	run.running = false
 	run.syncedAt = result.SyncedAt.Format(time.RFC3339)
 	run.deletedUnavailableCount = result.DeletedUnavailableCount
+	run.addedCount = result.AddedCount
+	run.finishedAt = time.Now().UTC()
 	processed := run.processed
 	total := run.total
+	added := run.addedCount
 	run.mu.Unlock()
 
 	h.broadcastJSON(map[string]any{
@@ -353,6 +372,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 		"deleted_unavailable_count": result.DeletedUnavailableCount,
 		"processed":                 processed,
 		"total":                     total,
+		"added_count":               added,
 	})
 	h.NotifyInvalidate(true, true)
 }
@@ -368,7 +388,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 	defer cancel()
 
 	h.syncMu.Lock()
-	if run, busy := h.activeProbes[groupID]; busy {
+	if run, exists := h.activeProbes[groupID]; exists && run.running {
 		h.syncMu.Unlock()
 		h.sendProbeUnavailableStateFromRun(client, groupID, run)
 		return
@@ -388,14 +408,6 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 	}
 	h.activeProbes[groupID] = run
 	h.syncMu.Unlock()
-
-	defer func() {
-		h.syncMu.Lock()
-		if current, ok := h.activeProbes[groupID]; ok && current == run {
-			delete(h.activeProbes, groupID)
-		}
-		h.syncMu.Unlock()
-	}()
 
 	h.broadcastJSON(map[string]any{
 		"type":      "probe_unavailable_started",
@@ -445,6 +457,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 	if err != nil {
 		run.mu.Lock()
 		run.running = false
+		run.finishedAt = time.Now().UTC()
 		processed := run.processed
 		total := run.total
 		run.mu.Unlock()
@@ -471,6 +484,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 
 	run.mu.Lock()
 	run.running = false
+	run.finishedAt = time.Now().UTC()
 	processed := run.processed
 	total = run.total
 	run.mu.Unlock()
@@ -572,6 +586,7 @@ func (h *RealtimeHandler) sendSyncGroupStateFromRun(client *wsClient, groupID st
 		"error":                     run.error,
 		"synced_at":                 run.syncedAt,
 		"deleted_unavailable_count": run.deletedUnavailableCount,
+		"added_count":               run.addedCount,
 	}
 	run.mu.Unlock()
 	_ = client.writeJSON(client.rootCtx, payload)

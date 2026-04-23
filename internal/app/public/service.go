@@ -39,11 +39,12 @@ const (
 
 // SyncEvent is emitted for each node while group sync is running.
 type SyncEvent struct {
-	NodeID    string         `json:"node_id"`
-	URL       string         `json:"url"`
-	Status    SyncNodeStatus `json:"status"`
-	LatencyMS int64          `json:"latency_ms"`
-	Error     string         `json:"error,omitempty"`
+	NodeID     string         `json:"node_id"`
+	URL        string         `json:"url"`
+	Status     SyncNodeStatus `json:"status"`
+	LatencyMS  int64          `json:"latency_ms"`
+	AddedTotal int            `json:"added_total,omitempty"`
+	Error      string         `json:"error,omitempty"`
 }
 
 // ProbeUnavailableNodeStatus describes per-node status while probing unavailable nodes.
@@ -69,6 +70,7 @@ type ProbeUnavailableEvent struct {
 type SyncResult struct {
 	SyncedAt                time.Time
 	DeletedUnavailableCount int64
+	AddedCount              int
 }
 
 // NewService constructs a public sources service.
@@ -146,8 +148,9 @@ func (s *Service) ImportAll(ctx context.Context) error {
 	return nil
 }
 
-// SyncGroup imports nodes for a group source URL and reports progress events.
-func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(SyncEvent)) (SyncResult, error) {
+// SyncGroup loads nodes for a group source URL and reports progress events.
+// It only imports/upserts nodes from source without probing their health.
+func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(int), onEvent func(SyncEvent)) (SyncResult, error) {
 	group, err := s.groupRepo.FindByID(ctx, groupID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("finding group: %w", err)
@@ -162,7 +165,24 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 	}
 
 	vlessURLs := s.parseVLESSLines(content)
-	for _, rawURL := range vlessURLs {
+	uniqueURLs := make([]string, 0, len(vlessURLs))
+	seen := make(map[string]struct{}, len(vlessURLs))
+	for _, raw := range vlessURLs {
+		k := strings.TrimSpace(raw)
+		if k == "" {
+			continue
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		uniqueURLs = append(uniqueURLs, k)
+	}
+	if onTotal != nil {
+		onTotal(len(uniqueURLs))
+	}
+	addedTotal := 0
+	for _, rawURL := range uniqueURLs {
 		if err = ctx.Err(); err != nil {
 			return SyncResult{}, err
 		}
@@ -183,47 +203,34 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 			Status:  domain.NodeStatusUnknown,
 		}
 
-		if err = s.nodeRepo.Upsert(ctx, node); err != nil {
+		createdNow, createErr := s.nodeRepo.CreateIfAbsent(ctx, node)
+		if createErr != nil {
+			err = createErr
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return SyncResult{}, err
 			}
 			if onEvent != nil {
 				onEvent(SyncEvent{
-					NodeID: nodeID,
-					URL:    rawURL,
-					Status: SyncNodeStatusError,
-					Error:  err.Error(),
+					NodeID:     nodeID,
+					URL:        rawURL,
+					Status:     SyncNodeStatusError,
+					AddedTotal: addedTotal,
+					Error:      err.Error(),
 				})
 			}
 			continue
 		}
-
-		result := s.probeNodeQuick(ctx, rawURL, nodeID)
-		if updateErr := s.nodeRepo.UpdateProbeResult(ctx, result); updateErr != nil {
-			if errors.Is(updateErr, context.Canceled) || errors.Is(updateErr, context.DeadlineExceeded) {
-				return SyncResult{}, updateErr
-			}
-			if onEvent != nil {
-				onEvent(SyncEvent{
-					NodeID: nodeID,
-					URL:    rawURL,
-					Status: SyncNodeStatusError,
-					Error:  updateErr.Error(),
-				})
-			}
-			continue
+		if createdNow {
+			addedTotal++
 		}
 
 		if onEvent != nil {
-			status := SyncNodeStatusDone
-			if result.Status != domain.NodeStatusHealthy {
-				status = SyncNodeStatusUnavailable
-			}
 			onEvent(SyncEvent{
-				NodeID:    nodeID,
-				URL:       rawURL,
-				Status:    status,
-				LatencyMS: result.Latency.Milliseconds(),
+				NodeID:     nodeID,
+				URL:        rawURL,
+				Status:     SyncNodeStatusDone,
+				LatencyMS:  0,
+				AddedTotal: addedTotal,
 			})
 		}
 	}
@@ -233,29 +240,22 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(Sy
 		return SyncResult{}, fmt.Errorf("updating group sync timestamp: %w", err)
 	}
 
-	var deletedUnavailable int64
-	if group.AutoDeleteUnavailable {
-		deletedUnavailable, err = s.nodeRepo.DeleteUnavailableByGroup(ctx, groupID)
-		if err != nil {
-			return SyncResult{}, fmt.Errorf("auto-deleting unavailable nodes: %w", err)
-		}
-	}
-
 	return SyncResult{
 		SyncedAt:                syncedAt,
-		DeletedUnavailableCount: deletedUnavailable,
+		DeletedUnavailableCount: 0,
+		AddedCount:              addedTotal,
 	}, nil
 }
 
-// ProbeUnavailableGroup probes all non-healthy nodes in a group and emits lifecycle events.
+// ProbeUnavailableGroup probes all nodes in a group and emits lifecycle events.
 func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onEvent func(ProbeUnavailableEvent)) (int, error) {
 	if _, err := s.groupRepo.FindByID(ctx, groupID); err != nil {
 		return 0, fmt.Errorf("finding group: %w", err)
 	}
 
-	nodes, err := s.nodeRepo.ListNonHealthyByGroup(ctx, groupID)
+	nodes, err := s.nodeRepo.ListByGroup(ctx, groupID)
 	if err != nil {
-		return 0, fmt.Errorf("listing non-healthy nodes: %w", err)
+		return 0, fmt.Errorf("listing nodes by group: %w", err)
 	}
 
 	for _, node := range nodes {
@@ -313,11 +313,11 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 	return probed, nil
 }
 
-// CountUnavailableByGroup returns number of non-healthy nodes in group.
+// CountUnavailableByGroup returns number of nodes in group.
 func (s *Service) CountUnavailableByGroup(ctx context.Context, groupID string) (int, error) {
-	nodes, err := s.nodeRepo.ListNonHealthyByGroup(ctx, groupID)
+	nodes, err := s.nodeRepo.ListByGroup(ctx, groupID)
 	if err != nil {
-		return 0, fmt.Errorf("listing non-healthy nodes: %w", err)
+		return 0, fmt.Errorf("listing nodes by group: %w", err)
 	}
 	return len(nodes), nil
 }

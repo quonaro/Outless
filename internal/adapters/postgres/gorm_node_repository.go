@@ -285,6 +285,31 @@ func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int
 	return nodes, nil
 }
 
+// ListByGroup returns all nodes in a group.
+func (r *GormNodeRepository) ListByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
+	var models []nodeModel
+	err := r.db.WithContext(ctx).
+		Where("group_id = ?", groupID).
+		Order("created_at DESC").
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing nodes by group: %w", err)
+	}
+
+	nodes := make([]domain.Node, 0, len(models))
+	for _, model := range models {
+		nodes = append(nodes, domain.Node{
+			ID:      model.ID,
+			URL:     model.URL,
+			GroupID: derefString(model.GroupID),
+			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
+			Status:  domain.NodeStatus(model.Status),
+			Country: model.Country,
+		})
+	}
+	return nodes, nil
+}
+
 // ListNonHealthyByGroup returns nodes in a group with status unknown or unhealthy.
 func (r *GormNodeRepository) ListNonHealthyByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
 	var models []nodeModel
