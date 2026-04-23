@@ -38,7 +38,12 @@ func main() {
 	}
 
 	repo := postgres.NewGormNodeRepository(db, logger)
-	engine := xray.NewEngine(logger, cfg.ProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, 10*time.Second)
+	engine := xray.NewEngine(logger, cfg.ProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, xray.GeoIPConfig{
+		DBPath: cfg.XrayGeoIPDBPath,
+		DBURL:  cfg.XrayGeoIPDBURL,
+		Auto:   cfg.XrayGeoIPAuto,
+		TTL:    cfg.XrayGeoIPTTL,
+	}, 10*time.Second)
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
 
 	// Run periodic checks with ticker
@@ -60,12 +65,16 @@ func main() {
 
 // Config defines checker process settings.
 type Config struct {
-	DatabaseURL   string
-	Workers       int
-	ProbeURL      string
-	XrayAdminURL  string
-	XraySocksAddr string
-	CheckInterval time.Duration
+	DatabaseURL     string
+	Workers         int
+	ProbeURL        string
+	XrayAdminURL    string
+	XraySocksAddr   string
+	XrayGeoIPDBPath string
+	XrayGeoIPDBURL  string
+	XrayGeoIPAuto   bool
+	XrayGeoIPTTL    time.Duration
+	CheckInterval   time.Duration
 }
 
 func loadConfig(path string, logger *slog.Logger) (Config, error) {
@@ -77,12 +86,16 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL:   yamlCfg.Database.URL,
-		Workers:       yamlCfg.Checker.Workers,
-		ProbeURL:      yamlCfg.Checker.Xray.ProbeURL,
-		XrayAdminURL:  yamlCfg.Checker.Xray.AdminURL,
-		XraySocksAddr: yamlCfg.Checker.Xray.SocksAddr,
-		CheckInterval: yamlCfg.Checker.CheckInterval,
+		DatabaseURL:     yamlCfg.Database.URL,
+		Workers:         yamlCfg.Checker.Workers,
+		ProbeURL:        yamlCfg.Checker.Xray.ProbeURL,
+		XrayAdminURL:    yamlCfg.Checker.Xray.AdminURL,
+		XraySocksAddr:   yamlCfg.Checker.Xray.SocksAddr,
+		XrayGeoIPDBPath: yamlCfg.Checker.Xray.GeoIPDBPath,
+		XrayGeoIPDBURL:  yamlCfg.Checker.Xray.GeoIPDBURL,
+		XrayGeoIPAuto:   yamlCfg.Checker.Xray.GeoIPAuto,
+		XrayGeoIPTTL:    yamlCfg.Checker.Xray.GeoIPTTL,
+		CheckInterval:   yamlCfg.Checker.CheckInterval,
 	}, nil
 }
 

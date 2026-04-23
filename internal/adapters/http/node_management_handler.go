@@ -75,7 +75,11 @@ type DeleteNodeInput struct {
 }
 
 type ProbeNodeInput struct {
-	ID string `path:"id" required:"true"`
+	ID   string `path:"id" required:"true"`
+	Body struct {
+		Mode     string `json:"mode,omitempty"`
+		ProbeURL string `json:"probe_url,omitempty"`
+	}
 }
 
 type NodeItem struct {
@@ -260,6 +264,12 @@ func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeI
 		return nil, huma.Error500InternalServerError("failed to find node")
 	}
 
+	if strings.EqualFold(strings.TrimSpace(input.Body.Mode), string(domain.ProbeModeFast)) {
+		ctx = domain.WithProbeMode(ctx, domain.ProbeModeFast)
+	} else {
+		ctx = domain.WithProbeMode(ctx, domain.ProbeModeNormal)
+	}
+	ctx = domain.WithProbeURL(ctx, input.Body.ProbeURL)
 	result := nodeprobe.ProbeWithEngine(ctx, h.engine, node)
 	if err = h.nodeRepo.UpdateProbeResult(ctx, result); err != nil {
 		h.logger.Error("failed to save probe result", slog.String("id", input.ID), slog.String("error", err.Error()))

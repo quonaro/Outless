@@ -38,6 +38,7 @@ type Engine struct {
 	socksAddr    string
 	socksInTag   string
 	probeTimeout time.Duration
+	countryByIP  countryResolver
 
 	mu   sync.Mutex
 	conn *grpc.ClientConn
@@ -45,10 +46,18 @@ type Engine struct {
 	rs   routercmd.RoutingServiceClient
 }
 
+// GeoIPConfig controls local MMDB country lookup and optional auto-update.
+type GeoIPConfig struct {
+	DBPath string
+	DBURL  string
+	Auto   bool
+	TTL    time.Duration
+}
+
 // NewEngine constructs an Xray-backed proxy engine using gRPC HandlerService + RoutingService.
 // adminURL is the Xray API address (e.g. http://127.0.0.1:10085); only host and port are used for gRPC.
 // socksAddr is the local SOCKS inbound (e.g. 127.0.0.1:1080) used to perform the HTTP probe through Xray.
-func NewEngine(logger *slog.Logger, probeURL, adminURL, socksAddr string, probeTimeout time.Duration) *Engine {
+func NewEngine(logger *slog.Logger, probeURL, adminURL, socksAddr string, geoIP GeoIPConfig, probeTimeout time.Duration) *Engine {
 	if probeTimeout <= 0 {
 		probeTimeout = 10 * time.Second
 	}
@@ -67,6 +76,7 @@ func NewEngine(logger *slog.Logger, probeURL, adminURL, socksAddr string, probeT
 		socksAddr:    socksAddr,
 		socksInTag:   defaultSocksInboundTag,
 		probeTimeout: probeTimeout,
+		countryByIP:  newGeoIPCountryResolver(logger, geoIP),
 	}
 }
 
@@ -81,7 +91,11 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 		return domain.ProbeResult{}, fmt.Errorf("parsing node url for node %s: %w", node.ID, err)
 	}
 
-	probeTarget, err := url.Parse(strings.TrimSpace(e.probeURL))
+	probeURL := strings.TrimSpace(domain.ProbeURLFromContext(ctx))
+	if probeURL == "" {
+		probeURL = strings.TrimSpace(e.probeURL)
+	}
+	probeTarget, err := url.Parse(probeURL)
 	if err != nil || probeTarget.Hostname() == "" {
 		return domain.ProbeResult{}, fmt.Errorf("invalid probe_url for node %s", node.ID)
 	}
@@ -142,7 +156,7 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 		return domain.ProbeResult{}, fmt.Errorf("socks http client for node %s: %w", node.ID, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.probeURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		return domain.ProbeResult{}, fmt.Errorf("creating probe request for node %s: %w", node.ID, err)
 	}
@@ -160,20 +174,31 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 		latency = time.Millisecond
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	if !isSuccessfulProbeStatus(resp.StatusCode) {
 		e.logger.Warn("xray probe unexpected status", slog.String("node_id", node.ID), slog.Int("http_status", resp.StatusCode))
 		return domain.ProbeResult{}, fmt.Errorf("unexpected probe status for node %s: %d", node.ID, resp.StatusCode)
 	}
 
 	e.logger.Debug("xray probe success", slog.String("node_id", node.ID), slog.Duration("latency", latency))
 
+	country := domain.NormalizeCountryCode(node.Country)
+	if !domain.IsFastProbe(ctx) && e.countryByIP != nil {
+		if detectedCountry, ok := e.countryByIP.CountryByHost(ctx, parsed.host); ok {
+			country = detectedCountry
+		}
+	}
+
 	return domain.ProbeResult{
 		NodeID:    node.ID,
 		Latency:   latency,
 		Status:    domain.NodeStatusHealthy,
-		Country:   domain.NormalizeCountryCode(node.Country),
+		Country:   country,
 		CheckedAt: time.Now().UTC(),
 	}, nil
+}
+
+func isSuccessfulProbeStatus(statusCode int) bool {
+	return statusCode >= http.StatusOK && statusCode < http.StatusBadRequest
 }
 
 func (e *Engine) ensureConn(ctx context.Context) error {

@@ -280,7 +280,7 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(in
 }
 
 // ProbeUnavailableGroup probes all nodes in a group and emits lifecycle events.
-func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onEvent func(ProbeUnavailableEvent)) (int, error) {
+func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, statuses []domain.NodeStatus, onEvent func(ProbeUnavailableEvent)) (int, error) {
 	if _, err := s.groupRepo.FindByID(ctx, groupID); err != nil {
 		return 0, fmt.Errorf("finding group: %w", err)
 	}
@@ -289,6 +289,7 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 	if err != nil {
 		return 0, fmt.Errorf("listing nodes by group: %w", err)
 	}
+	nodes = filterNodesByStatuses(nodes, statuses)
 
 	for _, node := range nodes {
 		if onEvent != nil {
@@ -377,12 +378,29 @@ func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, onE
 }
 
 // CountUnavailableByGroup returns number of nodes in group.
-func (s *Service) CountUnavailableByGroup(ctx context.Context, groupID string) (int, error) {
+func (s *Service) CountUnavailableByGroup(ctx context.Context, groupID string, statuses []domain.NodeStatus) (int, error) {
 	nodes, err := s.nodeRepo.ListByGroup(ctx, groupID)
 	if err != nil {
 		return 0, fmt.Errorf("listing nodes by group: %w", err)
 	}
-	return len(nodes), nil
+	return len(filterNodesByStatuses(nodes, statuses)), nil
+}
+
+func filterNodesByStatuses(nodes []domain.Node, statuses []domain.NodeStatus) []domain.Node {
+	if len(statuses) == 0 {
+		return nodes
+	}
+	allowed := make(map[domain.NodeStatus]struct{}, len(statuses))
+	for _, st := range statuses {
+		allowed[st] = struct{}{}
+	}
+	out := make([]domain.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if _, ok := allowed[node.Status]; ok {
+			out = append(out, node)
+		}
+	}
+	return out
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -45,6 +46,10 @@ type Config struct {
 	XrayProbeURL          string
 	XrayAdminURL          string
 	XraySocksAddr         string
+	XrayGeoIPDBPath       string
+	XrayGeoIPDBURL        string
+	XrayGeoIPAuto         bool
+	XrayGeoIPTTL          time.Duration
 }
 
 func main() {
@@ -81,7 +86,7 @@ func main() {
 	}
 
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
-	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, subscription.HubConfig{
+	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, groupRepo, subscription.HubConfig{
 		Host:        cfg.HubHost,
 		Port:        cfg.HubPort,
 		SNI:         cfg.HubSNI,
@@ -89,14 +94,29 @@ func main() {
 		ShortID:     cfg.HubShortID,
 		Fingerprint: cfg.HubFingerprint,
 	}, logger)
-	probeEngine := xray.NewEngine(logger, cfg.XrayProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, 10*time.Second)
+	probeEngine := xray.NewEngine(logger, cfg.XrayProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, xray.GeoIPConfig{
+		DBPath: cfg.XrayGeoIPDBPath,
+		DBURL:  cfg.XrayGeoIPDBURL,
+		Auto:   cfg.XrayGeoIPAuto,
+		TTL:    cfg.XrayGeoIPTTL,
+	}, 10*time.Second)
 	logger.Info("xray probe client configured",
 		slog.String("admin_url", cfg.XrayAdminURL),
 		slog.String("probe_target", cfg.XrayProbeURL),
 		slog.String("socks_addr", cfg.XraySocksAddr),
+		slog.String("geoip_db_path", cfg.XrayGeoIPDBPath),
+		slog.String("geoip_db_url", cfg.XrayGeoIPDBURL),
+		slog.Bool("geoip_auto", cfg.XrayGeoIPAuto),
+		slog.Duration("geoip_ttl", cfg.XrayGeoIPTTL),
 	)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, logger)
-	realtime := httpadapter.NewRealtimeHandler(publicService, groupRepo, cfg.PublicRefreshInterval, logger)
+	realtime := httpadapter.NewRealtimeHandler(
+		publicService,
+		groupRepo,
+		cfg.PublicRefreshInterval,
+		filepath.Join("tmp", "realtime-state.json"),
+		logger,
+	)
 	handlers := httpadapter.Handlers{
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
@@ -211,6 +231,10 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		XrayProbeURL:          yamlCfg.Checker.Xray.ProbeURL,
 		XrayAdminURL:          yamlCfg.Checker.Xray.AdminURL,
 		XraySocksAddr:         yamlCfg.Checker.Xray.SocksAddr,
+		XrayGeoIPDBPath:       yamlCfg.Checker.Xray.GeoIPDBPath,
+		XrayGeoIPDBURL:        yamlCfg.Checker.Xray.GeoIPDBURL,
+		XrayGeoIPAuto:         yamlCfg.Checker.Xray.GeoIPAuto,
+		XrayGeoIPTTL:          yamlCfg.Checker.Xray.GeoIPTTL,
 	}, nil
 }
 

@@ -2,6 +2,7 @@ package xray
 
 import (
 	"encoding/json"
+	"log/slog"
 	"testing"
 )
 
@@ -72,5 +73,39 @@ func TestVerifyRoutingRuleJSON(t *testing.T) {
 	}
 	if err := VerifyRoutingRuleJSON(b); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDefaultGeoIPDBPathNearBinaryReturnsFileName(t *testing.T) {
+	t.Parallel()
+	path := defaultGeoIPDBPathNearBinary(slog.Default())
+	if path == "" {
+		t.Fatal("expected non-empty default path")
+	}
+}
+
+func TestIsSuccessfulProbeStatus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		status int
+		want   bool
+	}{
+		{name: "ok", status: 200, want: true},
+		{name: "no content", status: 204, want: true},
+		{name: "redirect", status: 302, want: true},
+		{name: "permanent redirect", status: 308, want: true},
+		{name: "bad request", status: 400, want: false},
+		{name: "server error", status: 500, want: false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isSuccessfulProbeStatus(tc.status)
+			if got != tc.want {
+				t.Fatalf("isSuccessfulProbeStatus(%d) = %v, want %v", tc.status, got, tc.want)
+			}
+		})
 	}
 }

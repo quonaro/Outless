@@ -66,6 +66,14 @@ type XrayConfig struct {
 	ProbeURL string `yaml:"probe_url"`
 	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
 	SocksAddr string `yaml:"socks_addr"`
+	// GeoIPDBPath points to a local MMDB file for offline country lookup (e.g. /app/GeoLite2-Country.mmdb).
+	GeoIPDBPath string `yaml:"geoip_db_path"`
+	// GeoIPDBURL is an optional URL for downloading MMDB when auto-update is enabled.
+	GeoIPDBURL string `yaml:"geoip_db_url"`
+	// GeoIPAuto enables periodic TTL-based auto-refresh of MMDB from GeoIPDBURL.
+	GeoIPAuto bool `yaml:"geoip_auto"`
+	// GeoIPTTL defines refresh interval for auto-update.
+	GeoIPTTL time.Duration `yaml:"geoip_ttl"`
 }
 
 // DefaultConfig returns default configuration.
@@ -91,13 +99,17 @@ func DefaultConfig() Config {
 			PublicRefreshInterval: 10 * time.Minute,
 			CheckInterval:         10 * time.Minute,
 			Xray: XrayConfig{
-				AdminURL:  "http://localhost:10085",
-				ProbeURL:  "https://www.google.com/generate_204",
-				SocksAddr: "127.0.0.1:1080",
+				AdminURL:    "http://localhost:10085",
+				ProbeURL:    "https://www.google.com/generate_204",
+				SocksAddr:   "127.0.0.1:1080",
+				GeoIPDBPath: "",
+				GeoIPDBURL:  "",
+				GeoIPAuto:   false,
+				GeoIPTTL:    24 * time.Hour,
 			},
 		},
 		Hub: HubConfig{
-			Host:          "hub.example.com",
+			Host:          "localhost",
 			Port:          443,
 			SNI:           "www.google.com",
 			PublicKey:     "",

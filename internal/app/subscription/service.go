@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -28,15 +29,17 @@ type HubConfig struct {
 type Service struct {
 	repo      domain.NodeRepository
 	tokenRepo domain.TokenRepository
+	groupRepo domain.GroupRepository
 	hub       HubConfig
 	logger    *slog.Logger
 }
 
 // NewService constructs a subscription service.
-func NewService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, hub HubConfig, logger *slog.Logger) *Service {
+func NewService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, hub HubConfig, logger *slog.Logger) *Service {
 	return &Service{
 		repo:      repo,
 		tokenRepo: tokenRepo,
+		groupRepo: groupRepo,
 		hub:       hub,
 		logger:    logger,
 	}
@@ -62,7 +65,12 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 		return "", fmt.Errorf("loading nodes metadata: %w", err)
 	}
 
-	hubURLs := s.buildHubURLs(tokenInfo, countries)
+	groupNames, err := s.loadGroupNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	hubURLs := s.buildHubURLs(tokenInfo, countries, groupNames)
 	if len(hubURLs) == 0 {
 		return "", nil
 	}
@@ -74,9 +82,8 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 // buildHubURLs constructs one VLESS URL per healthy node in the token's groups.
 // Each URL points to the Hub (same UUID), with a country-tagged remark so v2rayN
 // shows users a meaningful location menu.
-func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node) []string {
+func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, groupNames map[string]string) []string {
 	urls := make([]string, 0, len(allNodes))
-	index := 0
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
 	for _, groupID := range token.GroupIDs {
 		allowedGroups[groupID] = struct{}{}
@@ -99,8 +106,9 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node) []str
 			continue
 		}
 
-		index++
-		remark := fmt.Sprintf("Outless-%s-%d", normalizeCountry(node.Country), index)
+		groupLabel := resolveGroupLabel(groupNames, node.GroupID)
+		hostLabel := extractNodeHost(node.URL)
+		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country))
 		urls = append(urls, s.formatVLESSURL(token.UUID, remark))
 	}
 
@@ -159,4 +167,68 @@ func normalizeCountry(code string) string {
 		return "XX"
 	}
 	return strings.ToUpper(code)
+}
+
+func (s *Service) loadGroupNames(ctx context.Context) (map[string]string, error) {
+	groups, err := s.groupRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading groups metadata: %w", err)
+	}
+
+	names := make(map[string]string, len(groups))
+	for _, group := range groups {
+		if strings.TrimSpace(group.ID) == "" {
+			continue
+		}
+		name := strings.TrimSpace(group.Name)
+		if name == "" {
+			name = group.ID
+		}
+		names[group.ID] = name
+	}
+	return names, nil
+}
+
+func resolveGroupLabel(groupNames map[string]string, groupID string) string {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return "ungrouped"
+	}
+	if name, ok := groupNames[groupID]; ok && strings.TrimSpace(name) != "" {
+		return name
+	}
+	return groupID
+}
+
+func extractNodeHost(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "unknown-host"
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return "unknown-host"
+	}
+	return host
+}
+
+func buildConnectionRemark(groupName string, host string, country string) string {
+	groupName = sanitizeRemarkPart(groupName, "ungrouped")
+	host = sanitizeRemarkPart(host, "unknown-host")
+	country = sanitizeRemarkPart(country, "XX")
+	return fmt.Sprintf("%s-%s-%s", groupName, host, country)
+}
+
+func sanitizeRemarkPart(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+
+	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_")
+	value = replacer.Replace(value)
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return value
 }

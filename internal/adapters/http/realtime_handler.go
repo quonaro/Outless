@@ -6,6 +6,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,9 +20,9 @@ import (
 
 // RealtimeHandler serves a single WebSocket for admin UI: group sync progress and cache invalidation hints.
 type RealtimeHandler struct {
-	public *public.Service
-	groups domain.GroupRepository
-	logger *slog.Logger
+	public                *public.Service
+	groups                domain.GroupRepository
+	logger                *slog.Logger
 	publicRefreshInterval time.Duration
 
 	clientsMu sync.Mutex
@@ -32,6 +35,10 @@ type RealtimeHandler struct {
 	publicRefreshMu      sync.Mutex
 	publicRefreshLastRun *time.Time
 	publicRefreshNextRun *time.Time
+
+	statePath   string
+	persistMu   sync.Mutex
+	lastPersist time.Time
 }
 
 type syncRun struct {
@@ -64,6 +71,10 @@ type probeRun struct {
 	running    bool
 	total      int
 	processed  int
+	error      string
+	statuses   []string
+	mode       string
+	probeURL   string
 	finishedAt time.Time
 	nodes      map[string]probeNodeState
 }
@@ -89,16 +100,20 @@ func NewRealtimeHandler(
 	public *public.Service,
 	groups domain.GroupRepository,
 	publicRefreshInterval time.Duration,
+	statePath string,
 	logger *slog.Logger,
 ) *RealtimeHandler {
-	return &RealtimeHandler{
+	h := &RealtimeHandler{
 		public:                public,
 		groups:                groups,
 		logger:                logger,
 		publicRefreshInterval: publicRefreshInterval,
 		activeSyncs:           make(map[string]*syncRun),
 		activeProbes:          make(map[string]*probeRun),
+		statePath:             strings.TrimSpace(statePath),
 	}
+	h.loadSnapshot()
+	return h
 }
 
 // NotifyInvalidate broadcasts a lightweight hint so clients refresh TanStack Query caches.
@@ -191,8 +206,11 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 			return true
 		}
 		var msg struct {
-			Action  string `json:"action"`
-			GroupID string `json:"group_id"`
+			Action   string   `json:"action"`
+			GroupID  string   `json:"group_id"`
+			Statuses []string `json:"statuses"`
+			Mode     string   `json:"mode"`
+			ProbeURL string   `json:"probe_url"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "invalid json"})
@@ -223,7 +241,9 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 				_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "group_id is required"})
 				continue
 			}
-			go h.runGroupProbeUnavailable(client, msg.GroupID)
+			statuses := normalizeProbeStatuses(msg.Statuses)
+			mode := normalizeProbeMode(msg.Mode)
+			go h.runGroupProbeUnavailable(client, msg.GroupID, statuses, mode, msg.ProbeURL)
 		case "probe_unavailable_state":
 			if msg.GroupID == "" {
 				_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "group_id is required"})
@@ -277,6 +297,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	}
 	h.activeSyncs[groupID] = run
 	h.syncMu.Unlock()
+	h.persistSnapshotMaybe(true)
 
 	h.broadcastJSON(map[string]any{
 		"type":      "sync_started",
@@ -305,6 +326,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 		total := run.total
 		added := run.addedCount
 		run.mu.Unlock()
+		h.persistSnapshotMaybe(false)
 
 		m := map[string]any{
 			"type":        "sync_node_status",
@@ -328,6 +350,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 		run.total = total
 		processed := run.processed
 		run.mu.Unlock()
+		h.persistSnapshotMaybe(false)
 		h.broadcastJSON(map[string]any{
 			"type":      "sync_started",
 			"group_id":  groupID,
@@ -346,6 +369,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 		total := run.total
 		added := run.addedCount
 		run.mu.Unlock()
+		h.persistSnapshotMaybe(true)
 
 		if errors.Is(err, context.Canceled) {
 			h.broadcastJSON(map[string]any{
@@ -379,6 +403,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	total := run.total
 	added := run.addedCount
 	run.mu.Unlock()
+	h.persistSnapshotMaybe(true)
 
 	h.broadcastJSON(map[string]any{
 		"type":                      "sync_done",
@@ -392,7 +417,7 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	h.NotifyInvalidate(true, true)
 }
 
-func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID string) {
+func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID string, statuses []domain.NodeStatus, mode domain.ProbeMode, probeURL string) {
 	ctx := context.Background()
 	if _, err := h.groups.FindByID(ctx, groupID); err != nil {
 		_ = client.writeJSON(client.rootCtx, map[string]any{"type": "probe_unavailable_error", "group_id": groupID, "error": "group not found"})
@@ -400,6 +425,8 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 	}
 
 	probeCtx, cancel := context.WithCancel(ctx)
+	probeCtx = domain.WithProbeMode(probeCtx, mode)
+	probeCtx = domain.WithProbeURL(probeCtx, probeURL)
 	defer cancel()
 
 	h.syncMu.Lock()
@@ -408,7 +435,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 		h.sendProbeUnavailableStateFromRun(client, groupID, run)
 		return
 	}
-	total, countErr := h.public.CountUnavailableByGroup(probeCtx, groupID)
+	total, countErr := h.public.CountUnavailableByGroup(probeCtx, groupID, statuses)
 	if countErr != nil {
 		h.syncMu.Unlock()
 		_ = client.writeJSON(client.rootCtx, map[string]any{"type": "probe_unavailable_error", "group_id": groupID, "error": countErr.Error()})
@@ -419,16 +446,23 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 		running:   true,
 		total:     total,
 		processed: 0,
+		statuses:  probeStatusesToStrings(statuses),
+		mode:      string(mode),
+		probeURL:  strings.TrimSpace(probeURL),
 		nodes:     make(map[string]probeNodeState, total),
 	}
 	h.activeProbes[groupID] = run
 	h.syncMu.Unlock()
+	h.persistSnapshotMaybe(true)
 
 	h.broadcastJSON(map[string]any{
 		"type":      "probe_unavailable_started",
 		"group_id":  groupID,
 		"total":     total,
 		"processed": 0,
+		"statuses":  run.statuses,
+		"mode":      run.mode,
+		"probe_url": run.probeURL,
 	})
 
 	writeProbeNode := func(ev public.ProbeUnavailableEvent) {
@@ -449,6 +483,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 		processed := run.processed
 		total := run.total
 		run.mu.Unlock()
+		h.persistSnapshotMaybe(false)
 
 		m := map[string]any{
 			"type":       "probe_unavailable_node_status",
@@ -472,14 +507,16 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 		h.broadcastJSON(m)
 	}
 
-	probed, err := h.public.ProbeUnavailableGroup(probeCtx, groupID, writeProbeNode)
+	probed, err := h.public.ProbeUnavailableGroup(probeCtx, groupID, statuses, writeProbeNode)
 	if err != nil {
 		run.mu.Lock()
 		run.running = false
+		run.error = err.Error()
 		run.finishedAt = time.Now().UTC()
 		processed := run.processed
 		total := run.total
 		run.mu.Unlock()
+		h.persistSnapshotMaybe(true)
 
 		if errors.Is(err, context.Canceled) {
 			h.broadcastJSON(map[string]any{
@@ -507,6 +544,7 @@ func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID str
 	processed := run.processed
 	total = run.total
 	run.mu.Unlock()
+	h.persistSnapshotMaybe(true)
 
 	h.broadcastJSON(map[string]any{
 		"type":      "probe_unavailable_done",
@@ -549,6 +587,10 @@ func (h *RealtimeHandler) sendProbeUnavailableStateFromRun(client *wsClient, gro
 		"total":     run.total,
 		"processed": run.processed,
 		"nodes":     nodes,
+		"error":     run.error,
+		"statuses":  run.statuses,
+		"mode":      run.mode,
+		"probe_url": run.probeURL,
 	}
 	run.mu.Unlock()
 	_ = client.writeJSON(client.rootCtx, payload)
@@ -675,4 +717,240 @@ func cloneTimePtr(value *time.Time) *time.Time {
 	}
 	cloned := value.UTC()
 	return &cloned
+}
+
+type realtimeSnapshot struct {
+	Version int                         `json:"version"`
+	Syncs   map[string]syncRunSnapshot  `json:"syncs"`
+	Probes  map[string]probeRunSnapshot `json:"probes"`
+}
+
+type syncRunSnapshot struct {
+	Running                 bool            `json:"running"`
+	Total                   int             `json:"total"`
+	Processed               int             `json:"processed"`
+	AddedCount              int             `json:"added_count"`
+	DeletedUnavailableCount int64           `json:"deleted_unavailable_count"`
+	SyncedAt                string          `json:"synced_at,omitempty"`
+	Error                   string          `json:"error,omitempty"`
+	FinishedAt              time.Time       `json:"finished_at,omitempty"`
+	Nodes                   []syncNodeState `json:"nodes"`
+}
+
+type probeRunSnapshot struct {
+	Running    bool             `json:"running"`
+	Total      int              `json:"total"`
+	Processed  int              `json:"processed"`
+	Error      string           `json:"error,omitempty"`
+	Statuses   []string         `json:"statuses,omitempty"`
+	Mode       string           `json:"mode,omitempty"`
+	ProbeURL   string           `json:"probe_url,omitempty"`
+	FinishedAt time.Time        `json:"finished_at,omitempty"`
+	Nodes      []probeNodeState `json:"nodes"`
+}
+
+func (h *RealtimeHandler) loadSnapshot() {
+	if h.statePath == "" {
+		return
+	}
+	data, err := os.ReadFile(h.statePath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			h.logger.Warn("realtime snapshot read failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
+		}
+		return
+	}
+	var snap realtimeSnapshot
+	if err = json.Unmarshal(data, &snap); err != nil {
+		h.logger.Warn("realtime snapshot parse failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
+		return
+	}
+
+	h.syncMu.Lock()
+	defer h.syncMu.Unlock()
+	if h.activeSyncs == nil {
+		h.activeSyncs = make(map[string]*syncRun)
+	}
+	if h.activeProbes == nil {
+		h.activeProbes = make(map[string]*probeRun)
+	}
+	for groupID, s := range snap.Syncs {
+		run := &syncRun{
+			running:                 s.Running,
+			total:                   s.Total,
+			processed:               s.Processed,
+			addedCount:              s.AddedCount,
+			deletedUnavailableCount: s.DeletedUnavailableCount,
+			syncedAt:                s.SyncedAt,
+			error:                   s.Error,
+			finishedAt:              s.FinishedAt,
+			nodes:                   make(map[string]syncNodeState, len(s.Nodes)),
+		}
+		if run.running {
+			run.running = false
+			if strings.TrimSpace(run.error) == "" {
+				run.error = "interrupted by server restart"
+			}
+		}
+		for _, n := range s.Nodes {
+			run.nodes[n.NodeID] = n
+		}
+		h.activeSyncs[groupID] = run
+	}
+	for groupID, p := range snap.Probes {
+		run := &probeRun{
+			running:    p.Running,
+			total:      p.Total,
+			processed:  p.Processed,
+			error:      p.Error,
+			statuses:   append([]string(nil), p.Statuses...),
+			mode:       p.Mode,
+			probeURL:   p.ProbeURL,
+			finishedAt: p.FinishedAt,
+			nodes:      make(map[string]probeNodeState, len(p.Nodes)),
+		}
+		if run.running {
+			run.running = false
+			if strings.TrimSpace(run.error) == "" {
+				run.error = "interrupted by server restart"
+			}
+		}
+		for _, n := range p.Nodes {
+			run.nodes[n.NodeID] = n
+		}
+		h.activeProbes[groupID] = run
+	}
+	h.logger.Info("realtime snapshot restored",
+		slog.String("path", h.statePath),
+		slog.Int("sync_groups", len(snap.Syncs)),
+		slog.Int("probe_groups", len(snap.Probes)),
+	)
+}
+
+func (h *RealtimeHandler) persistSnapshotMaybe(force bool) {
+	if h.statePath == "" {
+		return
+	}
+	h.persistMu.Lock()
+	now := time.Now()
+	if !force && !h.lastPersist.IsZero() && now.Sub(h.lastPersist) < time.Second {
+		h.persistMu.Unlock()
+		return
+	}
+	h.lastPersist = now
+	h.persistMu.Unlock()
+
+	snap := realtimeSnapshot{
+		Version: 1,
+		Syncs:   make(map[string]syncRunSnapshot),
+		Probes:  make(map[string]probeRunSnapshot),
+	}
+
+	h.syncMu.Lock()
+	for groupID, run := range h.activeSyncs {
+		run.mu.Lock()
+		nodes := make([]syncNodeState, 0, len(run.nodes))
+		for _, n := range run.nodes {
+			nodes = append(nodes, n)
+		}
+		snap.Syncs[groupID] = syncRunSnapshot{
+			Running:                 run.running,
+			Total:                   run.total,
+			Processed:               run.processed,
+			AddedCount:              run.addedCount,
+			DeletedUnavailableCount: run.deletedUnavailableCount,
+			SyncedAt:                run.syncedAt,
+			Error:                   run.error,
+			FinishedAt:              run.finishedAt,
+			Nodes:                   nodes,
+		}
+		run.mu.Unlock()
+	}
+	for groupID, run := range h.activeProbes {
+		run.mu.Lock()
+		nodes := make([]probeNodeState, 0, len(run.nodes))
+		for _, n := range run.nodes {
+			nodes = append(nodes, n)
+		}
+		snap.Probes[groupID] = probeRunSnapshot{
+			Running:    run.running,
+			Total:      run.total,
+			Processed:  run.processed,
+			Error:      run.error,
+			Statuses:   append([]string(nil), run.statuses...),
+			Mode:       run.mode,
+			ProbeURL:   run.probeURL,
+			FinishedAt: run.finishedAt,
+			Nodes:      nodes,
+		}
+		run.mu.Unlock()
+	}
+	h.syncMu.Unlock()
+
+	if err := os.MkdirAll(filepath.Dir(h.statePath), 0o755); err != nil {
+		h.logger.Warn("realtime snapshot mkdir failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
+		return
+	}
+	data, err := json.Marshal(snap)
+	if err != nil {
+		h.logger.Warn("realtime snapshot marshal failed", slog.String("error", err.Error()))
+		return
+	}
+	tmp := h.statePath + ".tmp"
+	if err = os.WriteFile(tmp, data, 0o600); err != nil {
+		h.logger.Warn("realtime snapshot write failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
+		return
+	}
+	if err = os.Rename(tmp, h.statePath); err != nil {
+		_ = os.Remove(tmp)
+		h.logger.Warn("realtime snapshot rename failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
+	}
+}
+
+func normalizeProbeStatuses(raw []string) []domain.NodeStatus {
+	if len(raw) == 0 {
+		return []domain.NodeStatus{
+			domain.NodeStatusUnknown,
+			domain.NodeStatusUnhealthy,
+			domain.NodeStatusHealthy,
+		}
+	}
+	out := make([]domain.NodeStatus, 0, len(raw))
+	seen := make(map[domain.NodeStatus]struct{}, len(raw))
+	for _, item := range raw {
+		switch domain.NodeStatus(strings.ToLower(strings.TrimSpace(item))) {
+		case domain.NodeStatusUnknown, domain.NodeStatusUnhealthy, domain.NodeStatusHealthy:
+			st := domain.NodeStatus(strings.ToLower(strings.TrimSpace(item)))
+			if _, ok := seen[st]; ok {
+				continue
+			}
+			seen[st] = struct{}{}
+			out = append(out, st)
+		}
+	}
+	if len(out) == 0 {
+		return []domain.NodeStatus{
+			domain.NodeStatusUnknown,
+			domain.NodeStatusUnhealthy,
+			domain.NodeStatusHealthy,
+		}
+	}
+	return out
+}
+
+func probeStatusesToStrings(statuses []domain.NodeStatus) []string {
+	out := make([]string, 0, len(statuses))
+	for _, st := range statuses {
+		out = append(out, string(st))
+	}
+	return out
+}
+
+func normalizeProbeMode(raw string) domain.ProbeMode {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(domain.ProbeModeFast):
+		return domain.ProbeModeFast
+	default:
+		return domain.ProbeModeNormal
+	}
 }
