@@ -20,6 +20,7 @@ type nodeModel struct {
 	Status        string    `gorm:"column:status"`
 	Country       string    `gorm:"column:country"`
 	LastCheckedAt time.Time `gorm:"column:last_checked_at"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
 }
 
 func (nodeModel) TableName() string {
@@ -53,6 +54,7 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 			node := domain.Node{
 				ID:      model.ID,
 				URL:     model.URL,
+				GroupID: model.GroupID,
 				Latency: time.Duration(model.LatencyMS) * time.Millisecond,
 				Status:  domain.NodeStatus(model.Status),
 				Country: model.Country,
@@ -131,6 +133,7 @@ func (r *GormNodeRepository) Create(ctx context.Context, node domain.Node) error
 		LatencyMS: node.Latency.Milliseconds(),
 		Status:    string(node.Status),
 		Country:   node.Country,
+		CreatedAt: time.Now().UTC(),
 	}
 
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {

@@ -113,12 +113,25 @@ func (r *GormAdminRepository) List(ctx context.Context) ([]domain.Admin, error) 
 	return admins, nil
 }
 
-// Update updates an admin's password.
+// Update updates an admin's username and/or password.
+// Only non-empty fields are applied.
 func (r *GormAdminRepository) Update(ctx context.Context, admin domain.Admin) error {
+	updates := make(map[string]any, 2)
+	if admin.PasswordHash != "" {
+		updates["password_hash"] = admin.PasswordHash
+	}
+	if admin.Username != "" {
+		updates["username"] = admin.Username
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
 	result := r.db.WithContext(ctx).
 		Model(&adminModel{}).
 		Where("id = ?", admin.ID).
-		Update("password_hash", admin.PasswordHash)
+		Updates(updates)
 
 	if result.Error != nil {
 		return fmt.Errorf("updating admin via gorm: %w", result.Error)

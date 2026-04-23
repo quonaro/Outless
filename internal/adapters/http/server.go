@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"outless/internal/app/auth"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
@@ -22,21 +24,36 @@ type Config struct {
 	Address string
 }
 
+// Handlers groups all HTTP handlers the server wires up.
+type Handlers struct {
+	Subscription *SubscriptionHandler
+	Auth         *AuthHandler
+	Token        *TokenManagementHandler
+	Node         *NodeManagementHandler
+	Group        *GroupManagementHandler
+	PublicSource *PublicSourceManagementHandler
+	Settings     *SettingsHandler
+	Admin        *AdminManagementHandler
+	Stats        *StatsHandler
+}
+
 // NewServer builds HTTP server with injected handlers.
-func NewServer(cfg Config, logger *slog.Logger, subscriptionHandler *SubscriptionHandler, authHandler *AuthHandler, tokenHandler *TokenManagementHandler, nodeHandler *NodeManagementHandler, groupHandler *GroupManagementHandler, publicSourceHandler *PublicSourceManagementHandler, settingsHandler *SettingsHandler, adminHandler *AdminManagementHandler) *Server {
+func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, handlers Handlers) *Server {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, huma.DefaultConfig("Outless API", "0.1.0"))
-	subscriptionHandler.Register(humaAPI)
-	authHandler.Register(humaAPI)
-	tokenHandler.Register(humaAPI)
-	nodeHandler.Register(humaAPI)
-	groupHandler.Register(humaAPI)
-	publicSourceHandler.Register(humaAPI)
-	settingsHandler.Register(humaAPI)
-	adminHandler.Register(humaAPI)
+	handlers.Subscription.Register(humaAPI)
+	handlers.Auth.Register(humaAPI)
+	handlers.Token.Register(humaAPI)
+	handlers.Node.Register(humaAPI)
+	handlers.Group.Register(humaAPI)
+	handlers.PublicSource.Register(humaAPI)
+	handlers.Settings.Register(humaAPI)
+	handlers.Admin.Register(humaAPI)
+	handlers.Stats.Register(humaAPI)
 
+	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	loggingMiddleware := NewLoggingMiddleware(logger)
-	handler := loggingMiddleware.Wrap(mux)
+	handler := loggingMiddleware.Wrap(jwtMiddleware.Wrap(mux))
 
 	srv := &http.Server{
 		Addr:              cfg.Address,

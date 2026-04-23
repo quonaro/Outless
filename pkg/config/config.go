@@ -9,6 +9,22 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	API      APIConfig      `yaml:"api"`
 	Checker  CheckerConfig  `yaml:"checker"`
+	Hub      HubConfig      `yaml:"hub"`
+}
+
+// HubConfig holds Hub (Xray relay) configuration.
+type HubConfig struct {
+	Host          string        `yaml:"host"`
+	Port          int           `yaml:"port"`
+	SNI           string        `yaml:"sni"`
+	PublicKey     string        `yaml:"public_key"`
+	PrivateKey    string        `yaml:"private_key"`
+	ShortID       string        `yaml:"short_id"`
+	Fingerprint   string        `yaml:"fingerprint"`
+	ListenAddress string        `yaml:"listen_address"`
+	ConfigPath    string        `yaml:"config_path"`
+	XrayBinary    string        `yaml:"xray_binary"`
+	SyncInterval  time.Duration `yaml:"sync_interval"`
 }
 
 // APIConfig holds API server configuration.
@@ -76,6 +92,18 @@ func DefaultConfig() Config {
 				AdminURL: "http://xray:10085",
 				ProbeURL: "https://www.google.com/generate_204",
 			},
+		},
+		Hub: HubConfig{
+			Host:          "hub.example.com",
+			Port:          443,
+			SNI:           "www.google.com",
+			PublicKey:     "",
+			ShortID:       "",
+			Fingerprint:   "chrome",
+			ListenAddress: ":443",
+			ConfigPath:    "/var/lib/outless/xray-hub.json",
+			XrayBinary:    "xray",
+			SyncInterval:  30 * time.Second,
 		},
 	}
 }

@@ -5,19 +5,26 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"outless/internal/adapters/postgres"
+	"outless/internal/adapters/xray"
 	"outless/internal/app/hub"
 	"outless/pkg/config"
+
+	"golang.org/x/sync/errgroup"
 )
+
+// Config bundles runtime settings the hub process needs.
+type Config struct {
+	DatabaseURL string
+	Hub         config.HubConfig
+}
 
 func main() {
 	configPath := flag.String("config", "outless.yaml", "path to config file")
-	listenAddr := flag.String("addr", ":443", "address to listen on")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -38,50 +45,38 @@ func main() {
 
 	nodeRepo := postgres.NewGormNodeRepository(db, logger)
 	tokenRepo := postgres.NewGormTokenRepository(db, logger)
-	hubService := hub.NewService(nodeRepo, tokenRepo, logger)
 
-	listener, err := net.Listen("tcp", *listenAddr)
-	if err != nil {
-		logger.Error("failed to listen", slog.String("addr", *listenAddr), slog.String("error", err.Error()))
+	manager := hub.NewManager(tokenRepo, nodeRepo, hub.ManagerConfig{
+		ConfigPath:   cfg.Hub.ConfigPath,
+		XrayBinary:   cfg.Hub.XrayBinary,
+		SyncInterval: cfg.Hub.SyncInterval,
+		Inbound: xray.HubInboundConfig{
+			Listen:      listenHost(cfg.Hub.ListenAddress),
+			Port:        cfg.Hub.Port,
+			SNI:         cfg.Hub.SNI,
+			PrivateKey:  cfg.Hub.PrivateKey,
+			ShortID:     cfg.Hub.ShortID,
+			Destination: cfg.Hub.SNI + ":443",
+		},
+	}, logger)
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		return manager.Run(groupCtx)
+	})
+
+	logger.Info("hub started",
+		slog.String("config_path", cfg.Hub.ConfigPath),
+		slog.String("xray_binary", cfg.Hub.XrayBinary),
+		slog.Duration("sync_interval", cfg.Hub.SyncInterval),
+	)
+
+	if err := group.Wait(); err != nil && ctx.Err() == nil {
+		logger.Error("hub exited with error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	logger.Info("hub started", slog.String("addr", *listenAddr))
-
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					logger.Error("accept error", slog.String("error", err.Error()))
-				}
-				continue
-			}
-
-			go handleConnection(ctx, hubService, conn)
-		}
-	}()
-
-	<-ctx.Done()
-	logger.Info("hub shutting down")
-	listener.Close()
-}
-
-func handleConnection(ctx context.Context, service *hub.Service, conn net.Conn) {
-	// Extract token from connection (TODO: implement token extraction from SNI/path)
-	// For now, we'll use a placeholder
-	token := "placeholder"
-
-	if err := service.HandleConnection(ctx, conn, token); err != nil {
-		slog.Error("connection handler error", slog.String("remote_addr", conn.RemoteAddr().String()), slog.String("error", err.Error()))
-	}
-}
-
-type Config struct {
-	DatabaseURL string
+	logger.Info("hub shut down cleanly")
 }
 
 func loadConfig(path string, logger *slog.Logger) (Config, error) {
@@ -94,5 +89,22 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 
 	return Config{
 		DatabaseURL: yamlCfg.Database.URL,
+		Hub:         yamlCfg.Hub,
 	}, nil
+}
+
+// listenHost strips the port from a ":443"-style listen address.
+func listenHost(addr string) string {
+	if addr == "" {
+		return "0.0.0.0"
+	}
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			if i == 0 {
+				return "0.0.0.0"
+			}
+			return addr[:i]
+		}
+	}
+	return addr
 }

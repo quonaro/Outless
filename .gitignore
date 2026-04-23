@@ -29,3 +29,4 @@ outless.yaml
 *.swp
 *.swo
 *~
+tmp/

@@ -20,6 +20,7 @@ type tokenModel struct {
 	Owner     string    `gorm:"column:owner"`
 	GroupID   string    `gorm:"column:group_id"`
 	TokenHash string    `gorm:"column:token_hash"`
+	UUID      string    `gorm:"column:uuid"`
 	IsActive  bool      `gorm:"column:is_active"`
 	ExpiresAt time.Time `gorm:"column:expires_at"`
 	CreatedAt time.Time `gorm:"column:created_at"`
@@ -60,11 +61,17 @@ func (r *GormTokenRepository) IssueToken(ctx context.Context, owner string, grou
 		return "", fmt.Errorf("generating token id: %w", err)
 	}
 
+	tokenUUID, err := generateUUIDv4()
+	if err != nil {
+		return "", fmt.Errorf("generating token uuid: %w", err)
+	}
+
 	model := tokenModel{
 		ID:        tokenID,
 		Owner:     owner,
 		GroupID:   groupID,
 		TokenHash: tokenHash(plainToken),
+		UUID:      tokenUUID,
 		IsActive:  true,
 		ExpiresAt: expiresAt.UTC(),
 		CreatedAt: now,
@@ -132,17 +139,62 @@ func (r *GormTokenRepository) List(ctx context.Context) ([]domain.Token, error) 
 
 	tokens := make([]domain.Token, 0, len(models))
 	for _, model := range models {
-		tokens = append(tokens, domain.Token{
-			ID:        model.ID,
-			Owner:     model.Owner,
-			GroupID:   model.GroupID,
-			IsActive:  model.IsActive,
-			ExpiresAt: model.ExpiresAt,
-			CreatedAt: model.CreatedAt,
-		})
+		tokens = append(tokens, toDomainToken(model))
 	}
 
 	return tokens, nil
+}
+
+// ListActive returns only active, non-expired tokens.
+func (r *GormTokenRepository) ListActive(ctx context.Context, at time.Time) ([]domain.Token, error) {
+	var models []tokenModel
+	err := r.db.WithContext(ctx).
+		Where("is_active = ? AND expires_at > ?", true, at.UTC()).
+		Order("created_at DESC").
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing active tokens: %w", err)
+	}
+
+	tokens := make([]domain.Token, 0, len(models))
+	for _, model := range models {
+		tokens = append(tokens, toDomainToken(model))
+	}
+
+	return tokens, nil
+}
+
+// GetTokenByPlain returns token metadata (including UUID) for a valid plain token.
+func (r *GormTokenRepository) GetTokenByPlain(ctx context.Context, token string, at time.Time) (domain.Token, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return domain.Token{}, domain.ErrUnauthorized
+	}
+
+	var model tokenModel
+	err := r.db.WithContext(ctx).
+		Where("token_hash = ? AND is_active = ? AND expires_at > ?", tokenHash(token), true, at.UTC()).
+		First(&model).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return domain.Token{}, domain.ErrUnauthorized
+		}
+		return domain.Token{}, fmt.Errorf("fetching token by plain value: %w", err)
+	}
+
+	return toDomainToken(model), nil
+}
+
+func toDomainToken(model tokenModel) domain.Token {
+	return domain.Token{
+		ID:        model.ID,
+		Owner:     model.Owner,
+		GroupID:   model.GroupID,
+		UUID:      model.UUID,
+		IsActive:  model.IsActive,
+		ExpiresAt: model.ExpiresAt,
+		CreatedAt: model.CreatedAt,
+	}
 }
 
 // Deactivates a token by ID.
@@ -185,4 +237,17 @@ func generateID(now time.Time) (string, error) {
 	}
 
 	return fmt.Sprintf("tok_%d_%x", now.Unix(), buf), nil
+}
+
+// generateUUIDv4 returns a random RFC 4122 v4 UUID string.
+func generateUUIDv4() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	buf[6] = (buf[6] & 0x0f) | 0x40
+	buf[8] = (buf[8] & 0x3f) | 0x80
+
+	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16]), nil
 }

@@ -27,13 +27,20 @@ import (
 
 // Config defines API process settings.
 type Config struct {
-	DatabaseURL     string
-	HTTPAddress     string
-	JWTSecret       string
-	JWTExpiry       time.Duration
-	ShutdownTimeout time.Duration
-	OutlessLogin    string
-	OutlessPassword string
+	DatabaseURL           string
+	HTTPAddress           string
+	JWTSecret             string
+	JWTExpiry             time.Duration
+	ShutdownTimeout       time.Duration
+	OutlessLogin          string
+	OutlessPassword       string
+	PublicRefreshInterval time.Duration
+	HubHost               string
+	HubPort               int
+	HubSNI                string
+	HubPublicKey          string
+	HubShortID            string
+	HubFingerprint        string
 }
 
 func main() {
@@ -68,17 +75,27 @@ func main() {
 	}
 
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
-	subscriptionService := subscription.NewService(nodeRepo, tokenRepo)
+	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, subscription.HubConfig{
+		Host:       cfg.HubHost,
+		Port:       cfg.HubPort,
+		SNI:        cfg.HubSNI,
+		PublicKey:  cfg.HubPublicKey,
+		ShortID:    cfg.HubShortID,
+		Fingerprint: cfg.HubFingerprint,
+	}, logger)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, logger)
-	authHandler := httpadapter.NewAuthHandler(adminRepo, jwtService, logger)
-	subscriptionHandler := httpadapter.NewSubscriptionHandler(subscriptionService, logger)
-	tokenHandler := httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger)
-	nodeHandler := httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger)
-	groupHandler := httpadapter.NewGroupManagementHandler(groupRepo, logger)
-	publicSourceHandler := httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger)
-	settingsHandler := httpadapter.NewSettingsHandler(*configPath, logger)
-	adminHandler := httpadapter.NewAdminManagementHandler(adminRepo, logger)
-	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, subscriptionHandler, authHandler, tokenHandler, nodeHandler, groupHandler, publicSourceHandler, settingsHandler, adminHandler)
+	handlers := httpadapter.Handlers{
+		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
+		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
+		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, logger),
+		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
+		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),
+		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
+		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, logger),
+	}
+	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, jwtService, handlers)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
@@ -95,9 +112,46 @@ func main() {
 		return nil
 	})
 
+	group.Go(func() error {
+		return runPublicSourceWorker(groupCtx, publicService, cfg.PublicRefreshInterval, logger)
+	})
+
 	if err = group.Wait(); err != nil && ctx.Err() == nil {
 		logger.Error("server exited with error", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+}
+
+// runPublicSourceWorker triggers ImportAll on startup and every interval tick
+// until the context is cancelled.
+func runPublicSourceWorker(ctx context.Context, service *public.Service, interval time.Duration, logger *slog.Logger) error {
+	if interval <= 0 {
+		logger.Info("public source worker disabled (interval <= 0)")
+		<-ctx.Done()
+		return nil
+	}
+
+	logger.Info("public source worker started", slog.Duration("interval", interval))
+
+	runOnce := func() {
+		if err := service.ImportAll(ctx); err != nil {
+			logger.Warn("public source import failed", slog.String("error", err.Error()))
+		}
+	}
+
+	runOnce()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("public source worker stopped")
+			return nil
+		case <-ticker.C:
+			runOnce()
+		}
 	}
 }
 
@@ -110,13 +164,20 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL:     yamlCfg.Database.URL,
-		HTTPAddress:     ":41220",
-		JWTSecret:       yamlCfg.API.JWT.Secret,
-		JWTExpiry:       yamlCfg.API.JWT.Expiry,
-		ShutdownTimeout: yamlCfg.API.ShutdownTimeout,
-		OutlessLogin:    yamlCfg.API.Admin.Login,
-		OutlessPassword: yamlCfg.API.Admin.Password,
+		DatabaseURL:           yamlCfg.Database.URL,
+		HTTPAddress:           ":41220",
+		JWTSecret:             yamlCfg.API.JWT.Secret,
+		JWTExpiry:             yamlCfg.API.JWT.Expiry,
+		ShutdownTimeout:       yamlCfg.API.ShutdownTimeout,
+		OutlessLogin:          yamlCfg.API.Admin.Login,
+		OutlessPassword:       yamlCfg.API.Admin.Password,
+		PublicRefreshInterval: yamlCfg.Checker.PublicRefreshInterval,
+		HubHost:               yamlCfg.Hub.Host,
+		HubPort:               yamlCfg.Hub.Port,
+		HubSNI:                yamlCfg.Hub.SNI,
+		HubPublicKey:          yamlCfg.Hub.PublicKey,
+		HubShortID:            yamlCfg.Hub.ShortID,
+		HubFingerprint:        yamlCfg.Hub.Fingerprint,
 	}, nil
 }
 

@@ -1,0 +1,3 @@
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);

@@ -2,6 +2,9 @@ package public
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -168,7 +171,7 @@ func (s *Service) parseVLESSLines(content string) []string {
 
 // importURLs adds VLESS URLs as nodes to the database.
 func (s *Service) importURLs(ctx context.Context, urls []string, groupID string) (int, error) {
-	count := 0
+	created := 0
 
 	for _, url := range urls {
 		nodeID := s.generateNodeID(url)
@@ -182,29 +185,36 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 			Latency: 0,
 		}
 
-		if err := s.createOrUpdateNode(ctx, node); err != nil {
+		if err := s.nodeRepo.Create(ctx, node); err != nil {
+			if isDuplicateKeyError(err) {
+				continue
+			}
 			s.logger.Warn("failed to import node", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			continue
 		}
-		count++
+		created++
 	}
 
-	return count, nil
+	return created, nil
 }
 
-// createOrUpdateNode creates a node or updates URL if exists.
-func (s *Service) createOrUpdateNode(ctx context.Context, node domain.Node) error {
-	// Try to create, ignore if already exists
-	err := s.nodeRepo.Create(ctx, node)
-	if err != nil {
-		// If it's a duplicate key error, we can ignore it
-		// For now, just log and continue
-		return err
-	}
-	return nil
-}
-
-// generateNodeID creates a deterministic ID from URL.
+// generateNodeID creates a deterministic short ID from URL via SHA-256.
 func (s *Service) generateNodeID(url string) string {
-	return fmt.Sprintf("node_%x", url)
+	hash := sha256.Sum256([]byte(url))
+	return "node_" + hex.EncodeToString(hash[:8])
+}
+
+// isDuplicateKeyError reports whether err indicates a unique/primary key violation.
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, domain.ErrDuplicateNode) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "unique_violation") ||
+		strings.Contains(msg, "sqlstate 23505")
 }

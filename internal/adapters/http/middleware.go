@@ -31,17 +31,37 @@ const (
 	claimsKey contextKey = "claims"
 )
 
-// Wrap returns an http.Handler that validates JWT tokens.
+// isPublicPath reports whether the request path is allowed without JWT auth.
+func isPublicPath(path string) bool {
+	if strings.HasPrefix(path, "/v1/auth/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/v1/sub/") {
+		return true
+	}
+	// OpenAPI schema and docs that huma exposes by default.
+	if path == "/openapi.json" || path == "/openapi.yaml" || path == "/docs" || strings.HasPrefix(path, "/docs/") || path == "/schemas" {
+		return true
+	}
+	return false
+}
+
+// Wrap returns an http.Handler that validates JWT tokens on non-public paths.
 func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, `{"message":"missing authorization header"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "missing authorization header")
 			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, `{"message":"invalid authorization header format"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "invalid authorization header format")
 			return
 		}
 
@@ -49,13 +69,19 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		claims, err := m.jwtService.ValidateToken(token)
 		if err != nil {
 			m.logger.Warn("invalid token", slog.String("error", err.Error()))
-			http.Error(w, `{"message":"invalid or expired token"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), claimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(`{"message":"` + message + `"}`))
 }
 
 // LoggingMiddleware logs all HTTP requests.
