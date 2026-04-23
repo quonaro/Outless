@@ -20,13 +20,14 @@ type NodeRepository interface {
 
 // TokenRepository provides secure operations for subscription tokens.
 type TokenRepository interface {
-	IssueToken(ctx context.Context, owner string, groupID string, expiresAt time.Time) (string, error)
+	IssueToken(ctx context.Context, owner string, groupIDs []string, expiresAt time.Time) (Token, error)
 	ValidateToken(ctx context.Context, token string, at time.Time) (bool, error)
 	GetTokenGroupID(ctx context.Context, token string, at time.Time) (string, error)
 	GetTokenByPlain(ctx context.Context, token string, at time.Time) (Token, error)
 	ListActive(ctx context.Context, at time.Time) ([]Token, error)
 	List(ctx context.Context) ([]Token, error)
 	Deactivate(ctx context.Context, id string) error
+	Remove(ctx context.Context, id string) error
 }
 
 // ProxyEngine validates node reachability through Xray.

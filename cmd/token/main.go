@@ -32,12 +32,16 @@ func main() {
 
 	repo := postgres.NewGormTokenRepository(db, logger)
 	expiresAt := time.Now().UTC().Add(*ttl)
-	token, err := repo.IssueToken(context.Background(), *owner, *groupID, expiresAt)
+	groupIDs := []string{}
+	if *groupID != "" {
+		groupIDs = []string{*groupID}
+	}
+	token, err := repo.IssueToken(context.Background(), *owner, groupIDs, expiresAt)
 	if err != nil {
 		logger.Error("failed to issue token", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	fmt.Printf("TOKEN=%s\n", token)
+	fmt.Printf("TOKEN=%s\n", token.TokenPlain)
 	fmt.Printf("EXPIRES_AT=%s\n", expiresAt.Format(time.RFC3339))
 }

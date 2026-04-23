@@ -29,7 +29,7 @@ func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.G
 type CreateNodeInput struct {
 	Body struct {
 		URL     string `json:"url" required:"true"`
-		GroupID string `json:"group_id" required:"true"`
+		GroupID string `json:"group_id"`
 	}
 }
 
@@ -50,7 +50,7 @@ type UpdateNodeInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
 		URL     string `json:"url" required:"true"`
-		GroupID string `json:"group_id" required:"true"`
+		GroupID string `json:"group_id"`
 	}
 }
 
@@ -79,17 +79,15 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		return nil, huma.Error400BadRequest("url is required")
 	}
 
-	if input.Body.GroupID == "" {
-		return nil, huma.Error400BadRequest("group_id is required")
-	}
-
-	if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-			return nil, huma.Error400BadRequest("group not found")
+	if input.Body.GroupID != "" {
+		if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
+			if errors.Is(err, domain.ErrNodeNotFound) {
+				h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
+				return nil, huma.Error400BadRequest("group not found")
+			}
+			h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
-		h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to validate group")
 	}
 
 	nodeID := generateNodeID(input.Body.URL)
@@ -145,17 +143,15 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 		return nil, huma.Error400BadRequest("url is required")
 	}
 
-	if input.Body.GroupID == "" {
-		return nil, huma.Error400BadRequest("group_id is required")
-	}
-
-	if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-			return nil, huma.Error400BadRequest("group not found")
+	if input.Body.GroupID != "" {
+		if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
+			if errors.Is(err, domain.ErrNodeNotFound) {
+				h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
+				return nil, huma.Error400BadRequest("group not found")
+			}
+			h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
-		h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to validate group")
 	}
 
 	node := domain.Node{

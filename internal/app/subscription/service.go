@@ -43,7 +43,7 @@ func NewService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, hu
 }
 
 // BuildBase64VLESS returns base64 encoded list of Hub-pointing VLESS URLs
-// filtered by the token's group. Each entry represents one healthy exit node
+// filtered by the token groups. Each entry represents one healthy exit node
 // visible to the user. Actual routing to the exit happens server-side inside Hub.
 func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, error) {
 	now := time.Now().UTC()
@@ -55,15 +55,6 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 
 	if tokenInfo.UUID == "" {
 		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
-	}
-
-	urls, err := s.repo.ListVLESSURLs(ctx, tokenInfo.GroupID)
-	if err != nil {
-		return "", fmt.Errorf("loading exit nodes for group %s: %w", tokenInfo.GroupID, err)
-	}
-
-	if len(urls) == 0 {
-		return "", nil
 	}
 
 	countries, err := s.repo.List(ctx)
@@ -80,18 +71,31 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
 }
 
-// buildHubURLs constructs one VLESS URL per healthy node in the token's group.
+// buildHubURLs constructs one VLESS URL per healthy node in the token's groups.
 // Each URL points to the Hub (same UUID), with a country-tagged remark so v2rayN
 // shows users a meaningful location menu.
 func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node) []string {
 	urls := make([]string, 0, len(allNodes))
 	index := 0
+	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
+	for _, groupID := range token.GroupIDs {
+		allowedGroups[groupID] = struct{}{}
+	}
+	if len(allowedGroups) == 0 && token.GroupID != "" {
+		allowedGroups[token.GroupID] = struct{}{}
+	}
+	allGroupsAllowed := len(allowedGroups) == 0
 
 	for _, node := range allNodes {
 		if node.Status != domain.NodeStatusHealthy {
 			continue
 		}
-		if node.GroupID != token.GroupID {
+		if !allGroupsAllowed {
+			if _, ok := allowedGroups[node.GroupID]; !ok {
+				continue
+			}
+		}
+		if node.URL == "" {
 			continue
 		}
 

@@ -15,7 +15,7 @@ import (
 type nodeModel struct {
 	ID            string    `gorm:"column:id;primaryKey"`
 	URL           string    `gorm:"column:url"`
-	GroupID       string    `gorm:"column:group_id"`
+	GroupID       *string   `gorm:"column:group_id"`
 	LatencyMS     int64     `gorm:"column:latency_ms"`
 	Status        string    `gorm:"column:status"`
 	Country       string    `gorm:"column:country"`
@@ -51,10 +51,14 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 		}
 
 		for _, model := range models {
+			groupID := ""
+			if model.GroupID != nil {
+				groupID = *model.GroupID
+			}
 			node := domain.Node{
 				ID:      model.ID,
 				URL:     model.URL,
-				GroupID: model.GroupID,
+				GroupID: groupID,
 				Latency: time.Duration(model.LatencyMS) * time.Millisecond,
 				Status:  domain.NodeStatus(model.Status),
 				Country: model.Country,
@@ -129,7 +133,7 @@ func (r *GormNodeRepository) Create(ctx context.Context, node domain.Node) error
 	model := nodeModel{
 		ID:        node.ID,
 		URL:       node.URL,
-		GroupID:   node.GroupID,
+		GroupID:   nullableString(node.GroupID),
 		LatencyMS: node.Latency.Milliseconds(),
 		Status:    string(node.Status),
 		Country:   node.Country,
@@ -160,7 +164,7 @@ func (r *GormNodeRepository) FindByID(ctx context.Context, id string) (domain.No
 	return domain.Node{
 		ID:      model.ID,
 		URL:     model.URL,
-		GroupID: model.GroupID,
+		GroupID: derefString(model.GroupID),
 		Latency: time.Duration(model.LatencyMS) * time.Millisecond,
 		Status:  domain.NodeStatus(model.Status),
 		Country: model.Country,
@@ -182,7 +186,7 @@ func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 		nodes = append(nodes, domain.Node{
 			ID:      model.ID,
 			URL:     model.URL,
-			GroupID: model.GroupID,
+			GroupID: derefString(model.GroupID),
 			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
 			Status:  domain.NodeStatus(model.Status),
 			Country: model.Country,
@@ -199,7 +203,7 @@ func (r *GormNodeRepository) Update(ctx context.Context, node domain.Node) error
 		Where("id = ?", node.ID).
 		Updates(map[string]any{
 			"url":      node.URL,
-			"group_id": node.GroupID,
+			"group_id": nullableString(node.GroupID),
 		})
 
 	if result.Error != nil {
@@ -230,4 +234,18 @@ func (r *GormNodeRepository) Delete(ctx context.Context, id string) error {
 
 	r.logger.Debug("node deleted", slog.String("node_id", id))
 	return nil
+}
+
+func nullableString(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

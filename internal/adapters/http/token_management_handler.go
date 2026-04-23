@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"outless/internal/domain"
@@ -27,9 +28,9 @@ func NewTokenManagementHandler(tokenRepo domain.TokenRepository, groupRepo domai
 
 type CreateTokenInput struct {
 	Body struct {
-		Owner     string `json:"owner" required:"true" maxLength:"64"`
-		GroupID   string `json:"group_id" required:"true"`
-		ExpiresIn string `json:"expires_in" example:"24h"`
+		Owner     string   `json:"owner" required:"true" maxLength:"64"`
+		GroupIDs  []string `json:"group_ids"`
+		ExpiresIn string   `json:"expires_in" example:"24h"`
 	}
 }
 
@@ -37,8 +38,10 @@ type CreateTokenOutput struct {
 	Body struct {
 		ID        string    `json:"id"`
 		Token     string    `json:"token"`
+		AccessURL string    `json:"access_url"`
 		Owner     string    `json:"owner"`
 		GroupID   string    `json:"group_id"`
+		GroupIDs  []string  `json:"group_ids"`
 		IsActive  bool      `json:"is_active"`
 		ExpiresAt time.Time `json:"expires_at"`
 		CreatedAt time.Time `json:"created_at"`
@@ -57,6 +60,8 @@ type TokenItem struct {
 	ID        string    `json:"id"`
 	Owner     string    `json:"owner"`
 	GroupID   string    `json:"group_id"`
+	GroupIDs  []string  `json:"group_ids"`
+	AccessURL string    `json:"access_url"`
 	IsActive  bool      `json:"is_active"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
@@ -65,7 +70,8 @@ type TokenItem struct {
 func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/tokens", h.CreateToken)
 	huma.Get(api, "/v1/tokens", h.ListTokens)
-	huma.Delete(api, "/v1/tokens/{id}", h.DeleteToken)
+	huma.Post(api, "/v1/tokens/{id}/deactivate", h.DeactivateToken)
+	huma.Delete(api, "/v1/tokens/{id}", h.RemoveToken)
 }
 
 func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateTokenInput) (*CreateTokenOutput, error) {
@@ -73,18 +79,18 @@ func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateT
 		return nil, huma.Error400BadRequest("owner is required")
 	}
 
-	if input.Body.GroupID == "" {
-		return nil, huma.Error400BadRequest("group_id is required")
-	}
+	groupIDs := uniqueStringSlice(input.Body.GroupIDs)
 
-	// Validate group exists
-	if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-			return nil, huma.Error400BadRequest("group not found")
+	// Validate explicitly selected groups.
+	for _, groupID := range groupIDs {
+		if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+			if errors.Is(err, domain.ErrNodeNotFound) {
+				h.logger.Warn("group not found", slog.String("group_id", groupID))
+				return nil, huma.Error400BadRequest("group not found")
+			}
+			h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
-		h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to validate group")
 	}
 
 	// Parse expiration
@@ -98,20 +104,22 @@ func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateT
 	}
 
 	expiresAt := time.Now().UTC().Add(expiresIn)
-	token, err := h.tokenRepo.IssueToken(ctx, input.Body.Owner, input.Body.GroupID, expiresAt)
+	token, err := h.tokenRepo.IssueToken(ctx, input.Body.Owner, groupIDs, expiresAt)
 	if err != nil {
 		h.logger.Error("failed to issue token", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create token")
 	}
 
 	out := &CreateTokenOutput{}
-	out.Body.ID = token
-	out.Body.Token = token
-	out.Body.Owner = input.Body.Owner
-	out.Body.GroupID = input.Body.GroupID
-	out.Body.IsActive = true
-	out.Body.ExpiresAt = expiresAt
-	out.Body.CreatedAt = time.Now().UTC()
+	out.Body.ID = token.ID
+	out.Body.Token = token.TokenPlain
+	out.Body.AccessURL = "/v1/sub/" + token.TokenPlain
+	out.Body.Owner = token.Owner
+	out.Body.GroupID = token.GroupID
+	out.Body.GroupIDs = token.GroupIDs
+	out.Body.IsActive = token.IsActive
+	out.Body.ExpiresAt = token.ExpiresAt
+	out.Body.CreatedAt = token.CreatedAt
 
 	return out, nil
 }
@@ -130,6 +138,8 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 			ID:        t.ID,
 			Owner:     t.Owner,
 			GroupID:   t.GroupID,
+			GroupIDs:  t.GroupIDs,
+			AccessURL: tokenAccessURL(t.TokenPlain),
 			IsActive:  t.IsActive,
 			ExpiresAt: t.ExpiresAt,
 			CreatedAt: t.CreatedAt,
@@ -142,11 +152,44 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 	return out, nil
 }
 
-func (h *TokenManagementHandler) DeleteToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+func (h *TokenManagementHandler) DeactivateToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
 	if err := h.tokenRepo.Deactivate(ctx, input.ID); err != nil {
 		h.logger.Error("failed to deactivate token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to deactivate token")
 	}
 
 	return nil, nil
+}
+
+func (h *TokenManagementHandler) RemoveToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+	if err := h.tokenRepo.Remove(ctx, input.ID); err != nil {
+		h.logger.Error("failed to remove token", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to remove token")
+	}
+
+	return nil, nil
+}
+
+func uniqueStringSlice(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func tokenAccessURL(tokenPlain string) string {
+	if tokenPlain == "" {
+		return ""
+	}
+	return "/v1/sub/" + tokenPlain
 }
