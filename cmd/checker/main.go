@@ -2,16 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -43,7 +38,7 @@ func main() {
 	}
 
 	repo := postgres.NewGormNodeRepository(db, logger)
-	engine := xray.NewEngine(&http.Client{Timeout: 10 * time.Second}, logger, cfg.ProbeURL, cfg.XrayAdminURL)
+	engine := xray.NewEngine(logger, cfg.ProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, 10*time.Second)
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
 
 	// Run periodic checks with ticker
@@ -69,6 +64,7 @@ type Config struct {
 	Workers       int
 	ProbeURL      string
 	XrayAdminURL  string
+	XraySocksAddr string
 	CheckInterval time.Duration
 }
 
@@ -85,45 +81,18 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		Workers:       yamlCfg.Checker.Workers,
 		ProbeURL:      yamlCfg.Checker.Xray.ProbeURL,
 		XrayAdminURL:  yamlCfg.Checker.Xray.AdminURL,
+		XraySocksAddr: yamlCfg.Checker.Xray.SocksAddr,
 		CheckInterval: yamlCfg.Checker.CheckInterval,
 	}, nil
 }
 
 func logXrayStartupStatus(adminURL string, logger *slog.Logger) {
-	checkCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := checkXrayAdminConnectivity(checkCtx, adminURL); err != nil {
+	if err := xray.CheckXrayAPI(checkCtx, adminURL); err != nil {
 		logger.Error("Xray is dead", slog.String("admin_url", adminURL), slog.String("error", err.Error()))
 		return
 	}
 	logger.Info("Xray is ready", slog.String("admin_url", adminURL))
-}
-
-func checkXrayAdminConnectivity(ctx context.Context, adminURL string) error {
-	parsed, err := url.Parse(strings.TrimSpace(adminURL))
-	if err != nil {
-		return fmt.Errorf("invalid xray admin url: %w", err)
-	}
-	if parsed.Hostname() == "" {
-		return errors.New("xray admin url has empty hostname")
-	}
-
-	port := parsed.Port()
-	switch {
-	case port != "":
-	case strings.EqualFold(parsed.Scheme, "https"):
-		port = "443"
-	default:
-		port = "80"
-	}
-
-	address := net.JoinHostPort(parsed.Hostname(), port)
-	dialer := net.Dialer{Timeout: 2 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
-	if err != nil {
-		return fmt.Errorf("dialing %s: %w", address, err)
-	}
-	_ = conn.Close()
-	return nil
 }

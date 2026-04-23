@@ -8,12 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -48,6 +44,7 @@ type Config struct {
 	HubFingerprint        string
 	XrayProbeURL          string
 	XrayAdminURL          string
+	XraySocksAddr         string
 }
 
 func main() {
@@ -92,13 +89,14 @@ func main() {
 		ShortID:     cfg.HubShortID,
 		Fingerprint: cfg.HubFingerprint,
 	}, logger)
-	probeEngine := xray.NewEngine(&http.Client{Timeout: 10 * time.Second}, logger, cfg.XrayProbeURL, cfg.XrayAdminURL)
+	probeEngine := xray.NewEngine(logger, cfg.XrayProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, 10*time.Second)
 	logger.Info("xray probe client configured",
 		slog.String("admin_url", cfg.XrayAdminURL),
 		slog.String("probe_target", cfg.XrayProbeURL),
+		slog.String("socks_addr", cfg.XraySocksAddr),
 	)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, logger)
-	realtime := httpadapter.NewRealtimeHandler(publicService, groupRepo, logger)
+	realtime := httpadapter.NewRealtimeHandler(publicService, groupRepo, cfg.PublicRefreshInterval, logger)
 	handlers := httpadapter.Handlers{
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
@@ -128,7 +126,7 @@ func main() {
 	})
 
 	group.Go(func() error {
-		return runPublicSourceWorker(groupCtx, publicService, cfg.PublicRefreshInterval, logger)
+		return runPublicSourceWorker(groupCtx, publicService, cfg.PublicRefreshInterval, realtime, logger)
 	})
 
 	if err = group.Wait(); err != nil && ctx.Err() == nil {
@@ -139,25 +137,40 @@ func main() {
 
 // runPublicSourceWorker triggers ImportAll on startup and every interval tick
 // until the context is cancelled.
-func runPublicSourceWorker(ctx context.Context, service *public.Service, interval time.Duration, logger *slog.Logger) error {
+func runPublicSourceWorker(
+	ctx context.Context,
+	service *public.Service,
+	interval time.Duration,
+	realtime *httpadapter.RealtimeHandler,
+	logger *slog.Logger,
+) error {
 	if interval <= 0 {
 		logger.Info("public source worker disabled (interval <= 0)")
+		realtime.UpdatePublicRefreshSchedule(nil, nil)
 		<-ctx.Done()
 		return nil
 	}
 
 	logger.Info("public source worker started", slog.Duration("interval", interval))
 
+	nextRunAt := time.Now().UTC().Add(interval)
+
 	runOnce := func() {
+		runStartedAt := time.Now().UTC()
+		nextRunAt = runStartedAt.Add(interval)
+		realtime.UpdatePublicRefreshSchedule(&runStartedAt, &nextRunAt)
 		if err := service.ImportAll(ctx); err != nil {
 			logger.Warn("public source import failed", slog.String("error", err.Error()))
 		}
 	}
 
+	realtime.UpdatePublicRefreshSchedule(nil, &nextRunAt)
 	runOnce()
 
 	ticker := time.NewTicker(interval)
+	stateTicker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
+	defer stateTicker.Stop()
 
 	for {
 		select {
@@ -166,6 +179,8 @@ func runPublicSourceWorker(ctx context.Context, service *public.Service, interva
 			return nil
 		case <-ticker.C:
 			runOnce()
+		case <-stateTicker.C:
+			realtime.UpdatePublicRefreshSchedule(nil, &nextRunAt)
 		}
 	}
 }
@@ -195,6 +210,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		HubFingerprint:        yamlCfg.Hub.Fingerprint,
 		XrayProbeURL:          yamlCfg.Checker.Xray.ProbeURL,
 		XrayAdminURL:          yamlCfg.Checker.Xray.AdminURL,
+		XraySocksAddr:         yamlCfg.Checker.Xray.SocksAddr,
 	}, nil
 }
 
@@ -247,40 +263,12 @@ func newAdminID() string {
 }
 
 func logXrayStartupStatus(adminURL string, logger *slog.Logger) {
-	checkCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := checkXrayAdminConnectivity(checkCtx, adminURL); err != nil {
+	if err := xray.CheckXrayAPI(checkCtx, adminURL); err != nil {
 		logger.Error("Xray is dead", slog.String("admin_url", adminURL), slog.String("error", err.Error()))
 		return
 	}
 	logger.Info("Xray is ready", slog.String("admin_url", adminURL))
-}
-
-func checkXrayAdminConnectivity(ctx context.Context, adminURL string) error {
-	parsed, err := url.Parse(strings.TrimSpace(adminURL))
-	if err != nil {
-		return fmt.Errorf("invalid xray admin url: %w", err)
-	}
-	if parsed.Hostname() == "" {
-		return errors.New("xray admin url has empty hostname")
-	}
-
-	port := parsed.Port()
-	switch {
-	case port != "":
-	case strings.EqualFold(parsed.Scheme, "https"):
-		port = "443"
-	default:
-		port = "80"
-	}
-
-	address := net.JoinHostPort(parsed.Hostname(), port)
-	dialer := net.Dialer{Timeout: 2 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
-	if err != nil {
-		return fmt.Errorf("dialing %s: %w", address, err)
-	}
-	_ = conn.Close()
-	return nil
 }

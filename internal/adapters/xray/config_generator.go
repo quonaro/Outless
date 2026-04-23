@@ -314,6 +314,8 @@ type parsedVLESS struct {
 	path        string
 	hostHeader  string
 	serviceName string
+	// Spx is the Reality "spiderX" path from the sharing link (query key "spx").
+	Spx string
 }
 
 // parseVLESSURL parses a vless://uuid@host:port?params#remark URL into its parts.
@@ -355,6 +357,7 @@ func parseVLESSURL(raw string) (parsedVLESS, error) {
 		path:        q.Get("path"),
 		hostHeader:  q.Get("host"),
 		serviceName: q.Get("serviceName"),
+		Spx:         strings.TrimSpace(q.Get("spx")),
 	}
 	if alpn := q.Get("alpn"); alpn != "" {
 		p.alpn = strings.Split(alpn, ",")
@@ -390,6 +393,9 @@ func (p parsedVLESS) streamSettings() map[string]any {
 		}
 		if p.sid != "" {
 			reality["shortId"] = p.sid
+		}
+		if p.Spx != "" {
+			reality["spiderX"] = p.Spx
 		}
 		stream["realitySettings"] = reality
 	case "tls":

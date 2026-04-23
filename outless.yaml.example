@@ -21,3 +21,4 @@ checker:
   xray:
     admin_url: "http://localhost:10085"
     probe_url: "https://www.google.com/generate_204"
+    socks_addr: "127.0.0.1:1080"

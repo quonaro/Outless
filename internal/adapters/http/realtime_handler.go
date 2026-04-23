@@ -20,6 +20,7 @@ type RealtimeHandler struct {
 	public *public.Service
 	groups domain.GroupRepository
 	logger *slog.Logger
+	publicRefreshInterval time.Duration
 
 	clientsMu sync.Mutex
 	clients   []*wsClient
@@ -27,6 +28,10 @@ type RealtimeHandler struct {
 	syncMu       sync.Mutex
 	activeSyncs  map[string]*syncRun  // group_id -> running sync
 	activeProbes map[string]*probeRun // group_id -> running unavailable probe
+
+	publicRefreshMu      sync.Mutex
+	publicRefreshLastRun *time.Time
+	publicRefreshNextRun *time.Time
 }
 
 type syncRun struct {
@@ -80,13 +85,19 @@ type wsClient struct {
 }
 
 // NewRealtimeHandler constructs the realtime WebSocket handler.
-func NewRealtimeHandler(public *public.Service, groups domain.GroupRepository, logger *slog.Logger) *RealtimeHandler {
+func NewRealtimeHandler(
+	public *public.Service,
+	groups domain.GroupRepository,
+	publicRefreshInterval time.Duration,
+	logger *slog.Logger,
+) *RealtimeHandler {
 	return &RealtimeHandler{
-		public:       public,
-		groups:       groups,
-		logger:       logger,
-		activeSyncs:  make(map[string]*syncRun),
-		activeProbes: make(map[string]*probeRun),
+		public:                public,
+		groups:                groups,
+		logger:                logger,
+		publicRefreshInterval: publicRefreshInterval,
+		activeSyncs:           make(map[string]*syncRun),
+		activeProbes:          make(map[string]*probeRun),
 	}
 }
 
@@ -172,6 +183,7 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 	}()
 
 	_ = client.writeJSON(r.Context(), map[string]any{"type": "welcome", "version": 1})
+	h.sendPublicRefreshState(client)
 
 	for {
 		_, data, err := conn.Read(r.Context())
@@ -218,6 +230,8 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			h.sendProbeUnavailableState(client, msg.GroupID)
+		case "public_refresh_state":
+			h.sendPublicRefreshState(client)
 		default:
 			_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "unknown action"})
 		}
@@ -599,4 +613,66 @@ func (h *RealtimeHandler) sendSyncGroupStateFromRun(client *wsClient, groupID st
 
 func isSyncTerminal(status string) bool {
 	return status == "done" || status == "unavailable" || status == "error"
+}
+
+// UpdatePublicRefreshSchedule stores and broadcasts next public source refresh metadata.
+func (h *RealtimeHandler) UpdatePublicRefreshSchedule(lastRunAt, nextRunAt *time.Time) {
+	h.publicRefreshMu.Lock()
+	if h.publicRefreshInterval <= 0 {
+		h.publicRefreshLastRun = nil
+		h.publicRefreshNextRun = nil
+	} else {
+		if lastRunAt != nil {
+			h.publicRefreshLastRun = cloneTimePtr(lastRunAt)
+		}
+		if nextRunAt != nil {
+			h.publicRefreshNextRun = cloneTimePtr(nextRunAt)
+		}
+	}
+	h.publicRefreshMu.Unlock()
+	h.broadcastPublicRefreshState()
+}
+
+func (h *RealtimeHandler) broadcastPublicRefreshState() {
+	payload := h.publicRefreshPayload()
+	h.broadcastJSON(payload)
+}
+
+func (h *RealtimeHandler) sendPublicRefreshState(client *wsClient) {
+	_ = client.writeJSON(client.rootCtx, h.publicRefreshPayload())
+}
+
+func (h *RealtimeHandler) publicRefreshPayload() map[string]any {
+	h.publicRefreshMu.Lock()
+	lastRunAt := cloneTimePtr(h.publicRefreshLastRun)
+	nextRunAt := cloneTimePtr(h.publicRefreshNextRun)
+	h.publicRefreshMu.Unlock()
+
+	payload := map[string]any{
+		"type":                "public_refresh_state",
+		"enabled":             h.publicRefreshInterval > 0,
+		"interval_ms":         h.publicRefreshInterval.Milliseconds(),
+		"server_time":         time.Now().UTC().Format(time.RFC3339),
+		"last_refresh_at":     "",
+		"next_refresh_at":     "",
+		"next_refresh_in_ms":  int64(-1),
+		"last_refresh_age_ms": int64(-1),
+	}
+	if lastRunAt != nil {
+		payload["last_refresh_at"] = lastRunAt.UTC().Format(time.RFC3339)
+		payload["last_refresh_age_ms"] = time.Since(lastRunAt.UTC()).Milliseconds()
+	}
+	if nextRunAt != nil {
+		payload["next_refresh_at"] = nextRunAt.UTC().Format(time.RFC3339)
+		payload["next_refresh_in_ms"] = time.Until(nextRunAt.UTC()).Milliseconds()
+	}
+	return payload
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := value.UTC()
+	return &cloned
 }

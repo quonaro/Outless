@@ -64,6 +64,8 @@ type AdminConfig struct {
 type XrayConfig struct {
 	AdminURL string `yaml:"admin_url"`
 	ProbeURL string `yaml:"probe_url"`
+	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
+	SocksAddr string `yaml:"socks_addr"`
 }
 
 // DefaultConfig returns default configuration.
@@ -89,8 +91,9 @@ func DefaultConfig() Config {
 			PublicRefreshInterval: 10 * time.Minute,
 			CheckInterval:         10 * time.Minute,
 			Xray: XrayConfig{
-				AdminURL: "http://localhost:10085",
-				ProbeURL: "https://www.google.com/generate_204",
+				AdminURL:  "http://localhost:10085",
+				ProbeURL:  "https://www.google.com/generate_204",
+				SocksAddr: "127.0.0.1:1080",
 			},
 		},
 		Hub: HubConfig{

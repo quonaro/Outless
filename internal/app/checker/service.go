@@ -128,7 +128,12 @@ func isInfrastructureProbeError(err error) bool {
 	return strings.Contains(msg, "dial tcp") ||
 		strings.Contains(msg, "no such host") ||
 		strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "context canceled")
+		strings.Contains(msg, "context canceled") ||
+		strings.Contains(msg, "grpc dial") ||
+		strings.Contains(msg, "Unavailable") ||
+		strings.Contains(msg, "DeadlineExceeded") ||
+		strings.Contains(msg, "rpc error") ||
+		strings.Contains(msg, "xray grpc unavailable")
 }
 
 // RunLoop starts periodic checks until context cancellation.

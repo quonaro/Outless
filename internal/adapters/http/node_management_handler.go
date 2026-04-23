@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
@@ -56,8 +57,9 @@ type ListNodesOutput struct {
 }
 
 type ListNodesInput struct {
-	Limit  int `query:"limit"`
-	Offset int `query:"offset"`
+	Limit   int    `query:"limit"`
+	Offset  int    `query:"offset"`
+	GroupID string `query:"group_id"`
 }
 
 type UpdateNodeInput struct {
@@ -147,7 +149,28 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 		offset = 0
 	}
 
-	nodes, err := h.nodeRepo.ListPage(ctx, limit+1, offset)
+	groupID := strings.TrimSpace(input.GroupID)
+	if groupID != "" {
+		if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+			// Group repo wraps gorm not-found with domain.ErrNodeNotFound today.
+			if errors.Is(err, domain.ErrNodeNotFound) {
+				return nil, huma.Error404NotFound("group not found")
+			}
+			h.logger.Error("failed to validate group for list nodes", slog.String("group_id", groupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to list nodes")
+		}
+		if limit > 200 {
+			limit = 200
+		}
+	}
+
+	var nodes []domain.Node
+	var err error
+	if groupID != "" {
+		nodes, err = h.nodeRepo.ListPageByGroup(ctx, groupID, limit+1, offset)
+	} else {
+		nodes, err = h.nodeRepo.ListPage(ctx, limit+1, offset)
+	}
 	if err != nil {
 		h.logger.Error("failed to list nodes", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to list nodes")

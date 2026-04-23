@@ -347,6 +347,36 @@ func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int
 	return nodes, nil
 }
 
+// ListPageByGroup returns paginated nodes for a single group (same sort as ListPage).
+func (r *GormNodeRepository) ListPageByGroup(ctx context.Context, groupID string, limit int, offset int) ([]domain.Node, error) {
+	var models []nodeModel
+	err := r.db.WithContext(ctx).
+		Where("group_id = ?", groupID).
+		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
+		Order("latency_ms ASC").
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing paged nodes by group via gorm: %w", err)
+	}
+
+	nodes := make([]domain.Node, 0, len(models))
+	for _, model := range models {
+		nodes = append(nodes, domain.Node{
+			ID:      model.ID,
+			URL:     model.URL,
+			GroupID: derefString(model.GroupID),
+			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
+			Status:  domain.NodeStatus(model.Status),
+			Country: model.Country,
+		})
+	}
+
+	return nodes, nil
+}
+
 // ListByGroup returns all nodes in a group.
 func (r *GormNodeRepository) ListByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
 	var models []nodeModel
