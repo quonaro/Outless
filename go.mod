@@ -7,6 +7,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.34.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/xtls/xray-core v1.251208.0
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
@@ -36,7 +37,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/miekg/dns v1.1.68 // indirect
-	github.com/oschwald/geoip2-golang v1.13.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pires/go-proxyproto v0.8.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
