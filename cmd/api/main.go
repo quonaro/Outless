@@ -76,11 +76,11 @@ func main() {
 
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, subscription.HubConfig{
-		Host:       cfg.HubHost,
-		Port:       cfg.HubPort,
-		SNI:        cfg.HubSNI,
-		PublicKey:  cfg.HubPublicKey,
-		ShortID:    cfg.HubShortID,
+		Host:        cfg.HubHost,
+		Port:        cfg.HubPort,
+		SNI:         cfg.HubSNI,
+		PublicKey:   cfg.HubPublicKey,
+		ShortID:     cfg.HubShortID,
 		Fingerprint: cfg.HubFingerprint,
 	}, logger)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, logger)
@@ -90,6 +90,7 @@ func main() {
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
 		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
 		Group:        httpadapter.NewGroupManagementHandler(groupRepo, logger),
+		GroupSync:    httpadapter.NewGroupSyncHandler(groupRepo, publicService, logger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),
 		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),

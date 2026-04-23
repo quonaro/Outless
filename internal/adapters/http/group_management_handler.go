@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"outless/internal/adapters/postgres"
@@ -26,15 +27,18 @@ func NewGroupManagementHandler(groupRepo domain.GroupRepository, logger *slog.Lo
 
 type CreateGroupInput struct {
 	Body struct {
-		Name string `json:"name" required:"true" maxLength:"100"`
+		Name      string `json:"name" required:"true" maxLength:"100"`
+		SourceURL string `json:"source_url"`
 	}
 }
 
 type CreateGroupOutput struct {
 	Body struct {
-		ID        string    `json:"id"`
-		Name      string    `json:"name"`
-		CreatedAt time.Time `json:"created_at"`
+		ID           string     `json:"id"`
+		Name         string     `json:"name"`
+		SourceURL    string     `json:"source_url"`
+		LastSyncedAt *time.Time `json:"last_synced_at"`
+		CreatedAt    time.Time  `json:"created_at"`
 	}
 }
 
@@ -45,7 +49,8 @@ type ListGroupsOutput struct {
 type UpdateGroupInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		Name string `json:"name" required:"true" maxLength:"100"`
+		Name      string `json:"name" required:"true" maxLength:"100"`
+		SourceURL string `json:"source_url"`
 	}
 }
 
@@ -54,9 +59,11 @@ type DeleteGroupInput struct {
 }
 
 type GroupItem struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	SourceURL    string     `json:"source_url"`
+	LastSyncedAt *time.Time `json:"last_synced_at"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 func (h *GroupManagementHandler) Register(api huma.API) {
@@ -67,6 +74,7 @@ func (h *GroupManagementHandler) Register(api huma.API) {
 }
 
 func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateGroupInput) (*CreateGroupOutput, error) {
+	input.Body.Name = strings.TrimSpace(input.Body.Name)
 	if input.Body.Name == "" {
 		return nil, huma.Error400BadRequest("name is required")
 	}
@@ -80,6 +88,7 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	group := domain.Group{
 		ID:        id,
 		Name:      input.Body.Name,
+		SourceURL: strings.TrimSpace(input.Body.SourceURL),
 		CreatedAt: time.Now().UTC(),
 	}
 
@@ -90,7 +99,9 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 
 	out := &CreateGroupOutput{}
 	out.Body.ID = id
-	out.Body.Name = input.Body.Name
+	out.Body.Name = group.Name
+	out.Body.SourceURL = group.SourceURL
+	out.Body.LastSyncedAt = group.LastSyncedAt
 	out.Body.CreatedAt = group.CreatedAt
 
 	return out, nil
@@ -107,9 +118,11 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 
 	for _, g := range groups {
 		response = append(response, GroupItem{
-			ID:        g.ID,
-			Name:      g.Name,
-			CreatedAt: g.CreatedAt,
+			ID:           g.ID,
+			Name:         g.Name,
+			SourceURL:    g.SourceURL,
+			LastSyncedAt: g.LastSyncedAt,
+			CreatedAt:    g.CreatedAt,
 		})
 	}
 
@@ -120,6 +133,7 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 }
 
 func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateGroupInput) (*struct{}, error) {
+	input.Body.Name = strings.TrimSpace(input.Body.Name)
 	if input.Body.Name == "" {
 		return nil, huma.Error400BadRequest("name is required")
 	}
@@ -134,6 +148,7 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	}
 
 	group.Name = input.Body.Name
+	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
 	if err := h.groupRepo.Update(ctx, group); err != nil {
 		h.logger.Error("failed to update group", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update group")

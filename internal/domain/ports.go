@@ -51,6 +51,7 @@ type GroupRepository interface {
 	FindByID(ctx context.Context, id string) (Group, error)
 	List(ctx context.Context) ([]Group, error)
 	Update(ctx context.Context, group Group) error
+	UpdateSyncedAt(ctx context.Context, id string, syncedAt time.Time) error
 	Delete(ctx context.Context, id string) error
 }
 

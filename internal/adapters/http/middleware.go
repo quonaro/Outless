@@ -55,17 +55,26 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		authHeader := r.Header.Get("Authorization")
+		token := ""
 		if authHeader == "" {
-			writeJSONError(w, http.StatusUnauthorized, "missing authorization header")
-			return
+			// EventSource cannot attach custom Authorization headers in browsers,
+			// so sync streams accept token via query parameter.
+			if strings.HasSuffix(r.URL.Path, "/sync/stream") {
+				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
+			}
+			if token == "" {
+				writeJSONError(w, http.StatusUnauthorized, "missing authorization header")
+				return
+			}
 		}
 
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			writeJSONError(w, http.StatusUnauthorized, "invalid authorization header format")
-			return
+		if token == "" {
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				writeJSONError(w, http.StatusUnauthorized, "invalid authorization header format")
+				return
+			}
+			token = strings.TrimPrefix(authHeader, "Bearer ")
 		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := m.jwtService.ValidateToken(token)
 		if err != nil {
 			m.logger.Warn("invalid token", slog.String("error", err.Error()))

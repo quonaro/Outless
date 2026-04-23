@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -23,6 +25,25 @@ type Service struct {
 	groupRepo  domain.GroupRepository
 	httpClient *http.Client
 	logger     *slog.Logger
+}
+
+// SyncNodeStatus describes per-node sync state for SSE streaming.
+type SyncNodeStatus string
+
+const (
+	SyncNodeStatusImporting   SyncNodeStatus = "importing"
+	SyncNodeStatusDone        SyncNodeStatus = "done"
+	SyncNodeStatusUnavailable SyncNodeStatus = "unavailable"
+	SyncNodeStatusError       SyncNodeStatus = "error"
+)
+
+// SyncEvent is emitted for each node while group sync is running.
+type SyncEvent struct {
+	NodeID    string         `json:"node_id"`
+	URL       string         `json:"url"`
+	Status    SyncNodeStatus `json:"status"`
+	LatencyMS int64          `json:"latency_ms"`
+	Error     string         `json:"error,omitempty"`
 }
 
 // NewService constructs a public sources service.
@@ -92,6 +113,84 @@ func (s *Service) ImportAll(ctx context.Context) error {
 
 	s.logger.Info("public sources import completed", slog.Int("sources_processed", total))
 	return nil
+}
+
+// SyncGroup imports nodes for a group source URL and reports progress events.
+func (s *Service) SyncGroup(ctx context.Context, groupID string, onEvent func(SyncEvent)) (time.Time, error) {
+	group, err := s.groupRepo.FindByID(ctx, groupID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("finding group: %w", err)
+	}
+	if strings.TrimSpace(group.SourceURL) == "" {
+		return time.Time{}, fmt.Errorf("group has no source url")
+	}
+
+	content, err := s.fetchSource(ctx, group.SourceURL)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("fetching source %s: %w", group.SourceURL, err)
+	}
+
+	vlessURLs := s.parseVLESSLines(content)
+	for _, rawURL := range vlessURLs {
+		nodeID := s.generateNodeID(rawURL)
+		if onEvent != nil {
+			onEvent(SyncEvent{
+				NodeID: nodeID,
+				URL:    rawURL,
+				Status: SyncNodeStatusImporting,
+			})
+		}
+
+		node := domain.Node{
+			ID:      nodeID,
+			URL:     rawURL,
+			GroupID: groupID,
+			Status:  domain.NodeStatusUnknown,
+		}
+
+		if err = s.createOrUpdateNode(ctx, node); err != nil {
+			if onEvent != nil {
+				onEvent(SyncEvent{
+					NodeID: nodeID,
+					URL:    rawURL,
+					Status: SyncNodeStatusError,
+					Error:  err.Error(),
+				})
+			}
+			continue
+		}
+
+		result := s.probeNodeQuick(rawURL, nodeID)
+		if updateErr := s.nodeRepo.UpdateProbeResult(ctx, result); updateErr != nil && onEvent != nil {
+			onEvent(SyncEvent{
+				NodeID: nodeID,
+				URL:    rawURL,
+				Status: SyncNodeStatusError,
+				Error:  updateErr.Error(),
+			})
+			continue
+		}
+
+		if onEvent != nil {
+			status := SyncNodeStatusDone
+			if result.Status != domain.NodeStatusHealthy {
+				status = SyncNodeStatusUnavailable
+			}
+			onEvent(SyncEvent{
+				NodeID:    nodeID,
+				URL:       rawURL,
+				Status:    status,
+				LatencyMS: result.Latency.Milliseconds(),
+			})
+		}
+	}
+
+	syncedAt := time.Now().UTC()
+	if err = s.groupRepo.UpdateSyncedAt(ctx, groupID, syncedAt); err != nil {
+		return time.Time{}, fmt.Errorf("updating group sync timestamp: %w", err)
+	}
+
+	return syncedAt, nil
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.
@@ -196,6 +295,62 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 	}
 
 	return created, nil
+}
+
+func (s *Service) createOrUpdateNode(ctx context.Context, node domain.Node) error {
+	existing, findErr := s.nodeRepo.FindByID(ctx, node.ID)
+	if findErr == nil {
+		existing.URL = node.URL
+		existing.GroupID = node.GroupID
+		return s.nodeRepo.Update(ctx, existing)
+	}
+	if errors.Is(findErr, domain.ErrNodeNotFound) {
+		return s.nodeRepo.Create(ctx, node)
+	}
+	if findErr != nil {
+		return findErr
+	}
+	return nil
+}
+
+func (s *Service) probeNodeQuick(rawURL string, nodeID string) domain.ProbeResult {
+	start := time.Now()
+	result := domain.ProbeResult{
+		NodeID:    nodeID,
+		Status:    domain.NodeStatusUnhealthy,
+		CheckedAt: time.Now().UTC(),
+	}
+
+	addr, err := probeAddressFromVLESS(rawURL)
+	if err != nil {
+		return result
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, 4*time.Second)
+	if err != nil {
+		return result
+	}
+	_ = conn.Close()
+
+	result.Status = domain.NodeStatusHealthy
+	result.Latency = time.Since(start)
+	return result
+}
+
+func probeAddressFromVLESS(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("vless url host is empty")
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "443"
+	}
+	return net.JoinHostPort(host, port), nil
 }
 
 // generateNodeID creates a deterministic short ID from URL via SHA-256.

@@ -6,6 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"net"
+	"net/url"
+	"strings"
+	"time"
 
 	"outless/internal/domain"
 
@@ -58,6 +62,10 @@ type DeleteNodeInput struct {
 	ID string `path:"id" required:"true"`
 }
 
+type ProbeNodeInput struct {
+	ID string `path:"id" required:"true"`
+}
+
 type NodeItem struct {
 	ID      string `json:"id"`
 	URL     string `json:"url"`
@@ -71,6 +79,7 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/nodes", h.CreateNode)
 	huma.Get(api, "/v1/nodes", h.ListNodes)
 	huma.Put(api, "/v1/nodes/{id}", h.UpdateNode)
+	huma.Post(api, "/v1/nodes/{id}/probe", h.ProbeNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
 }
 
@@ -177,7 +186,59 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	return nil, nil
 }
 
+func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeInput) (*struct{}, error) {
+	node, err := h.nodeRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			return nil, huma.Error404NotFound("node not found")
+		}
+		h.logger.Error("failed to find node for probe", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to find node")
+	}
+
+	result := quickProbe(node)
+	if err = h.nodeRepo.UpdateProbeResult(ctx, result); err != nil {
+		h.logger.Error("failed to save probe result", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to save probe result")
+	}
+
+	return nil, nil
+}
+
 func generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
+}
+
+func quickProbe(node domain.Node) domain.ProbeResult {
+	result := domain.ProbeResult{
+		NodeID:    node.ID,
+		Status:    domain.NodeStatusUnhealthy,
+		Country:   node.Country,
+		CheckedAt: time.Now().UTC(),
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(node.URL))
+	if err != nil {
+		return result
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return result
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "443"
+	}
+
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 4*time.Second)
+	if err != nil {
+		return result
+	}
+	_ = conn.Close()
+
+	result.Status = domain.NodeStatusHealthy
+	result.Latency = time.Since(start)
+	return result
 }

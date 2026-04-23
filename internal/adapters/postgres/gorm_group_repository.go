@@ -13,9 +13,11 @@ import (
 )
 
 type groupModel struct {
-	ID        string    `gorm:"column:id;primaryKey"`
-	Name      string    `gorm:"column:name"`
-	CreatedAt time.Time `gorm:"column:created_at"`
+	ID           string     `gorm:"column:id;primaryKey"`
+	Name         string     `gorm:"column:name"`
+	SourceURL    *string    `gorm:"column:source_url"`
+	LastSyncedAt *time.Time `gorm:"column:last_synced_at"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
 }
 
 func (groupModel) TableName() string {
@@ -35,9 +37,11 @@ func NewGormGroupRepository(db *gorm.DB, logger *slog.Logger) *GormGroupReposito
 
 func (r *GormGroupRepository) Create(ctx context.Context, group domain.Group) error {
 	model := groupModel{
-		ID:        group.ID,
-		Name:      group.Name,
-		CreatedAt: group.CreatedAt,
+		ID:           group.ID,
+		Name:         group.Name,
+		SourceURL:    nullableGroupString(group.SourceURL),
+		LastSyncedAt: group.LastSyncedAt,
+		CreatedAt:    group.CreatedAt,
 	}
 
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
@@ -61,9 +65,11 @@ func (r *GormGroupRepository) FindByID(ctx context.Context, id string) (domain.G
 	}
 
 	return domain.Group{
-		ID:        model.ID,
-		Name:      model.Name,
-		CreatedAt: model.CreatedAt,
+		ID:           model.ID,
+		Name:         model.Name,
+		SourceURL:    derefGroupString(model.SourceURL),
+		LastSyncedAt: model.LastSyncedAt,
+		CreatedAt:    model.CreatedAt,
 	}, nil
 }
 
@@ -79,9 +85,11 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 	groups := make([]domain.Group, 0, len(models))
 	for _, model := range models {
 		groups = append(groups, domain.Group{
-			ID:        model.ID,
-			Name:      model.Name,
-			CreatedAt: model.CreatedAt,
+			ID:           model.ID,
+			Name:         model.Name,
+			SourceURL:    derefGroupString(model.SourceURL),
+			LastSyncedAt: model.LastSyncedAt,
+			CreatedAt:    model.CreatedAt,
 		})
 	}
 
@@ -93,7 +101,9 @@ func (r *GormGroupRepository) Update(ctx context.Context, group domain.Group) er
 		Model(&groupModel{}).
 		Where("id = ?", group.ID).
 		Updates(map[string]any{
-			"name": group.Name,
+			"name":           group.Name,
+			"source_url":     nullableGroupString(group.SourceURL),
+			"last_synced_at": group.LastSyncedAt,
 		})
 
 	if result.Error != nil {
@@ -105,6 +115,20 @@ func (r *GormGroupRepository) Update(ctx context.Context, group domain.Group) er
 	}
 
 	r.logger.Info("group updated", slog.String("id", group.ID))
+	return nil
+}
+
+func (r *GormGroupRepository) UpdateSyncedAt(ctx context.Context, id string, syncedAt time.Time) error {
+	result := r.db.WithContext(ctx).
+		Model(&groupModel{}).
+		Where("id = ?", id).
+		Update("last_synced_at", syncedAt.UTC())
+	if result.Error != nil {
+		return fmt.Errorf("updating group sync timestamp: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("group not found: %w", domain.ErrNodeNotFound)
+	}
 	return nil
 }
 
@@ -132,4 +156,18 @@ func GenerateGroupID() (string, error) {
 		return "", fmt.Errorf("generating group id: %w", err)
 	}
 	return fmt.Sprintf("grp_%d_%x", time.Now().UTC().Unix(), buf), nil
+}
+
+func nullableGroupString(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+func derefGroupString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

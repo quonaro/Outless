@@ -31,6 +31,7 @@ type Handlers struct {
 	Token        *TokenManagementHandler
 	Node         *NodeManagementHandler
 	Group        *GroupManagementHandler
+	GroupSync    *GroupSyncHandler
 	PublicSource *PublicSourceManagementHandler
 	Settings     *SettingsHandler
 	Admin        *AdminManagementHandler
@@ -53,7 +54,17 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, han
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	loggingMiddleware := NewLoggingMiddleware(logger)
-	handler := loggingMiddleware.Wrap(jwtMiddleware.Wrap(mux))
+	routedHandler := http.Handler(mux)
+	if handlers.GroupSync != nil {
+		routedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if handlers.GroupSync.HandleStream(w, r) {
+				return
+			}
+			mux.ServeHTTP(w, r)
+		})
+	}
+	baseHandler := jwtMiddleware.Wrap(routedHandler)
+	handler := loggingMiddleware.Wrap(baseHandler)
 
 	srv := &http.Server{
 		Addr:              cfg.Address,
