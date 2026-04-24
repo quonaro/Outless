@@ -14,7 +14,7 @@ services:
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
       - ./migrations/002_add_admins.sql:/docker-entrypoint-initdb.d/002_add_admins.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U outless -d outless"]
+      test: [ "CMD-SHELL", "pg_isready -U outless -d outless" ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -34,9 +34,9 @@ services:
     ports:
       - "41220:41220"
     volumes:
-      - ./outless.docker.local.yaml:/app/outless.yaml:rw
+      - ./outless.yaml:/app/outless.yaml:rw
       - outless_tmp:/app/tmp
-    command: ["-config", "/app/outless.yaml"]
+    command: [ "-config", "/app/outless.yaml" ]
 
   hub:
     build:
@@ -50,9 +50,9 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ./outless.docker.local.yaml:/app/outless.yaml:rw
+      - ./outless.yaml:/app/outless.yaml:rw
       - outless_runtime:/var/lib/outless
-    command: ["-config", "/app/outless.yaml"]
+    command: [ "-config", "/app/outless.yaml" ]
 
   checker:
     build:
@@ -67,9 +67,9 @@ services:
       xray-probe:
         condition: service_started
     volumes:
-      - ./outless.docker.local.yaml:/app/outless.yaml:rw
+      - ./outless.yaml:/app/outless.yaml:rw
       - outless_tmp:/app/tmp
-    command: ["-config", "/app/outless.yaml"]
+    command: [ "-config", "/app/outless.yaml" ]
 
   xray-edge:
     image: ghcr.io/xtls/xray-core:latest
@@ -86,7 +86,7 @@ services:
       - "1081"
     volumes:
       - outless_runtime:/var/lib/outless
-    command: ["run", "-config", "/var/lib/outless/xray-hub.json"]
+    command: [ "run", "-config", "/var/lib/outless/xray-hub.json" ]
 
   xray-probe:
     image: ghcr.io/xtls/xray-core:latest
@@ -97,7 +97,7 @@ services:
       - "1080"
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
-    command: ["run", "-config", "/etc/xray/config.json"]
+    command: [ "run", "-config", "/etc/xray/config.json" ]
 
   xray-probe-2:
     image: ghcr.io/xtls/xray-core:latest
@@ -108,7 +108,7 @@ services:
       - "1080"
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
-    command: ["run", "-config", "/etc/xray/config.json"]
+    command: [ "run", "-config", "/etc/xray/config.json" ]
 
 volumes:
   postgres_data:
