@@ -1,6 +1,8 @@
 package xray
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -25,12 +27,12 @@ type HubInboundConfig struct {
 // The resulting config:
 //   - exposes a single VLESS Reality inbound on Port, trusting every active token UUID as a user;
 //   - creates one VLESS outbound per healthy exit node (tagged by node.ID);
-//   - uses per-user (balancer) routing so users of group G get load-balanced across G's exits;
+//   - uses direct routing by email so each token+node combo routes to its specific outbound;
 //   - adds "direct" and "block" fallbacks for control traffic.
 func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubInboundConfig) ([]byte, error) {
-	clients, userByGroup, usersAnyGroup := buildClients(tokens)
-	outbounds, nodesByGroup, allSelectors := buildOutbounds(nodes)
-	balancers, routingRules := buildRouting(userByGroup, usersAnyGroup, nodesByGroup, allSelectors)
+	clients := buildClients(tokens, nodes)
+	outbounds, nodesByGroup, _ := buildOutbounds(nodes)
+	routingRules := buildDirectRouting(clients, nodesByGroup)
 
 	dest := inbound.Destination
 	if dest == "" {
@@ -91,7 +93,6 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 		),
 		"routing": map[string]any{
 			"domainStrategy": "AsIs",
-			"balancers":      balancers,
 			"rules":          routingRules,
 		},
 	}
@@ -104,38 +105,122 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 	return data, nil
 }
 
-// buildClients returns VLESS client entries for the inbound plus:
-//   - userByGroup: users restricted to one or more specific groups
-//   - usersAnyGroup: users with access to all groups (empty group_ids)
-func buildClients(tokens []domain.Token) ([]map[string]any, map[string][]string, []string) {
-	clients := make([]map[string]any, 0, len(tokens))
-	userByGroup := make(map[string][]string, 8)
-	usersAnyGroup := make([]string, 0, 8)
+// generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.
+// Uses MD5 hash formatted as UUID.
+func generateUUIDFromTokenNode(tokenID, nodeID string) string {
+	if tokenID == "" || nodeID == "" {
+		return ""
+	}
+	h := md5.New()
+	h.Write([]byte(tokenID))
+	h.Write([]byte(nodeID))
+	hash := hex.EncodeToString(h.Sum(nil))
+	// Format as UUID: 8-4-4-4-12
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		hash[0:8], hash[8:12], hash[12:16], hash[16:20], hash[20:32])
+}
+
+// buildClients returns VLESS client entries for the inbound.
+// Creates one client entry per token+node combination with unique UUID for direct routing.
+func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
+	clients := make([]map[string]any, 0)
 
 	for _, token := range tokens {
 		if token.UUID == "" {
 			continue
 		}
 
-		email := fmt.Sprintf("token-%s@outless", token.ID)
-		clients = append(clients, map[string]any{
-			"id":    token.UUID,
-			"email": email,
-			"flow":  "xtls-rprx-vision",
-			"level": 0,
-		})
+		// Get allowed groups for this token
+		allowedGroups := make(map[string]struct{})
+		for _, groupID := range token.GroupIDs {
+			allowedGroups[groupID] = struct{}{}
+		}
+		if len(allowedGroups) == 0 && token.GroupID != "" {
+			allowedGroups[token.GroupID] = struct{}{}
+		}
+		allGroupsAllowed := len(allowedGroups) == 0
 
-		groupIDs := tokenGroupIDs(token)
-		if len(groupIDs) == 0 {
-			usersAnyGroup = append(usersAnyGroup, email)
-		} else {
-			for _, groupID := range groupIDs {
-				userByGroup[groupID] = append(userByGroup[groupID], email)
+		hasAccess := false
+
+		// Create one client entry per accessible node with unique UUID
+		for _, node := range nodes {
+			if node.Status != domain.NodeStatusHealthy {
+				continue
 			}
+
+			if !allGroupsAllowed {
+				if _, ok := allowedGroups[node.GroupID]; !ok {
+					continue
+				}
+			}
+
+			// Generate unique UUID for this token+node combination
+			uuid := generateUUIDFromTokenNode(token.ID, node.ID)
+			email := fmt.Sprintf("token-%s-node-%s@outless", token.ID, node.ID)
+			clients = append(clients, map[string]any{
+				"id":    uuid,
+				"email": email,
+				"flow":  "xtls-rprx-vision",
+				"level": 0,
+			})
+			hasAccess = true
+		}
+
+		// If token has no access to any nodes, create a blocked entry
+		if !hasAccess {
+			email := fmt.Sprintf("token-%s@outless", token.ID)
+			clients = append(clients, map[string]any{
+				"id":    token.UUID,
+				"email": email,
+				"flow":  "xtls-rprx-vision",
+				"level": 0,
+			})
 		}
 	}
 
-	return clients, userByGroup, usersAnyGroup
+	return clients
+}
+
+// buildDirectRouting creates direct routing rules by email without balancers.
+// Each email (token-node) routes directly to its specific outbound.
+func buildDirectRouting(clients []map[string]any, nodesByGroup map[string][]domain.Node) []any {
+	rules := make([]any, 0)
+
+	for _, client := range clients {
+		email, ok := client["email"].(string)
+		if !ok {
+			continue
+		}
+
+		// Extract node ID from email (format: token-{tokenID}-node-{nodeID}@outless)
+		// If email doesn't have node ID, it's a blocked entry
+		if !strings.Contains(email, "-node-") {
+			rules = append(rules, map[string]any{
+				"type":        "field",
+				"inboundTag":  []string{"vless-in"},
+				"user":        []string{email},
+				"outboundTag": "block",
+			})
+			continue
+		}
+
+		// Extract node ID from email
+		parts := strings.Split(email, "-node-")
+		if len(parts) < 2 {
+			continue
+		}
+		nodeID := strings.TrimSuffix(parts[1], "@outless")
+
+		// Create direct routing rule
+		rules = append(rules, map[string]any{
+			"type":        "field",
+			"inboundTag":  []string{"vless-in"},
+			"user":        []string{email},
+			"outboundTag": outboundTag(nodeID),
+		})
+	}
+
+	return rules
 }
 
 // buildOutbounds creates one VLESS outbound per healthy exit node and returns

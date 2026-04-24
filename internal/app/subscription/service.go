@@ -2,7 +2,9 @@ package subscription
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
@@ -18,9 +20,11 @@ import (
 // HubConfig describes the Hub endpoint clients connect to.
 // These values are embedded into every VLESS URL returned by the subscription.
 type HubConfig struct {
-	Host        string
-	Port        int
-	SNI         string
+	Host string
+	Port int
+	SNI  string
+	// Added a new field to the HubConfig struct
+	APIKey      string
 	PublicKey   string
 	ShortID     string
 	Fingerprint string
@@ -88,9 +92,23 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
 }
 
+// generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.
+// Uses MD5 hash formatted as UUID.
+func generateUUIDFromTokenNode(tokenID, nodeID string) string {
+	if tokenID == "" || nodeID == "" {
+		return ""
+	}
+	h := md5.New()
+	h.Write([]byte(tokenID))
+	h.Write([]byte(nodeID))
+	hash := hex.EncodeToString(h.Sum(nil))
+	// Format as UUID: 8-4-4-4-12
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		hash[0:8], hash[8:12], hash[12:16], hash[16:20], hash[20:32])
+}
+
 // buildHubURLs constructs one VLESS URL per healthy node in the token's groups.
-// Each URL points to the Hub (same UUID), with a country-tagged remark so v2rayN
-// shows users a meaningful location menu.
+// Each URL points to the Hub with a unique UUID for that specific node.
 func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, groupNames map[string]string) []string {
 	urls := make([]string, 0, len(allNodes))
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
@@ -118,7 +136,9 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 		groupLabel := resolveGroupLabel(groupNames, node.GroupID)
 		hostLabel := extractNodeHost(node.URL)
 		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
-		urls = append(urls, s.formatVLESSURL(token.UUID, remark))
+		// Generate unique UUID for this token+node combination
+		uuid := generateUUIDFromTokenNode(token.ID, node.ID)
+		urls = append(urls, s.formatVLESSURL(uuid, remark))
 	}
 
 	if len(urls) == 0 {
