@@ -119,6 +119,7 @@ services:
     volumes:
       - ./outless.yaml:/app/outless.yaml:rw
       - outless_runtime:/var/lib/outless
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command: [ "-config", "/app/outless.yaml" ]
     healthcheck:
       test: [ "CMD-SHELL", "pgrep -f hub || exit 1" ]

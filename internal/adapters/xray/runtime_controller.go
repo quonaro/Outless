@@ -117,7 +117,19 @@ func (c *ExternalRuntimeController) Start(configPath string) error {
 }
 
 func (c *ExternalRuntimeController) Reload(configPath string) error {
-	c.logger.Info("external xray runtime selected: reload is delegated",
+	// Send SIGHUP to xray-edge container to trigger config reload
+	// The container name is hardcoded as per docker-compose.yaml
+	cmd := exec.Command("docker", "kill", "--signal=HUP", "outless-xray-edge")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Warn("failed to send HUP to xray-edge container",
+			slog.String("error", err.Error()),
+			slog.String("output", string(output)),
+		)
+		return fmt.Errorf("sending HUP to xray-edge: %w", err)
+	}
+
+	c.logger.Info("external xray runtime: HUP signal sent to container",
 		slog.String("config_path", configPath),
 	)
 	return nil
