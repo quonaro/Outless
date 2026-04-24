@@ -356,3 +356,14 @@ func (c *Config) ApplyCompatibility() {
 		c.Checker.Xray.GeoIPTTL = c.Xray.Probe.GeoIPTTL
 	}
 }
+
+// Validate checks critical configuration values and returns an error if they are invalid.
+func (c *Config) Validate() error {
+	if strings.TrimSpace(c.API.JWT.Secret) == "CHANGE_ME_IN_PRODUCTION" {
+		return fmt.Errorf("JWT secret must be changed from default value")
+	}
+	if strings.TrimSpace(c.API.JWT.Secret) == "" {
+		return fmt.Errorf("JWT secret cannot be empty")
+	}
+	return nil
+}

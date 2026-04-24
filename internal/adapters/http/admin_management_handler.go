@@ -58,7 +58,8 @@ func (h *AdminManagementHandler) ChangePassword(ctx context.Context, input *Chan
 		return nil, huma.Error401Unauthorized("invalid credentials")
 	}
 
-	newHash, err := bcrypt.GenerateFromPassword([]byte(input.Body.NewPassword), bcrypt.DefaultCost)
+	// bcrypt cost 12 provides stronger security than DefaultCost (typically 10)
+	newHash, err := bcrypt.GenerateFromPassword([]byte(input.Body.NewPassword), 12)
 	if err != nil {
 		h.logger.Error("failed to hash new password", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to change password")

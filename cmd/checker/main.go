@@ -17,6 +17,8 @@ import (
 	"outless/internal/app/checker"
 	"outless/pkg/config"
 	"outless/pkg/logging"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -60,22 +62,34 @@ func main() {
 	fullCheckTicker := time.NewTicker(cfg.CheckInterval)
 	defer fullCheckTicker.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-jobTicker.C:
-			if err = jobRunner.RunPending(ctx, cfg.Workers*2, cfg.Workers); err != nil {
-				logger.Error("probe jobs run failed", slog.String("error", err.Error()))
-				os.Exit(1)
-			}
-		case <-fullCheckTicker.C:
-			if err = service.RunOnce(ctx); err != nil {
-				logger.Error("checker run failed", slog.String("error", err.Error()))
-				os.Exit(1)
+	g, gCtx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		for {
+			select {
+			case <-gCtx.Done():
+				logger.Info("checker shutting down gracefully")
+				return gCtx.Err()
+			case <-jobTicker.C:
+				if err = jobRunner.RunPending(gCtx, cfg.Workers*2, cfg.Workers); err != nil {
+					logger.Error("probe jobs run failed", slog.String("error", err.Error()))
+					return err
+				}
+			case <-fullCheckTicker.C:
+				if err = service.RunOnce(gCtx); err != nil {
+					logger.Error("checker run failed", slog.String("error", err.Error()))
+					return err
+				}
 			}
 		}
+	})
+
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error("checker exited with error", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+
+	logger.Info("checker shutdown complete")
 }
 
 // Config defines checker process settings.

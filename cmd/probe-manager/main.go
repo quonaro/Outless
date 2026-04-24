@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,8 @@ import (
 	"outless/internal/adapters/docker"
 	"outless/pkg/config"
 	"outless/pkg/logging"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -29,12 +32,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	dockerManager, err := docker.NewContainerManager(logger)
+	dockerManager, err := docker.NewContainerManager(logger, cfg.ConfigVolume, cfg.XrayConfigPath)
 	if err != nil {
 		logger.Error("failed to create docker manager", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	defer dockerManager.Close()
+
+	// Copy config from host to volume if needed
+	if err := copyConfigToVolume(cfg.XrayConfigPath, "/host-xray-config.json", logger); err != nil {
+		logger.Warn("failed to copy config to volume", slog.String("error", err.Error()))
+	}
 
 	svc := NewService(dockerManager, cfg.ShardCount, logger)
 
@@ -44,26 +52,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Periodic sync
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Periodic sync with graceful shutdown
+	g, gCtx := errgroup.WithContext(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("shutting down probe manager")
-			return
-		case <-ticker.C:
-			if err := svc.Sync(ctx); err != nil {
-				logger.Error("sync failed", slog.String("error", err.Error()))
+	g.Go(func() error {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-gCtx.Done():
+				logger.Info("probe manager shutting down gracefully")
+				return gCtx.Err()
+			case <-ticker.C:
+				if err := svc.Sync(gCtx); err != nil {
+					logger.Error("sync failed", slog.String("error", err.Error()))
+				}
 			}
 		}
+	})
+
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error("probe manager exited with error", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+
+	logger.Info("probe manager shutdown complete")
 }
 
 // Config holds probe manager configuration.
 type Config struct {
-	ShardCount int
+	ShardCount     int
+	XrayConfigPath string
+	ConfigVolume   string
 }
 
 func loadConfig(path string, logger *slog.Logger) (Config, error) {
@@ -78,7 +99,16 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 	yamlCfg.ApplyCompatibility()
 
 	cfg := Config{
-		ShardCount: yamlCfg.Xray.Probe.ShardCount,
+		ShardCount:     yamlCfg.Xray.Probe.ShardCount,
+		XrayConfigPath: os.Getenv("XRAY_CONFIG_PATH"),
+		ConfigVolume:   os.Getenv("XRAY_CONFIG_VOLUME"),
+	}
+
+	if cfg.XrayConfigPath == "" {
+		cfg.XrayConfigPath = "/app/xray/config.json"
+	}
+	if cfg.ConfigVolume == "" {
+		cfg.ConfigVolume = "xray_config"
 	}
 
 	if cfg.ShardCount <= 0 {
@@ -86,6 +116,21 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// copyConfigToVolume copies the Xray config from host to the volume.
+func copyConfigToVolume(volumePath, hostPath string, logger *slog.Logger) error {
+	src, err := os.ReadFile(hostPath)
+	if err != nil {
+		return fmt.Errorf("reading host config: %w", err)
+	}
+
+	if err := os.WriteFile(volumePath, src, 0644); err != nil {
+		return fmt.Errorf("writing config to volume: %w", err)
+	}
+
+	logger.Info("config copied to volume", slog.String("volume_path", volumePath))
+	return nil
 }
 
 // Service manages probe container lifecycle.

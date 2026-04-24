@@ -927,7 +927,8 @@ func (h *RealtimeHandler) persistSnapshotMaybe(force bool) {
 	}
 	h.persistMu.Lock()
 	now := time.Now()
-	if !force && !h.lastPersist.IsZero() && now.Sub(h.lastPersist) < time.Second {
+	// Debounce: don't write more frequently than every 2 seconds unless forced
+	if !force && !h.lastPersist.IsZero() && now.Sub(h.lastPersist) < 2*time.Second {
 		h.persistMu.Unlock()
 		return
 	}

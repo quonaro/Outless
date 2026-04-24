@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"outless/internal/domain"
@@ -27,21 +28,29 @@ type HubConfig struct {
 
 // Service prepares subscription payloads.
 type Service struct {
-	repo      domain.NodeRepository
-	tokenRepo domain.TokenRepository
-	groupRepo domain.GroupRepository
-	hub       HubConfig
-	logger    *slog.Logger
+	repo         domain.NodeRepository
+	tokenRepo    domain.TokenRepository
+	groupRepo    domain.GroupRepository
+	hub          HubConfig
+	logger       *slog.Logger
+	groupCache   map[string]cachedGroupNames
+	groupCacheMu sync.RWMutex
+}
+
+type cachedGroupNames struct {
+	data      map[string]string
+	expiresAt time.Time
 }
 
 // NewService constructs a subscription service.
 func NewService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, hub HubConfig, logger *slog.Logger) *Service {
 	return &Service{
-		repo:      repo,
-		tokenRepo: tokenRepo,
-		groupRepo: groupRepo,
-		hub:       hub,
-		logger:    logger,
+		repo:       repo,
+		tokenRepo:  tokenRepo,
+		groupRepo:  groupRepo,
+		hub:        hub,
+		logger:     logger,
+		groupCache: make(map[string]cachedGroupNames),
 	}
 }
 
@@ -170,6 +179,17 @@ func normalizeCountry(code string) string {
 }
 
 func (s *Service) loadGroupNames(ctx context.Context) (map[string]string, error) {
+	const cacheKey = "groups"
+	const cacheTTL = 30 * time.Second
+
+	s.groupCacheMu.RLock()
+	cached, ok := s.groupCache[cacheKey]
+	s.groupCacheMu.RUnlock()
+
+	if ok && time.Now().Before(cached.expiresAt) {
+		return cached.data, nil
+	}
+
 	groups, err := s.groupRepo.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading groups metadata: %w", err)
@@ -186,7 +206,22 @@ func (s *Service) loadGroupNames(ctx context.Context) (map[string]string, error)
 		}
 		names[group.ID] = name
 	}
+
+	s.groupCacheMu.Lock()
+	s.groupCache[cacheKey] = cachedGroupNames{
+		data:      names,
+		expiresAt: time.Now().Add(cacheTTL),
+	}
+	s.groupCacheMu.Unlock()
+
 	return names, nil
+}
+
+// invalidateGroupCache clears the group names cache.
+func (s *Service) invalidateGroupCache() {
+	s.groupCacheMu.Lock()
+	delete(s.groupCache, "groups")
+	s.groupCacheMu.Unlock()
 }
 
 func resolveGroupLabel(groupNames map[string]string, groupID string) string {

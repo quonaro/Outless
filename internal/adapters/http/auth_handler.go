@@ -92,7 +92,8 @@ func (h *AuthHandler) registerFirstAdmin(ctx context.Context, input *registerFir
 		return nil, huma.Error400BadRequest("username and password are required")
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	// bcrypt cost 12 provides stronger security than DefaultCost (typically 10)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		h.logger.Error("failed to hash first admin password", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to register first admin")

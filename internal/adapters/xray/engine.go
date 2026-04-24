@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,12 +24,57 @@ import (
 	xrayconf "github.com/xtls/xray-core/infra/conf"
 	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"outless/internal/domain"
 )
 
 const defaultSocksInboundTag = "socks-in"
+
+const (
+	maxRetries     = 3
+	initialBackoff = 100 * time.Millisecond
+	maxBackoff     = 2 * time.Second
+)
+
+// retryWithBackoff executes fn with exponential backoff on retryable errors.
+func retryWithBackoff(ctx context.Context, logger *slog.Logger, operation string, fn func(context.Context) error) error {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(math.Pow(2, float64(attempt-1))) * initialBackoff
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		err := fn(ctx)
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if error is retryable (gRPC errors, temporary network errors)
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
+				logger.Debug("retryable error, backing off", slog.String("operation", operation), slog.Int("attempt", attempt+1), slog.String("error", err.Error()))
+				continue
+			}
+		}
+
+		// For non-retryable errors, return immediately
+		break
+	}
+	return lastErr
+}
 
 // Engine probes nodes via native Xray gRPC API: temporary outbound + routing rule, then HTTP GET through local SOCKS.
 type Engine struct {
@@ -105,8 +151,8 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if err := e.ensureConn(ctx); err != nil {
-		e.logger.Warn("xray grpc unavailable", slog.String("node_id", node.ID), slog.String("error", err.Error()))
+	if err := retryWithBackoff(ctx, e.logger, "ensureConn", e.ensureConn); err != nil {
+		e.logger.Warn("xray grpc unavailable after retries", slog.String("node_id", node.ID), slog.String("error", err.Error()))
 		return domain.ProbeResult{}, fmt.Errorf("probing node %s via xray: %w", node.ID, err)
 	}
 

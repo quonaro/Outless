@@ -21,7 +21,11 @@ type Server struct {
 
 // Config defines HTTP server settings.
 type Config struct {
-	Address string
+	Address           string
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ReadHeaderTimeout time.Duration
 }
 
 // Handlers groups all HTTP handlers the server wires up.
@@ -54,6 +58,7 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, rea
 	handlers.Stats.Register(humaAPI)
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
+	rateLimitMiddleware := NewRateLimitMiddleware(logger)
 	loggingMiddleware := NewLoggingMiddleware(logger)
 	routedHandler := http.Handler(mux)
 	if realtime != nil {
@@ -65,12 +70,16 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, rea
 		})
 	}
 	baseHandler := jwtMiddleware.Wrap(routedHandler)
-	handler := loggingMiddleware.Wrap(baseHandler)
+	rateLimitedHandler := rateLimitMiddleware.Wrap(baseHandler)
+	handler := loggingMiddleware.Wrap(rateLimitedHandler)
 
 	srv := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}
 
 	return &Server{server: srv, logger: logger}

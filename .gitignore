@@ -11,6 +11,8 @@
 # Output of the go coverage tool
 *.out
 
+
+
 # Dependency directories
 vendor/
 
@@ -29,6 +31,7 @@ outless.yaml
 .cursor/
 .windsurf/
 .antigravity/
+.agents/
 *.swp
 *.swo
 *~

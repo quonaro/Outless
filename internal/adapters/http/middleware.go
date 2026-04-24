@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"outless/internal/app/auth"
 )
@@ -155,4 +157,90 @@ func (m *LoggingMiddleware) Wrap(next http.Handler) http.Handler {
 func GetClaims(ctx context.Context) *auth.Claims {
 	claims, _ := ctx.Value(claimsKey).(*auth.Claims)
 	return claims
+}
+
+// RateLimitMiddleware implements simple IP-based rate limiting.
+type RateLimitMiddleware struct {
+	logger  *slog.Logger
+	limiter *rateLimiter
+}
+
+// rateLimiter tracks request counts per IP using sliding window.
+type rateLimiter struct {
+	mu  sync.RWMutex
+	ips map[string]*ipState
+}
+
+type ipState struct {
+	requests []time.Time
+}
+
+const (
+	maxRequestsPerMinute = 60
+	cleanupInterval      = 5 * time.Minute
+)
+
+// NewRateLimitMiddleware constructs a rate limiting middleware.
+func NewRateLimitMiddleware(logger *slog.Logger) *RateLimitMiddleware {
+	rl := &RateLimitMiddleware{
+		logger:  logger,
+		limiter: &rateLimiter{ips: make(map[string]*ipState)},
+	}
+	go rl.cleanupOldEntries()
+	return rl
+}
+
+func (m *RateLimitMiddleware) cleanupOldEntries() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		m.limiter.mu.Lock()
+		now := time.Now()
+		for ip, state := range m.limiter.ips {
+			// Remove entries with no recent requests
+			if len(state.requests) == 0 || now.Sub(state.requests[len(state.requests)-1]) > cleanupInterval {
+				delete(m.limiter.ips, ip)
+			}
+		}
+		m.limiter.mu.Unlock()
+	}
+}
+
+// Wrap returns an http.Handler that enforces rate limiting.
+func (m *RateLimitMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := extractRemoteIP(r.RemoteAddr)
+
+		m.limiter.mu.Lock()
+		state, exists := m.limiter.ips[ip]
+		if !exists {
+			state = &ipState{requests: make([]time.Time, 0)}
+			m.limiter.ips[ip] = state
+		}
+
+		now := time.Now()
+		// Remove requests older than 1 minute
+		validIdx := 0
+		for i, reqTime := range state.requests {
+			if now.Sub(reqTime) < time.Minute {
+				validIdx = i
+				break
+			}
+		}
+		state.requests = state.requests[validIdx:]
+
+		// Check if limit exceeded
+		if len(state.requests) >= maxRequestsPerMinute {
+			m.limiter.mu.Unlock()
+			m.logger.Warn("rate limit exceeded", slog.String("ip", ip), slog.Int("requests", len(state.requests)))
+			writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+
+		state.requests = append(state.requests, now)
+		m.limiter.mu.Unlock()
+
+		next.ServeHTTP(w, r)
+	})
 }

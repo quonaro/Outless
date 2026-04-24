@@ -19,24 +19,28 @@ const (
 	adminPort       = 10085
 	socksPort       = 1080
 	probeConfigPath = "/etc/xray/config.json"
-	hostConfigPath  = "./xray/config.json"
+	probeConfigDir  = "/etc/xray"
 )
 
 // ContainerManager manages Docker containers for Xray probe shards.
 type ContainerManager struct {
-	cli    *client.Client
-	logger *slog.Logger
+	cli            *client.Client
+	logger         *slog.Logger
+	configVolume   string
+	hostConfigPath string
 }
 
 // NewContainerManager creates a new Docker container manager.
-func NewContainerManager(logger *slog.Logger) (*ContainerManager, error) {
+func NewContainerManager(logger *slog.Logger, configVolume, hostConfigPath string) (*ContainerManager, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 	return &ContainerManager{
-		cli:    cli,
-		logger: logger,
+		cli:            cli,
+		logger:         logger,
+		configVolume:   configVolume,
+		hostConfigPath: hostConfigPath,
 	}, nil
 }
 
@@ -59,9 +63,9 @@ func (m *ContainerManager) CreateProbeContainer(ctx context.Context, name string
 		},
 		Mounts: []mount.Mount{
 			{
-				Type:     mount.TypeBind,
-				Source:   hostConfigPath,
-				Target:   probeConfigPath,
+				Type:     mount.TypeVolume,
+				Source:   m.configVolume,
+				Target:   probeConfigDir,
 				ReadOnly: true,
 			},
 		},

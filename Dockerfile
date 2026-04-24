@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o
 FROM alpine:3.22 AS runtime-base
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 appuser
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 appuser && mkdir -p /app/tmp && chown appuser:appuser /app/tmp
 
 COPY --from=builder /out/ /usr/local/bin/
 

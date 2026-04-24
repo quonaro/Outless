@@ -137,7 +137,13 @@ func main() {
 		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
 		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, logger),
 	}
-	server := httpadapter.NewServer(httpadapter.Config{Address: cfg.HTTPAddress}, logger, jwtService, realtime, handlers)
+	server := httpadapter.NewServer(httpadapter.Config{
+		Address:           cfg.HTTPAddress,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+	}, logger, jwtService, realtime, handlers)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
@@ -222,6 +228,12 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
 
+	yamlCfg.ApplyCompatibility()
+
+	if err := yamlCfg.Validate(); err != nil {
+		return Config{}, fmt.Errorf("config validation failed: %w", err)
+	}
+
 	cfg := Config{
 		DatabaseURL:           yamlCfg.Database.URL,
 		HTTPAddress:           ":41220",
@@ -292,7 +304,8 @@ func bootstrapAdminFromEnv(ctx context.Context, adminRepo domain.AdminRepository
 		return nil
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(cfg.OutlessPassword), bcrypt.DefaultCost)
+	// bcrypt cost 12 provides stronger security than DefaultCost (typically 10)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(cfg.OutlessPassword), 12)
 	if err != nil {
 		return fmt.Errorf("hashing OUTLESS_PASSWORD: %w", err)
 	}
