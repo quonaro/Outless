@@ -1,68 +1,40 @@
 services:
-  postgres:
+  database:
     image: postgres:16-alpine
     container_name: outless-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-outless}
-      POSTGRES_USER: ${POSTGRES_USER:-outless}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-outless}
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+      POSTGRES_DB: outless
+      POSTGRES_USER: outless
+      POSTGRES_PASSWORD: outless
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
-      - ./migrations/002_add_admins.sql:/docker-entrypoint-initdb.d/002_add_admins.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U outless -d outless" ]
       interval: 5s
-      timeout: 3s
-      retries: 20
+      timeout: 5s
+      retries: 10
 
   outless:
+    container_name: outless
     build:
       context: .
       dockerfile: Dockerfile
       target: outless
-    container_name: outless
     restart: unless-stopped
     depends_on:
-      postgres:
+      database:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     ports:
-      - "41220:41220" # API
-      - "443:443" # Hub
+      - "41220:41220"
+      - "443:443"
     volumes:
-      - ./outless.yaml:/app/outless.yaml:rw
-      - outless_runtime:/var/lib/outless
-      - outless_tmp:/app/tmp
+      - ./outless.yaml:/app/outless.yaml
+      - ./migrations:/app/migrations
     command: [ "-config", "/app/outless.yaml" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:41220/v1/stats || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
 volumes:
   postgres_data:
     name: outless-db
-  outless_runtime:
-    name: outless-runtime
-  outless_tmp:
-    name: outless-tmp

@@ -64,7 +64,7 @@ func main() {
 	flag.Parse()
 
 	// Create initial logger for config loading errors
-	logger := logging.New("unified")
+	logger := logging.New("outless")
 
 	cfg, yamlCfg, err := loadConfig(*configPath, logger)
 	if err != nil {
@@ -73,16 +73,22 @@ func main() {
 	}
 
 	// Re-create logger with config-based settings
-	logger = logging.NewFromConfig("unified", yamlCfg.Logs, "main")
+	logger = logging.NewFromConfig("outless", yamlCfg.Logs, "main")
 
 	// Create separate loggers for different modules
-	apiLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "api")
-	monitorLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "monitor")
-	routerLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "router")
-	agentLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "agent")
+	apiLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "api")
+	monitorLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "monitor")
+	routerLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "router")
+	agentLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "agent")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Run database migrations
+	if err := postgres.MigrateDatabase(cfg.DatabaseURL, "/app/migrations", logger); err != nil {
+		logger.Error("failed to run database migrations", slog.String("error", err.Error()), slog.String("db_url", cfg.DatabaseURL))
+		os.Exit(1)
+	}
 
 	db, err := postgres.NewGormDB(cfg.DatabaseURL)
 	if err != nil {
@@ -332,11 +338,11 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 	cfg := Config{
 		DatabaseURL:           yamlCfg.Database.URL,
 		HTTPAddress:           ":41220",
-		JWTSecret:             yamlCfg.API.JWT.Secret,
-		JWTExpiry:             yamlCfg.API.JWT.Expiry,
+		JWTSecret:             yamlCfg.JWT.Secret,
+		JWTExpiry:             yamlCfg.JWT.Expiry,
 		ShutdownTimeout:       yamlCfg.API.Shutdown,
-		AdminLogin:            yamlCfg.API.Admin.Login,
-		AdminPassword:         yamlCfg.API.Admin.Password,
+		AdminLogin:            yamlCfg.Admin.Login,
+		AdminPassword:         yamlCfg.Admin.Password,
 		PublicRefreshInterval: yamlCfg.Monitor.RefreshInterval,
 		RouterPort:            yamlCfg.Router.Port,
 		RouterSNI:             yamlCfg.Router.SNI,

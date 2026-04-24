@@ -86,11 +86,3 @@ type ProbeJobRepository interface {
 	GetByID(ctx context.Context, id string) (ProbeJob, error)
 	List(ctx context.Context, filter ProbeJobListFilter) ([]ProbeJob, error)
 }
-
-// DockerContainerManager provides operations for managing Docker containers.
-type DockerContainerManager interface {
-	CreateProbeContainer(ctx context.Context, name string) error
-	RemoveProbeContainer(ctx context.Context, name string) error
-	ListProbeContainers(ctx context.Context) ([]string, error)
-	ContainerExists(ctx context.Context, name string) (bool, error)
-}

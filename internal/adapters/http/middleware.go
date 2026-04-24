@@ -80,7 +80,6 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 		claims, err := m.jwtService.ValidateToken(token)
 		if err != nil {
-			m.logger.Warn("invalid token", slog.String("error", err.Error()))
 			writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}

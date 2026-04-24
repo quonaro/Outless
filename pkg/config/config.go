@@ -9,10 +9,11 @@ import (
 // Config holds unified configuration for all Outless services.
 type Config struct {
 	Database DatabaseConfig `yaml:"database"`
+	JWT      JWTConfig      `yaml:"jwt"`
+	Admin    AdminConfig    `yaml:"admin"`
 	API      APIConfig      `yaml:"api"`
 	Monitor  MonitorConfig  `yaml:"monitor"`
 	Router   RouterConfig   `yaml:"router"`
-	Xray     XrayConfig     `yaml:"xray"`
 	Logs     LogsConfig     `yaml:"logs"`
 }
 
@@ -66,7 +67,6 @@ type AgentsConfig struct {
 
 // RouterConfig holds Router (Xray edge) configuration.
 type RouterConfig struct {
-	Host         string        `yaml:"host"`
 	Port         int           `yaml:"port"`
 	SNI          string        `yaml:"sni"`
 	PublicKey    string        `yaml:"public_key"`
@@ -75,30 +75,6 @@ type RouterConfig struct {
 	Fingerprint  string        `yaml:"fingerprint"`
 	Address      string        `yaml:"address"`
 	SyncInterval time.Duration `yaml:"sync_interval"`
-	ConfigPath   string        `yaml:"config_path"`
-	XrayBinary   string        `yaml:"xray_binary"`
-}
-
-// XrayConfig holds Xray runtime configuration.
-type XrayConfig struct {
-	Edge  XrayInstanceConfig `yaml:"edge"`
-	Probe XrayInstanceConfig `yaml:"probe"`
-}
-
-// XrayInstanceConfig holds configuration for a single Xray instance.
-type XrayInstanceConfig struct {
-	RuntimeMode string        `yaml:"runtime_mode"`
-	AdminURL    string        `yaml:"admin_url"`
-	SocksAddr   string        `yaml:"socks_addr"`
-	ConfigPath  string        `yaml:"config_path"`
-	XrayBinary  string        `yaml:"xray_binary"`
-	ProbeURL    string        `yaml:"probe_url,omitempty"`
-	ShardCount  int           `yaml:"shard_count,omitempty"`
-	Shards      []string      `yaml:"shards,omitempty"`
-	GeoIPDBPath string        `yaml:"geoip_db_path,omitempty"`
-	GeoIPDBURL  string        `yaml:"geoip_db_url,omitempty"`
-	GeoIPAuto   bool          `yaml:"geoip_auto,omitempty"`
-	GeoIPTTL    time.Duration `yaml:"geoip_ttl,omitempty"`
 }
 
 // LogsConfig holds logging configuration.
@@ -115,16 +91,16 @@ func DefaultConfig() Config {
 		Database: DatabaseConfig{
 			URL: "postgres://outless:outless@localhost:5432/outless?sslmode=disable",
 		},
+		JWT: JWTConfig{
+			Secret: "CHANGE_ME_IN_PRODUCTION",
+			Expiry: 24 * time.Hour,
+		},
+		Admin: AdminConfig{
+			Login:    "",
+			Password: "",
+		},
 		API: APIConfig{
 			Shutdown: 10 * time.Second,
-			JWT: JWTConfig{
-				Secret: "CHANGE_ME_IN_PRODUCTION",
-				Expiry: 24 * time.Hour,
-			},
-			Admin: AdminConfig{
-				Login:    "",
-				Password: "",
-			},
 		},
 		Monitor: MonitorConfig{
 			Workers:         16,
@@ -143,7 +119,6 @@ func DefaultConfig() Config {
 			},
 		},
 		Router: RouterConfig{
-			Host:         "localhost",
 			Port:         443,
 			SNI:          "www.google.com",
 			PublicKey:    "",
@@ -152,30 +127,6 @@ func DefaultConfig() Config {
 			Fingerprint:  "chrome",
 			Address:      ":443",
 			SyncInterval: 30 * time.Second,
-			ConfigPath:   "/var/lib/outless/xray-hub.json",
-			XrayBinary:   "xray",
-		},
-		Xray: XrayConfig{
-			Edge: XrayInstanceConfig{
-				RuntimeMode: "embedded",
-				AdminURL:    "http://127.0.0.1:10086",
-				SocksAddr:   "127.0.0.1:1081",
-				ConfigPath:  "/var/lib/outless/xray-hub.json",
-				XrayBinary:  "xray",
-			},
-			Probe: XrayInstanceConfig{
-				RuntimeMode: "embedded",
-				AdminURL:    "http://127.0.0.1:10085",
-				ProbeURL:    "https://www.google.com/generate_204",
-				SocksAddr:   "127.0.0.1:1080",
-				ShardCount:  2,
-				Shards:      []string{},
-				XrayBinary:  "xray",
-				GeoIPDBPath: "/app/tmp/GeoLite2-Country.mmdb",
-				GeoIPDBURL:  "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb",
-				GeoIPAuto:   true,
-				GeoIPTTL:    24 * time.Hour,
-			},
 		},
 		Logs: LogsConfig{
 			Level:    "info",
@@ -188,10 +139,10 @@ func DefaultConfig() Config {
 
 // Validate checks critical configuration values and returns an error if they are invalid.
 func (c *Config) Validate() error {
-	if strings.TrimSpace(c.API.JWT.Secret) == "CHANGE_ME_IN_PRODUCTION" {
+	if strings.TrimSpace(c.JWT.Secret) == "CHANGE_ME_IN_PRODUCTION" {
 		return fmt.Errorf("JWT secret must be changed from default value")
 	}
-	if strings.TrimSpace(c.API.JWT.Secret) == "" {
+	if strings.TrimSpace(c.JWT.Secret) == "" {
 		return fmt.Errorf("JWT secret cannot be empty")
 	}
 	return nil
