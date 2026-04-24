@@ -41,6 +41,7 @@ services:
     environment:
       XRAY_CONFIG_PATH: /app/xray/config.json
       XRAY_CONFIG_VOLUME: outless-xray-config
+      DOCKER_NETWORK: backend_default
     deploy:
       resources:
         limits:

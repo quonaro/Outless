@@ -38,7 +38,7 @@ type CreateGroupInput struct {
 	Body struct {
 		Name                  string `json:"name" required:"true" maxLength:"100"`
 		SourceURL             string `json:"source_url"`
-		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable"`
+		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
 	}
 }
 
@@ -62,7 +62,7 @@ type UpdateGroupInput struct {
 	Body struct {
 		Name                  string `json:"name" required:"true" maxLength:"100"`
 		SourceURL             string `json:"source_url"`
-		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable"`
+		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
 	}
 }
 

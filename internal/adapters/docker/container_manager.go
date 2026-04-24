@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"outless/internal/domain"
 
@@ -28,6 +29,7 @@ type ContainerManager struct {
 	logger         *slog.Logger
 	configVolume   string
 	hostConfigPath string
+	network        string
 }
 
 // NewContainerManager creates a new Docker container manager.
@@ -36,11 +38,16 @@ func NewContainerManager(logger *slog.Logger, configVolume, hostConfigPath strin
 	if err != nil {
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
+	network := os.Getenv("DOCKER_NETWORK")
+	if network == "" {
+		network = "backend_default"
+	}
 	return &ContainerManager{
 		cli:            cli,
 		logger:         logger,
 		configVolume:   configVolume,
 		hostConfigPath: hostConfigPath,
+		network:        network,
 	}, nil
 }
 
@@ -61,6 +68,7 @@ func (m *ContainerManager) CreateProbeContainer(ctx context.Context, name string
 		RestartPolicy: container.RestartPolicy{
 			Name: "unless-stopped",
 		},
+		NetworkMode: container.NetworkMode(m.network),
 		Mounts: []mount.Mount{
 			{
 				Type:     mount.TypeVolume,

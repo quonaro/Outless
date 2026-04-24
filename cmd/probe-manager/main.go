@@ -74,7 +74,14 @@ func main() {
 
 	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("probe manager exited with error", slog.String("error", err.Error()))
-		os.Exit(1)
+	}
+
+	// Cleanup on exit
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := svc.Cleanup(cleanupCtx); err != nil {
+		logger.Error("cleanup failed", slog.String("error", err.Error()))
 	}
 
 	logger.Info("probe manager shutdown complete")
@@ -184,5 +191,24 @@ func (s *Service) Sync(ctx context.Context) error {
 	}
 
 	s.logger.Info("probe containers synced", slog.Int("desired", s.shardCount), slog.Int("existing", len(existing)))
+	return nil
+}
+
+// Cleanup removes all managed probe containers.
+func (s *Service) Cleanup(ctx context.Context) error {
+	s.logger.Info("cleaning up probe containers")
+	existing, err := s.docker.ListProbeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("listing containers for cleanup: %w", err)
+	}
+
+	for _, name := range existing {
+		if err := s.docker.RemoveProbeContainer(ctx, name); err != nil {
+			s.logger.Warn("failed to remove container during cleanup",
+				slog.String("name", name),
+				slog.String("error", err.Error()))
+		}
+	}
+
 	return nil
 }
