@@ -103,9 +103,10 @@ type XrayInstanceConfig struct {
 
 // LogsConfig holds logging configuration.
 type LogsConfig struct {
-	Level   string `yaml:"level"`
-	Colored bool   `yaml:"colored"`
-	Type    string `yaml:"type"`
+	Level    string `yaml:"level"`
+	Colored  bool   `yaml:"colored"`
+	Type     string `yaml:"type"`
+	FilePath string `yaml:"file_path"`
 }
 
 // DefaultConfig returns default configuration.
@@ -177,9 +178,10 @@ func DefaultConfig() Config {
 			},
 		},
 		Logs: LogsConfig{
-			Level:   "info",
-			Colored: true,
-			Type:    "pretty",
+			Level:    "info",
+			Colored:  true,
+			Type:     "pretty",
+			FilePath: "/var/log/outless/outless.log",
 		},
 	}
 }

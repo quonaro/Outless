@@ -73,7 +73,13 @@ func main() {
 	}
 
 	// Re-create logger with config-based settings
-	logger = logging.NewFromConfig("unified", yamlCfg.Logs)
+	logger = logging.NewFromConfig("unified", yamlCfg.Logs, "main")
+
+	// Create separate loggers for different modules
+	apiLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "api")
+	monitorLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "monitor")
+	routerLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "router")
+	agentLogger := logging.NewFromConfig("unified", yamlCfg.Logs, "agent")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -85,12 +91,12 @@ func main() {
 	}
 
 	// Initialize repositories
-	nodeRepo := postgres.NewGormNodeRepository(db, logger)
-	tokenRepo := postgres.NewGormTokenRepository(db, logger)
-	groupRepo := postgres.NewGormGroupRepository(db, logger)
-	probeJobRepo := postgres.NewGormProbeJobRepository(db, logger)
-	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, logger)
-	adminRepo := postgres.NewGormAdminRepository(db, logger)
+	nodeRepo := postgres.NewGormNodeRepository(db, monitorLogger)
+	tokenRepo := postgres.NewGormTokenRepository(db, monitorLogger)
+	groupRepo := postgres.NewGormGroupRepository(db, monitorLogger)
+	probeJobRepo := postgres.NewGormProbeJobRepository(db, monitorLogger)
+	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, monitorLogger)
+	adminRepo := postgres.NewGormAdminRepository(db, apiLogger)
 
 	// Bootstrap admin from env
 	if err = bootstrapAdminFromEnv(ctx, adminRepo, cfg, logger); err != nil {
@@ -110,10 +116,10 @@ func main() {
 			ShortID:     cfg.RouterShortID,
 			Destination: cfg.RouterSNI + ":443",
 		},
-	}, logger)
+	}, routerLogger)
 
 	// Start embedded probe pool
-	probePool := xray.NewProbeRuntimePool(logger, "xray", 10085, "/tmp/outless-probe")
+	probePool := xray.NewProbeRuntimePool(agentLogger, "xray", 10085, "/tmp/outless-probe")
 	if err := probePool.Start(ctx, cfg.AgentsWorkers); err != nil {
 		logger.Error("failed to start embedded probe pool", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -123,7 +129,7 @@ func main() {
 	probeShards := probePool.ShardConfigs()
 
 	// Initialize probe engine
-	probeEngine, err := xray.NewProbeEnginePool(logger, cfg.AgentsURL, probeShards, xray.GeoIPConfig{
+	probeEngine, err := xray.NewProbeEnginePool(agentLogger, cfg.AgentsURL, probeShards, xray.GeoIPConfig{
 		DBPath: cfg.MonitorGeoIPDBPath,
 		DBURL:  cfg.MonitorGeoIPDBURL,
 		Auto:   cfg.MonitorGeoIPAuto,
@@ -143,12 +149,12 @@ func main() {
 		PublicKey:   cfg.RouterPublicKey,
 		ShortID:     cfg.RouterShortID,
 		Fingerprint: cfg.RouterFingerprint,
-	}, logger)
-	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, logger)
+	}, apiLogger)
+	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, monitorLogger)
 
 	// Initialize monitor service
-	monitorService := monitor.NewService(nodeRepo, probeEngine, logger, monitor.Config{Workers: cfg.MonitorWorkers})
-	jobRunner := monitor.NewJobRunner(probeJobRepo, nodeRepo, probeEngine, logger)
+	monitorService := monitor.NewService(nodeRepo, probeEngine, monitorLogger, monitor.Config{Workers: cfg.MonitorWorkers})
+	jobRunner := monitor.NewJobRunner(probeJobRepo, nodeRepo, probeEngine, monitorLogger)
 
 	// Initialize HTTP handlers
 	realtime := httpadapter.NewRealtimeHandler(
@@ -156,19 +162,19 @@ func main() {
 		groupRepo,
 		cfg.PublicRefreshInterval,
 		filepath.Join(os.TempDir(), "outless", "realtime-state.json"),
-		logger,
+		apiLogger,
 	)
 	handlers := httpadapter.Handlers{
-		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
-		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
-		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, probeJobRepo, realtime, logger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, probeJobRepo, realtime, logger),
-		ProbeJobs:    httpadapter.NewProbeJobHandler(probeJobRepo, logger),
-		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
-		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),
-		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
-		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, logger),
+		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, apiLogger),
+		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, apiLogger),
+		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, apiLogger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, probeJobRepo, realtime, apiLogger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, probeJobRepo, realtime, apiLogger),
+		ProbeJobs:    httpadapter.NewProbeJobHandler(probeJobRepo, apiLogger),
+		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, apiLogger),
+		Settings:     httpadapter.NewSettingsHandler(*configPath, apiLogger),
+		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, apiLogger),
+		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, apiLogger),
 	}
 	server := httpadapter.NewServer(httpadapter.Config{
 		Address:           cfg.HTTPAddress,
@@ -176,33 +182,33 @@ func main() {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
-	}, logger, jwtService, realtime, handlers)
+	}, apiLogger, jwtService, realtime, handlers)
 
 	// Start all services in errgroup
 	g, gCtx := errgroup.WithContext(ctx)
 
 	// Hub manager
 	g.Go(func() error {
-		logger.Info("starting hub manager")
+		routerLogger.Info("starting hub manager")
 		return hubManager.Run(gCtx)
 	})
 
 	// HTTP API server
 	g.Go(func() error {
-		logger.Info("starting http api server", slog.String("address", cfg.HTTPAddress))
+		apiLogger.Info("starting http api server", slog.String("address", cfg.HTTPAddress))
 		return server.Start()
 	})
 
 	// Checker worker
 	g.Go(func() error {
-		logger.Info("starting monitor worker")
-		return runMonitorWorker(gCtx, monitorService, jobRunner, cfg.MonitorPollInterval, cfg.MonitorCheckInterval, cfg.MonitorWorkers, logger)
+		monitorLogger.Info("starting monitor worker")
+		return runMonitorWorker(gCtx, monitorService, jobRunner, cfg.MonitorPollInterval, cfg.MonitorCheckInterval, cfg.MonitorWorkers, monitorLogger)
 	})
 
 	// Public source worker
 	g.Go(func() error {
-		logger.Info("starting public source worker")
-		return runPublicSourceWorker(gCtx, publicService, cfg.PublicRefreshInterval, realtime, logger)
+		monitorLogger.Info("starting public source worker")
+		return runPublicSourceWorker(gCtx, publicService, cfg.PublicRefreshInterval, realtime, monitorLogger)
 	})
 
 	// Graceful shutdown
