@@ -281,6 +281,25 @@ func (r *GormTokenRepository) Deactivate(ctx context.Context, id string) error {
 	return nil
 }
 
+// Activate reactivates a token by ID.
+func (r *GormTokenRepository) Activate(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).
+		Model(&tokenModel{}).
+		Where("id = ?", id).
+		Update("is_active", true)
+
+	if result.Error != nil {
+		return fmt.Errorf("activating token: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("token not found: %w", domain.ErrNodeNotFound)
+	}
+
+	r.logger.Info("token activated", slog.String("id", id))
+	return nil
+}
+
 // Remove permanently deletes a token by ID.
 func (r *GormTokenRepository) Remove(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).

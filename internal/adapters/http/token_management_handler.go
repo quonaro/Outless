@@ -71,6 +71,7 @@ func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/tokens", h.CreateToken)
 	huma.Get(api, "/v1/tokens", h.ListTokens)
 	huma.Post(api, "/v1/tokens/{id}/deactivate", h.DeactivateToken)
+	huma.Post(api, "/v1/tokens/{id}/activate", h.ActivateToken)
 	huma.Delete(api, "/v1/tokens/{id}", h.RemoveToken)
 }
 
@@ -156,6 +157,15 @@ func (h *TokenManagementHandler) DeactivateToken(ctx context.Context, input *Del
 	if err := h.tokenRepo.Deactivate(ctx, input.ID); err != nil {
 		h.logger.Error("failed to deactivate token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to deactivate token")
+	}
+
+	return nil, nil
+}
+
+func (h *TokenManagementHandler) ActivateToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+	if err := h.tokenRepo.Activate(ctx, input.ID); err != nil {
+		h.logger.Error("failed to activate token", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to activate token")
 	}
 
 	return nil, nil

@@ -144,7 +144,9 @@ func buildRuntimeController(cfg HubConfig, logger *slog.Logger) (hub.RuntimeCont
 		if strings.TrimSpace(cfg.XrayBinary) != "" {
 			logger.Warn("xray.edge.xray_binary is ignored in external mode", slog.String("xray_binary", cfg.XrayBinary))
 		}
-		return xray.NewExternalRuntimeController(logger), nil
+		// Use DockerRuntimeController to send HUP signal via docker CLI
+		// This requires docker.sock to be mounted in the hub container
+		return xray.NewDockerRuntimeController(logger, "outless-xray-edge"), nil
 	default:
 		return nil, fmt.Errorf("unsupported xray.edge.runtime_mode: %q", cfg.RuntimeMode)
 	}

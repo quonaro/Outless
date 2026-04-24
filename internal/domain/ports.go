@@ -38,6 +38,7 @@ type TokenRepository interface {
 	ListActive(ctx context.Context, at time.Time) ([]Token, error)
 	List(ctx context.Context) ([]Token, error)
 	Deactivate(ctx context.Context, id string) error
+	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
 }
 
