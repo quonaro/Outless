@@ -123,23 +123,6 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 }
 
 func validateProbeConfig(cfg Config) error {
-	if strings.TrimSpace(cfg.XrayAdminURL) == "" {
-		return errors.New("xray.probe.admin_url is required")
-	}
-	if strings.TrimSpace(cfg.XraySocksAddr) == "" {
-		return errors.New("xray.probe.socks_addr is required")
-	}
-	if len(cfg.XrayShards) == 0 {
-		return errors.New("xray.probe.shards must contain at least one shard")
-	}
-	for i := range cfg.XrayShards {
-		if strings.TrimSpace(cfg.XrayShards[i].AdminURL) == "" {
-			return fmt.Errorf("xray.probe.shards[%d].admin_url is required", i)
-		}
-		if strings.TrimSpace(cfg.XrayShards[i].SocksAddr) == "" {
-			return fmt.Errorf("xray.probe.shards[%d].socks_addr is required", i)
-		}
-	}
 	if strings.TrimSpace(cfg.ProbeURL) == "" {
 		return errors.New("xray.probe.probe_url is required")
 	}
@@ -148,6 +131,17 @@ func validateProbeConfig(cfg Config) error {
 	}
 	if cfg.CheckInterval <= 0 {
 		return errors.New("checker.check_interval must be greater than 0")
+	}
+	if len(cfg.XrayShards) == 0 {
+		return errors.New("xray.probe.shards must contain at least one shard (or set shard_count)")
+	}
+	for i := range cfg.XrayShards {
+		if strings.TrimSpace(cfg.XrayShards[i].AdminURL) == "" {
+			return fmt.Errorf("xray.probe.shards[%d].admin_url is required", i)
+		}
+		if strings.TrimSpace(cfg.XrayShards[i].SocksAddr) == "" {
+			return fmt.Errorf("xray.probe.shards[%d].socks_addr is required", i)
+		}
 	}
 	return nil
 }

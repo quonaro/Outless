@@ -19,6 +19,22 @@ services:
       timeout: 3s
       retries: 20
 
+  probe-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: probe-manager
+    container_name: outless-probe-manager
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./outless.docker.local.yaml:/app/outless.yaml:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./xray:/app/xray:ro
+    command: [ "-config", "/app/outless.yaml" ]
+
   api:
     build:
       context: .
@@ -29,12 +45,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      xray-probe:
+      probe-manager:
         condition: service_started
     ports:
       - "41220:41220"
     volumes:
-      - ./outless.yaml:/app/outless.yaml:rw
+      - ./outless.docker.local.yaml:/app/outless.yaml:rw
       - outless_tmp:/app/tmp
     command: [ "-config", "/app/outless.yaml" ]
 
@@ -64,10 +80,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      xray-probe:
+      probe-manager:
         condition: service_started
     volumes:
-      - ./outless.yaml:/app/outless.yaml:rw
+      - ./outless.docker.local.yaml:/app/outless.yaml:rw
       - outless_tmp:/app/tmp
     command: [ "-config", "/app/outless.yaml" ]
 
@@ -87,28 +103,6 @@ services:
     volumes:
       - outless_runtime:/var/lib/outless
     command: [ "run", "-config", "/var/lib/outless/xray-hub.json" ]
-
-  xray-probe:
-    image: ghcr.io/xtls/xray-core:latest
-    restart: unless-stopped
-    container_name: outless-xray-probe
-    expose:
-      - "10085"
-      - "1080"
-    volumes:
-      - ./xray/config.json:/etc/xray/config.json:ro
-    command: [ "run", "-config", "/etc/xray/config.json" ]
-
-  xray-probe-2:
-    image: ghcr.io/xtls/xray-core:latest
-    restart: unless-stopped
-    container_name: outless-xray-probe-2
-    expose:
-      - "10085"
-      - "1080"
-    volumes:
-      - ./xray/config.json:/etc/xray/config.json:ro
-    command: [ "run", "-config", "/etc/xray/config.json" ]
 
 volumes:
   postgres_data:

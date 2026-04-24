@@ -46,15 +46,24 @@ func NewProbeEnginePool(
 	return &ProbeEnginePool{engines: engines}, nil
 }
 
-// ProbeNode executes probe on next shard in round-robin order.
+// ProbeNode executes probe on next shard in round-robin order with retry on failure.
 func (p *ProbeEnginePool) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeResult, error) {
 	if p == nil || len(p.engines) == 0 {
 		return domain.ProbeResult{}, errors.New("probe engine pool is not configured")
 	}
-	idx := int(p.next.Add(1)-1) % len(p.engines)
-	result, err := p.engines[idx].ProbeNode(ctx, node)
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("probe shard %d: %w", idx, err)
+
+	// Retry up to 3 times with different shards
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		idx := int(p.next.Add(1)-1) % len(p.engines)
+		result, err := p.engines[idx].ProbeNode(ctx, node)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = fmt.Errorf("probe shard %d (attempt %d): %w", idx, attempt+1, err)
 	}
-	return result, nil
+
+	return domain.ProbeResult{}, lastErr
 }

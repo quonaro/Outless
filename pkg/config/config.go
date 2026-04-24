@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -123,6 +124,10 @@ type XrayProbeConfig struct {
 	AdminURL string                 `yaml:"admin_url"`
 	ProbeURL string                 `yaml:"probe_url"`
 	Shards   []XrayProbeShardConfig `yaml:"shards"`
+	// ShardCount specifies the number of probe shards to create dynamically.
+	// If set, shards are auto-generated as xray-probe-1, xray-probe-2, etc.
+	// Takes precedence over explicit Shards array when both are present.
+	ShardCount int `yaml:"shard_count"`
 	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
 	SocksAddr string `yaml:"socks_addr"`
 	// GeoIPDBPath points to a local MMDB file for offline country lookup (e.g. /app/GeoLite2-Country.mmdb).
@@ -210,6 +215,22 @@ func DefaultConfig() Config {
 	return cfg
 }
 
+// generateShardsFromCount creates shard configs for xray-probe-1, xray-probe-2, etc.
+func generateShardsFromCount(count int, _, _ string) []XrayProbeShardConfig {
+	if count <= 0 {
+		return nil
+	}
+	shards := make([]XrayProbeShardConfig, count)
+	for i := 0; i < count; i++ {
+		shardNum := i + 1
+		shards[i] = XrayProbeShardConfig{
+			AdminURL:  fmt.Sprintf("http://xray-probe-%d:10085", shardNum),
+			SocksAddr: fmt.Sprintf("xray-probe-%d:1080", shardNum),
+		}
+	}
+	return shards
+}
+
 // ApplyCompatibility maps legacy xray fields into role-based config and backfills defaults.
 func (c *Config) ApplyCompatibility() {
 	// Hub (legacy) -> xray.edge
@@ -279,7 +300,10 @@ func (c *Config) ApplyCompatibility() {
 	if c.Xray.Probe.GeoIPTTL <= 0 {
 		c.Xray.Probe.GeoIPTTL = 24 * time.Hour
 	}
-	if len(c.Xray.Probe.Shards) == 0 {
+	// Generate shards from shard_count if specified
+	if c.Xray.Probe.ShardCount > 0 {
+		c.Xray.Probe.Shards = generateShardsFromCount(c.Xray.Probe.ShardCount, c.Xray.Probe.AdminURL, c.Xray.Probe.SocksAddr)
+	} else if len(c.Xray.Probe.Shards) == 0 {
 		c.Xray.Probe.Shards = []XrayProbeShardConfig{
 			{
 				AdminURL:  c.Xray.Probe.AdminURL,
