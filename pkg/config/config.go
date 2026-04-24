@@ -1,30 +1,34 @@
 package config
 
 import (
+	"strings"
 	"time"
 )
 
 // Config holds unified configuration for all Outless services.
 type Config struct {
-	Database DatabaseConfig `yaml:"database"`
-	API      APIConfig      `yaml:"api"`
-	Checker  CheckerConfig  `yaml:"checker"`
-	Hub      HubConfig      `yaml:"hub"`
+	Database DatabaseConfig  `yaml:"database"`
+	API      APIConfig       `yaml:"api"`
+	Checker  CheckerConfig   `yaml:"checker"`
+	Hub      HubConfig       `yaml:"hub"`
+	Xray     XrayRolesConfig `yaml:"xray"`
 }
 
 // HubConfig holds Hub (Xray relay) configuration.
 type HubConfig struct {
-	Host          string        `yaml:"host"`
-	Port          int           `yaml:"port"`
-	SNI           string        `yaml:"sni"`
-	PublicKey     string        `yaml:"public_key"`
-	PrivateKey    string        `yaml:"private_key"`
-	ShortID       string        `yaml:"short_id"`
-	Fingerprint   string        `yaml:"fingerprint"`
-	ListenAddress string        `yaml:"listen_address"`
-	ConfigPath    string        `yaml:"config_path"`
-	XrayBinary    string        `yaml:"xray_binary"`
-	SyncInterval  time.Duration `yaml:"sync_interval"`
+	Host          string `yaml:"host"`
+	Port          int    `yaml:"port"`
+	SNI           string `yaml:"sni"`
+	PublicKey     string `yaml:"public_key"`
+	PrivateKey    string `yaml:"private_key"`
+	ShortID       string `yaml:"short_id"`
+	Fingerprint   string `yaml:"fingerprint"`
+	ListenAddress string `yaml:"listen_address"`
+	// ConfigPath is a legacy compatibility field.
+	ConfigPath string `yaml:"config_path"`
+	// XrayBinary is a legacy compatibility field.
+	XrayBinary   string        `yaml:"xray_binary"`
+	SyncInterval time.Duration `yaml:"sync_interval"`
 }
 
 // APIConfig holds API server configuration.
@@ -39,8 +43,10 @@ type CheckerConfig struct {
 	Workers               int           `yaml:"workers"`
 	LatencyFilter         time.Duration `yaml:"latency_filter"`
 	PublicRefreshInterval time.Duration `yaml:"public_refresh_interval"`
+	JobPollInterval       time.Duration `yaml:"job_poll_interval"`
 	CheckInterval         time.Duration `yaml:"check_interval"`
-	Xray                  XrayConfig    `yaml:"xray"`
+	// Xray is a legacy compatibility field.
+	Xray XrayConfig `yaml:"xray"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -76,9 +82,61 @@ type XrayConfig struct {
 	GeoIPTTL time.Duration `yaml:"geoip_ttl"`
 }
 
+// XrayRuntimeMode defines how hub manages the edge Xray process.
+type XrayRuntimeMode string
+
+const (
+	// XrayRuntimeEmbedded means hub starts/stops local Xray process itself.
+	XrayRuntimeEmbedded XrayRuntimeMode = "embedded"
+	// XrayRuntimeExternal means hub only writes config and expects external Xray lifecycle management.
+	XrayRuntimeExternal XrayRuntimeMode = "external"
+)
+
+const (
+	defaultEdgeAdminURL   = "http://localhost:10086"
+	defaultEdgeSocksAddr  = "127.0.0.1:1081"
+	defaultEdgeConfigPath = "/var/lib/outless/xray-hub.json"
+	defaultEdgeBinary     = "xray"
+
+	defaultProbeAdminURL = "http://localhost:10085"
+	defaultProbeURL      = "https://www.google.com/generate_204"
+	defaultProbeSocks    = "127.0.0.1:1080"
+)
+
+// XrayRolesConfig defines role-separated Xray runtime settings.
+type XrayRolesConfig struct {
+	Edge  XrayEdgeConfig  `yaml:"edge"`
+	Probe XrayProbeConfig `yaml:"probe"`
+}
+
+// XrayEdgeConfig holds settings for the relay (hub-facing) Xray instance.
+type XrayEdgeConfig struct {
+	AdminURL    string          `yaml:"admin_url"`
+	SocksAddr   string          `yaml:"socks_addr"`
+	ConfigPath  string          `yaml:"config_path"`
+	XrayBinary  string          `yaml:"xray_binary"`
+	RuntimeMode XrayRuntimeMode `yaml:"runtime_mode"`
+}
+
+// XrayProbeConfig holds settings for checker/API probe Xray instance.
+type XrayProbeConfig struct {
+	AdminURL string `yaml:"admin_url"`
+	ProbeURL string `yaml:"probe_url"`
+	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
+	SocksAddr string `yaml:"socks_addr"`
+	// GeoIPDBPath points to a local MMDB file for offline country lookup (e.g. /app/GeoLite2-Country.mmdb).
+	GeoIPDBPath string `yaml:"geoip_db_path"`
+	// GeoIPDBURL is an optional URL for downloading MMDB when auto-update is enabled.
+	GeoIPDBURL string `yaml:"geoip_db_url"`
+	// GeoIPAuto enables periodic TTL-based auto-refresh of MMDB from GeoIPDBURL.
+	GeoIPAuto bool `yaml:"geoip_auto"`
+	// GeoIPTTL defines refresh interval for auto-update.
+	GeoIPTTL time.Duration `yaml:"geoip_ttl"`
+}
+
 // DefaultConfig returns default configuration.
 func DefaultConfig() Config {
-	return Config{
+	cfg := Config{
 		Database: DatabaseConfig{
 			URL: "postgres://outless:outless@localhost:5432/outless?sslmode=disable",
 		},
@@ -97,6 +155,7 @@ func DefaultConfig() Config {
 			Workers:               16,
 			LatencyFilter:         500 * time.Millisecond,
 			PublicRefreshInterval: 10 * time.Minute,
+			JobPollInterval:       5 * time.Second,
 			CheckInterval:         10 * time.Minute,
 			Xray: XrayConfig{
 				AdminURL:    "http://localhost:10085",
@@ -113,6 +172,7 @@ func DefaultConfig() Config {
 			Port:          443,
 			SNI:           "www.google.com",
 			PublicKey:     "",
+			PrivateKey:    "",
 			ShortID:       "",
 			Fingerprint:   "chrome",
 			ListenAddress: ":443",
@@ -120,5 +180,125 @@ func DefaultConfig() Config {
 			XrayBinary:    "xray",
 			SyncInterval:  30 * time.Second,
 		},
+		Xray: XrayRolesConfig{
+			Edge: XrayEdgeConfig{
+				AdminURL:    defaultEdgeAdminURL,
+				SocksAddr:   defaultEdgeSocksAddr,
+				ConfigPath:  defaultEdgeConfigPath,
+				XrayBinary:  defaultEdgeBinary,
+				RuntimeMode: XrayRuntimeEmbedded,
+			},
+			Probe: XrayProbeConfig{
+				AdminURL:    defaultProbeAdminURL,
+				ProbeURL:    defaultProbeURL,
+				SocksAddr:   defaultProbeSocks,
+				GeoIPDBPath: "",
+				GeoIPDBURL:  "",
+				GeoIPAuto:   false,
+				GeoIPTTL:    24 * time.Hour,
+			},
+		},
+	}
+	cfg.ApplyCompatibility()
+	return cfg
+}
+
+// ApplyCompatibility maps legacy xray fields into role-based config and backfills defaults.
+func (c *Config) ApplyCompatibility() {
+	// Hub (legacy) -> xray.edge
+	if strings.TrimSpace(c.Hub.ConfigPath) != "" &&
+		(strings.TrimSpace(c.Xray.Edge.ConfigPath) == "" || c.Xray.Edge.ConfigPath == defaultEdgeConfigPath) {
+		c.Xray.Edge.ConfigPath = c.Hub.ConfigPath
+	}
+	if strings.TrimSpace(c.Hub.XrayBinary) != "" &&
+		(strings.TrimSpace(c.Xray.Edge.XrayBinary) == "" || c.Xray.Edge.XrayBinary == defaultEdgeBinary) {
+		c.Xray.Edge.XrayBinary = c.Hub.XrayBinary
+	}
+
+	// Checker (legacy) -> xray.probe
+	if strings.TrimSpace(c.Checker.Xray.AdminURL) != "" &&
+		(strings.TrimSpace(c.Xray.Probe.AdminURL) == "" || c.Xray.Probe.AdminURL == defaultProbeAdminURL) {
+		c.Xray.Probe.AdminURL = c.Checker.Xray.AdminURL
+	}
+	if strings.TrimSpace(c.Checker.Xray.ProbeURL) != "" &&
+		(strings.TrimSpace(c.Xray.Probe.ProbeURL) == "" || c.Xray.Probe.ProbeURL == defaultProbeURL) {
+		c.Xray.Probe.ProbeURL = c.Checker.Xray.ProbeURL
+	}
+	if strings.TrimSpace(c.Checker.Xray.SocksAddr) != "" &&
+		(strings.TrimSpace(c.Xray.Probe.SocksAddr) == "" || c.Xray.Probe.SocksAddr == defaultProbeSocks) {
+		c.Xray.Probe.SocksAddr = c.Checker.Xray.SocksAddr
+	}
+	if strings.TrimSpace(c.Xray.Probe.GeoIPDBPath) == "" && strings.TrimSpace(c.Checker.Xray.GeoIPDBPath) != "" {
+		c.Xray.Probe.GeoIPDBPath = c.Checker.Xray.GeoIPDBPath
+	}
+	if strings.TrimSpace(c.Xray.Probe.GeoIPDBURL) == "" && strings.TrimSpace(c.Checker.Xray.GeoIPDBURL) != "" {
+		c.Xray.Probe.GeoIPDBURL = c.Checker.Xray.GeoIPDBURL
+	}
+	if c.Checker.Xray.GeoIPTTL > 0 &&
+		(c.Xray.Probe.GeoIPTTL <= 0 || c.Xray.Probe.GeoIPTTL == 24*time.Hour) {
+		c.Xray.Probe.GeoIPTTL = c.Checker.Xray.GeoIPTTL
+	}
+	if !c.Xray.Probe.GeoIPAuto && c.Checker.Xray.GeoIPAuto {
+		c.Xray.Probe.GeoIPAuto = c.Checker.Xray.GeoIPAuto
+	}
+
+	// Defaults for xray.edge
+	if strings.TrimSpace(c.Xray.Edge.AdminURL) == "" {
+		c.Xray.Edge.AdminURL = defaultEdgeAdminURL
+	}
+	if strings.TrimSpace(c.Xray.Edge.SocksAddr) == "" {
+		c.Xray.Edge.SocksAddr = defaultEdgeSocksAddr
+	}
+	if strings.TrimSpace(c.Xray.Edge.ConfigPath) == "" {
+		c.Xray.Edge.ConfigPath = defaultEdgeConfigPath
+	}
+	if strings.TrimSpace(c.Xray.Edge.XrayBinary) == "" {
+		c.Xray.Edge.XrayBinary = defaultEdgeBinary
+	}
+	if c.Xray.Edge.RuntimeMode == "" {
+		c.Xray.Edge.RuntimeMode = XrayRuntimeEmbedded
+	}
+
+	// Defaults for xray.probe
+	if strings.TrimSpace(c.Xray.Probe.AdminURL) == "" {
+		c.Xray.Probe.AdminURL = defaultProbeAdminURL
+	}
+	if strings.TrimSpace(c.Xray.Probe.ProbeURL) == "" {
+		c.Xray.Probe.ProbeURL = defaultProbeURL
+	}
+	if strings.TrimSpace(c.Xray.Probe.SocksAddr) == "" {
+		c.Xray.Probe.SocksAddr = defaultProbeSocks
+	}
+	if c.Xray.Probe.GeoIPTTL <= 0 {
+		c.Xray.Probe.GeoIPTTL = 24 * time.Hour
+	}
+
+	// Backfill legacy fields for transitional compatibility.
+	if strings.TrimSpace(c.Hub.ConfigPath) == "" {
+		c.Hub.ConfigPath = c.Xray.Edge.ConfigPath
+	}
+	if strings.TrimSpace(c.Hub.XrayBinary) == "" {
+		c.Hub.XrayBinary = c.Xray.Edge.XrayBinary
+	}
+	if strings.TrimSpace(c.Checker.Xray.AdminURL) == "" {
+		c.Checker.Xray.AdminURL = c.Xray.Probe.AdminURL
+	}
+	if strings.TrimSpace(c.Checker.Xray.ProbeURL) == "" {
+		c.Checker.Xray.ProbeURL = c.Xray.Probe.ProbeURL
+	}
+	if strings.TrimSpace(c.Checker.Xray.SocksAddr) == "" {
+		c.Checker.Xray.SocksAddr = c.Xray.Probe.SocksAddr
+	}
+	if strings.TrimSpace(c.Checker.Xray.GeoIPDBPath) == "" {
+		c.Checker.Xray.GeoIPDBPath = c.Xray.Probe.GeoIPDBPath
+	}
+	if strings.TrimSpace(c.Checker.Xray.GeoIPDBURL) == "" {
+		c.Checker.Xray.GeoIPDBURL = c.Xray.Probe.GeoIPDBURL
+	}
+	if !c.Checker.Xray.GeoIPAuto {
+		c.Checker.Xray.GeoIPAuto = c.Xray.Probe.GeoIPAuto
+	}
+	if c.Checker.Xray.GeoIPTTL <= 0 {
+		c.Checker.Xray.GeoIPTTL = c.Xray.Probe.GeoIPTTL
 	}
 }

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,13 +16,14 @@ import (
 	"outless/internal/adapters/xray"
 	"outless/internal/app/checker"
 	"outless/pkg/config"
+	"outless/pkg/logging"
 )
 
 func main() {
 	configPath := flag.String("config", "outless.yaml", "path to config file")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := logging.New("checker")
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -38,6 +41,7 @@ func main() {
 	}
 
 	repo := postgres.NewGormNodeRepository(db, logger)
+	jobRepo := postgres.NewGormProbeJobRepository(db, logger)
 	engine := xray.NewEngine(logger, cfg.ProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, xray.GeoIPConfig{
 		DBPath: cfg.XrayGeoIPDBPath,
 		DBURL:  cfg.XrayGeoIPDBURL,
@@ -45,16 +49,23 @@ func main() {
 		TTL:    cfg.XrayGeoIPTTL,
 	}, 10*time.Second)
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
+	jobRunner := checker.NewJobRunner(jobRepo, repo, engine, logger)
 
-	// Run periodic checks with ticker
-	ticker := time.NewTicker(cfg.CheckInterval)
-	defer ticker.Stop()
+	jobTicker := time.NewTicker(cfg.JobPollInterval)
+	defer jobTicker.Stop()
+	fullCheckTicker := time.NewTicker(cfg.CheckInterval)
+	defer fullCheckTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-jobTicker.C:
+			if err = jobRunner.RunPending(ctx, cfg.Workers*2, cfg.Workers); err != nil {
+				logger.Error("probe jobs run failed", slog.String("error", err.Error()))
+				os.Exit(1)
+			}
+		case <-fullCheckTicker.C:
 			if err = service.RunOnce(ctx); err != nil {
 				logger.Error("checker run failed", slog.String("error", err.Error()))
 				os.Exit(1)
@@ -74,6 +85,7 @@ type Config struct {
 	XrayGeoIPDBURL  string
 	XrayGeoIPAuto   bool
 	XrayGeoIPTTL    time.Duration
+	JobPollInterval time.Duration
 	CheckInterval   time.Duration
 }
 
@@ -85,18 +97,42 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
 
-	return Config{
+	cfg := Config{
 		DatabaseURL:     yamlCfg.Database.URL,
 		Workers:         yamlCfg.Checker.Workers,
-		ProbeURL:        yamlCfg.Checker.Xray.ProbeURL,
-		XrayAdminURL:    yamlCfg.Checker.Xray.AdminURL,
-		XraySocksAddr:   yamlCfg.Checker.Xray.SocksAddr,
-		XrayGeoIPDBPath: yamlCfg.Checker.Xray.GeoIPDBPath,
-		XrayGeoIPDBURL:  yamlCfg.Checker.Xray.GeoIPDBURL,
-		XrayGeoIPAuto:   yamlCfg.Checker.Xray.GeoIPAuto,
-		XrayGeoIPTTL:    yamlCfg.Checker.Xray.GeoIPTTL,
+		ProbeURL:        yamlCfg.Xray.Probe.ProbeURL,
+		XrayAdminURL:    yamlCfg.Xray.Probe.AdminURL,
+		XraySocksAddr:   yamlCfg.Xray.Probe.SocksAddr,
+		XrayGeoIPDBPath: yamlCfg.Xray.Probe.GeoIPDBPath,
+		XrayGeoIPDBURL:  yamlCfg.Xray.Probe.GeoIPDBURL,
+		XrayGeoIPAuto:   yamlCfg.Xray.Probe.GeoIPAuto,
+		XrayGeoIPTTL:    yamlCfg.Xray.Probe.GeoIPTTL,
+		JobPollInterval: yamlCfg.Checker.JobPollInterval,
 		CheckInterval:   yamlCfg.Checker.CheckInterval,
-	}, nil
+	}
+	if err := validateProbeConfig(cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func validateProbeConfig(cfg Config) error {
+	if strings.TrimSpace(cfg.XrayAdminURL) == "" {
+		return errors.New("xray.probe.admin_url is required")
+	}
+	if strings.TrimSpace(cfg.XraySocksAddr) == "" {
+		return errors.New("xray.probe.socks_addr is required")
+	}
+	if strings.TrimSpace(cfg.ProbeURL) == "" {
+		return errors.New("xray.probe.probe_url is required")
+	}
+	if cfg.JobPollInterval <= 0 {
+		return errors.New("checker.job_poll_interval must be greater than 0")
+	}
+	if cfg.CheckInterval <= 0 {
+		return errors.New("checker.check_interval must be greater than 0")
+	}
+	return nil
 }
 
 func logXrayStartupStatus(adminURL string, logger *slog.Logger) {

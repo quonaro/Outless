@@ -26,18 +26,18 @@ func NewSettingsHandler(configPath string, logger *slog.Logger) *SettingsHandler
 // SafeAPIConfig exposes only non-sensitive API settings.
 // JWT secret and admin credentials are intentionally omitted.
 type SafeAPIConfig struct {
-	ShutdownTimeout string          `json:"shutdown_timeout"`
-	JWTExpiry       string          `json:"jwt_expiry"`
-	AdminLogin      string          `json:"admin_login"`
+	ShutdownTimeout string           `json:"shutdown_timeout"`
+	JWTExpiry       string           `json:"jwt_expiry"`
+	AdminLogin      string           `json:"admin_login"`
 	Hub             config.HubConfig `json:"hub"`
 }
 
 // SafeCheckerConfig exposes checker settings without secrets.
 type SafeCheckerConfig struct {
-	Workers               int              `json:"workers"`
-	LatencyFilter         string           `json:"latency_filter"`
-	PublicRefreshInterval string           `json:"public_refresh_interval"`
-	CheckInterval         string           `json:"check_interval"`
+	Workers               int               `json:"workers"`
+	LatencyFilter         string            `json:"latency_filter"`
+	PublicRefreshInterval string            `json:"public_refresh_interval"`
+	CheckInterval         string            `json:"check_interval"`
 	Xray                  config.XrayConfig `json:"xray"`
 }
 
@@ -55,8 +55,8 @@ type UpdateSettingsInput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
 		API      struct {
-			ShutdownTimeout string          `json:"shutdown_timeout"`
-			JWTExpiry       string          `json:"jwt_expiry"`
+			ShutdownTimeout string           `json:"shutdown_timeout"`
+			JWTExpiry       string           `json:"jwt_expiry"`
 			Hub             config.HubConfig `json:"hub"`
 		} `json:"api"`
 		Checker SafeCheckerConfig `json:"checker"`
@@ -92,7 +92,15 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 		LatencyFilter:         cfg.Checker.LatencyFilter.String(),
 		PublicRefreshInterval: cfg.Checker.PublicRefreshInterval.String(),
 		CheckInterval:         cfg.Checker.CheckInterval.String(),
-		Xray:                  cfg.Checker.Xray,
+		Xray: config.XrayConfig{
+			AdminURL:    cfg.Xray.Probe.AdminURL,
+			ProbeURL:    cfg.Xray.Probe.ProbeURL,
+			SocksAddr:   cfg.Xray.Probe.SocksAddr,
+			GeoIPDBPath: cfg.Xray.Probe.GeoIPDBPath,
+			GeoIPDBURL:  cfg.Xray.Probe.GeoIPDBURL,
+			GeoIPAuto:   cfg.Xray.Probe.GeoIPAuto,
+			GeoIPTTL:    cfg.Xray.Probe.GeoIPTTL,
+		},
 	}
 
 	return out, nil
@@ -116,6 +124,8 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		cfg.API.JWT.Expiry = d
 	}
 	cfg.Hub = input.Body.API.Hub
+	cfg.Xray.Edge.ConfigPath = input.Body.API.Hub.ConfigPath
+	cfg.Xray.Edge.XrayBinary = input.Body.API.Hub.XrayBinary
 
 	cfg.Checker.Workers = input.Body.Checker.Workers
 	if d := config.ParseDuration(input.Body.Checker.LatencyFilter, cfg.Checker.LatencyFilter); d > 0 {
@@ -128,6 +138,15 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		cfg.Checker.CheckInterval = d
 	}
 	cfg.Checker.Xray = input.Body.Checker.Xray
+	cfg.Xray.Probe = config.XrayProbeConfig{
+		AdminURL:    input.Body.Checker.Xray.AdminURL,
+		ProbeURL:    input.Body.Checker.Xray.ProbeURL,
+		SocksAddr:   input.Body.Checker.Xray.SocksAddr,
+		GeoIPDBPath: input.Body.Checker.Xray.GeoIPDBPath,
+		GeoIPDBURL:  input.Body.Checker.Xray.GeoIPDBURL,
+		GeoIPAuto:   input.Body.Checker.Xray.GeoIPAuto,
+		GeoIPTTL:    input.Body.Checker.Xray.GeoIPTTL,
+	}
 
 	if err := loader.Save(h.configPath, &cfg); err != nil {
 		h.logger.Error("failed to save config", slog.String("error", err.Error()))

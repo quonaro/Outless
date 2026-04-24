@@ -2,13 +2,15 @@ package httpadapter
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"outless/internal/adapters/postgres"
-	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -17,17 +19,17 @@ import (
 type GroupManagementHandler struct {
 	groupRepo domain.GroupRepository
 	nodeRepo  domain.NodeRepository
+	jobRepo   domain.ProbeJobRepository
 	realtime  *RealtimeHandler
-	engine    domain.ProxyEngine
 	logger    *slog.Logger
 }
 
-func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *RealtimeHandler, engine domain.ProxyEngine, logger *slog.Logger) *GroupManagementHandler {
+func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, jobRepo domain.ProbeJobRepository, realtime *RealtimeHandler, logger *slog.Logger) *GroupManagementHandler {
 	return &GroupManagementHandler{
 		groupRepo: groupRepo,
 		nodeRepo:  nodeRepo,
+		jobRepo:   jobRepo,
 		realtime:  realtime,
-		engine:    engine,
 		logger:    logger,
 	}
 }
@@ -79,12 +81,19 @@ type DeleteUnavailableNodesOutput struct {
 }
 
 type ProbeUnavailableNodesInput struct {
-	ID string `path:"id" required:"true"`
+	ID   string `path:"id" required:"true"`
+	Body struct {
+		Mode     string `json:"mode,omitempty"`
+		ProbeURL string `json:"probe_url,omitempty"`
+	}
 }
 
 type ProbeUnavailableNodesOutput struct {
-	Body struct {
-		Probed int `json:"probed"`
+	Status int `json:"-" status:"202"`
+	Body   struct {
+		BatchID  string `json:"batch_id"`
+		Enqueued int    `json:"enqueued"`
+		Status   string `json:"status"`
 	}
 }
 
@@ -246,22 +255,29 @@ func (h *GroupManagementHandler) ProbeUnavailableNodes(ctx context.Context, inpu
 		return nil, huma.Error500InternalServerError("failed to list nodes")
 	}
 
+	batchID := newProbeBatchID()
+	requestedBy := requestedByFromContext(ctx)
+	mode := parseProbeMode(input.Body.Mode)
+	jobs := make([]domain.ProbeJobCreate, 0, len(nodes))
 	for _, node := range nodes {
-		if err := ctx.Err(); err != nil {
-			break
-		}
-		result := nodeprobe.ProbeWithEngine(ctx, h.engine, node)
-		if saveErr := h.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
-			h.logger.Warn("probe unavailable save failed", slog.String("node_id", node.ID), slog.String("error", saveErr.Error()))
-		}
+		jobs = append(jobs, domain.ProbeJobCreate{
+			BatchID:     batchID,
+			NodeID:      node.ID,
+			GroupID:     node.GroupID,
+			RequestedBy: requestedBy,
+			Mode:        mode,
+			ProbeURL:    input.Body.ProbeURL,
+		})
+	}
+	if _, err := h.jobRepo.EnqueueBatch(ctx, jobs); err != nil {
+		h.logger.Error("failed to enqueue probe jobs batch", slog.String("group_id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to enqueue probe jobs")
 	}
 
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(true, true)
-	}
-
-	out := &ProbeUnavailableNodesOutput{}
-	out.Body.Probed = len(nodes)
+	out := &ProbeUnavailableNodesOutput{Status: 202}
+	out.Body.BatchID = batchID
+	out.Body.Enqueued = len(jobs)
+	out.Body.Status = string(domain.ProbeJobStatusPending)
 	return out, nil
 }
 
@@ -275,4 +291,12 @@ func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteG
 	}
 
 	return nil, nil
+}
+
+func newProbeBatchID() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("probe_batch_%d", time.Now().UTC().UnixNano())
+	}
+	return "probe_batch_" + hex.EncodeToString(b[:])
 }

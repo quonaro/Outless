@@ -30,3 +30,16 @@ outless.yaml
 *.swo
 *~
 tmp/
+
+# Generic temp/patch files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Build artifacts and generic binaries
+bin/
+build/
+*.bin
+*.o
+*.a

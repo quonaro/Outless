@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"outless/internal/app/subscription"
 	"outless/internal/domain"
 	"outless/pkg/config"
+	"outless/pkg/logging"
 
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
@@ -56,7 +58,7 @@ func main() {
 	configPath := flag.String("config", "outless.yaml", "path to config file")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := logging.New("api")
 
 	cfg, err := loadConfig(*configPath, logger)
 	if err != nil {
@@ -78,6 +80,7 @@ func main() {
 	nodeRepo := postgres.NewGormNodeRepository(db, logger)
 	tokenRepo := postgres.NewGormTokenRepository(db, logger)
 	groupRepo := postgres.NewGormGroupRepository(db, logger)
+	probeJobRepo := postgres.NewGormProbeJobRepository(db, logger)
 	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, logger)
 	adminRepo := postgres.NewGormAdminRepository(db, logger)
 	if err = bootstrapAdminFromEnv(ctx, adminRepo, cfg, logger); err != nil {
@@ -121,8 +124,9 @@ func main() {
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, logger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, realtime, probeEngine, logger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, realtime, probeEngine, logger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, probeJobRepo, realtime, logger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, probeJobRepo, realtime, logger),
+		ProbeJobs:    httpadapter.NewProbeJobHandler(probeJobRepo, logger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, logger),
 		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
@@ -213,7 +217,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
 
-	return Config{
+	cfg := Config{
 		DatabaseURL:           yamlCfg.Database.URL,
 		HTTPAddress:           ":41220",
 		JWTSecret:             yamlCfg.API.JWT.Secret,
@@ -228,14 +232,31 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		HubPublicKey:          yamlCfg.Hub.PublicKey,
 		HubShortID:            yamlCfg.Hub.ShortID,
 		HubFingerprint:        yamlCfg.Hub.Fingerprint,
-		XrayProbeURL:          yamlCfg.Checker.Xray.ProbeURL,
-		XrayAdminURL:          yamlCfg.Checker.Xray.AdminURL,
-		XraySocksAddr:         yamlCfg.Checker.Xray.SocksAddr,
-		XrayGeoIPDBPath:       yamlCfg.Checker.Xray.GeoIPDBPath,
-		XrayGeoIPDBURL:        yamlCfg.Checker.Xray.GeoIPDBURL,
-		XrayGeoIPAuto:         yamlCfg.Checker.Xray.GeoIPAuto,
-		XrayGeoIPTTL:          yamlCfg.Checker.Xray.GeoIPTTL,
-	}, nil
+		XrayProbeURL:          yamlCfg.Xray.Probe.ProbeURL,
+		XrayAdminURL:          yamlCfg.Xray.Probe.AdminURL,
+		XraySocksAddr:         yamlCfg.Xray.Probe.SocksAddr,
+		XrayGeoIPDBPath:       yamlCfg.Xray.Probe.GeoIPDBPath,
+		XrayGeoIPDBURL:        yamlCfg.Xray.Probe.GeoIPDBURL,
+		XrayGeoIPAuto:         yamlCfg.Xray.Probe.GeoIPAuto,
+		XrayGeoIPTTL:          yamlCfg.Xray.Probe.GeoIPTTL,
+	}
+	if err := validateProbeConfig(cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func validateProbeConfig(cfg Config) error {
+	if strings.TrimSpace(cfg.XrayAdminURL) == "" {
+		return errors.New("xray.probe.admin_url is required")
+	}
+	if strings.TrimSpace(cfg.XraySocksAddr) == "" {
+		return errors.New("xray.probe.socks_addr is required")
+	}
+	if strings.TrimSpace(cfg.XrayProbeURL) == "" {
+		return errors.New("xray.probe.probe_url is required")
+	}
+	return nil
 }
 
 func bootstrapAdminFromEnv(ctx context.Context, adminRepo domain.AdminRepository, cfg Config, logger *slog.Logger) error {

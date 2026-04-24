@@ -74,3 +74,14 @@ type PublicSourceRepository interface {
 	Update(ctx context.Context, source PublicSource) error
 	Delete(ctx context.Context, id string) error
 }
+
+// ProbeJobRepository persists asynchronous node probe jobs.
+type ProbeJobRepository interface {
+	EnqueueNode(ctx context.Context, in ProbeJobCreate) (ProbeJob, error)
+	EnqueueBatch(ctx context.Context, jobs []ProbeJobCreate) ([]ProbeJob, error)
+	ClaimPending(ctx context.Context, limit int) ([]ProbeJob, error)
+	MarkSucceeded(ctx context.Context, id string) error
+	MarkFailed(ctx context.Context, id string, reason string) error
+	GetByID(ctx context.Context, id string) (ProbeJob, error)
+	List(ctx context.Context, filter ProbeJobListFilter) ([]ProbeJob, error)
+}

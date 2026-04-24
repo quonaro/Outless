@@ -1,8 +1,5 @@
-# Outless Configuration File
-# This file is auto-generated on first run if missing
-
 database:
-  url: "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
+  url: "postgres://outless:outless@postgres:5432/outless?sslmode=disable"
 
 api:
   shutdown_timeout: "10s"
@@ -20,19 +17,19 @@ checker:
   # How often checker drains async probe_jobs queue (retry/check buttons).
   job_poll_interval: "5s"
   check_interval: "10m"
-  # Legacy section, kept for backward compatibility.
-  # New installations should prefer top-level xray.probe below.
+  # Legacy section is still supported by compatibility mapper.
   xray:
-    admin_url: "http://localhost:10085"
+    admin_url: "http://xray-probe:10085"
     probe_url: "https://www.google.com/generate_204"
-    socks_addr: "127.0.0.1:1080"
+    socks_addr: "xray-probe:1080"
     geoip_db_path: ""
     geoip_db_url: ""
     geoip_auto: false
     geoip_ttl: "24h"
 
 hub:
-  host: "localhost"
+  # Public address advertised to clients in subscription links.
+  host: "replace-with-your-public-domain"
   port: 443
   sni: "www.google.com"
   public_key: ""
@@ -40,23 +37,24 @@ hub:
   short_id: ""
   fingerprint: "chrome"
   listen_address: ":443"
-  # Legacy fields, kept for backward compatibility.
-  # New installations should prefer top-level xray.edge below.
+  # Legacy fields are kept for compatibility.
   config_path: "/var/lib/outless/xray-hub.json"
   xray_binary: "xray"
   sync_interval: "30s"
 
 xray:
   edge:
-    admin_url: "http://localhost:10086"
-    socks_addr: "127.0.0.1:1081"
+    # In external mode hub writes config only; xray-edge process is managed by compose.
+    runtime_mode: "external"
+    admin_url: "http://xray-edge:10086"
+    socks_addr: "xray-edge:1081"
     config_path: "/var/lib/outless/xray-hub.json"
-    xray_binary: "xray"
-    runtime_mode: "embedded"
+    # Ignored in external mode (kept for compatibility).
+    xray_binary: ""
   probe:
-    admin_url: "http://localhost:10085"
+    admin_url: "http://xray-probe:10085"
     probe_url: "https://www.google.com/generate_204"
-    socks_addr: "127.0.0.1:1080"
+    socks_addr: "xray-probe:1080"
     geoip_db_path: ""
     geoip_db_url: ""
     geoip_auto: false

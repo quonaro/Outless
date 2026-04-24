@@ -31,6 +31,7 @@ type Handlers struct {
 	Token        *TokenManagementHandler
 	Node         *NodeManagementHandler
 	Group        *GroupManagementHandler
+	ProbeJobs    *ProbeJobHandler
 	PublicSource *PublicSourceManagementHandler
 	Settings     *SettingsHandler
 	Admin        *AdminManagementHandler
@@ -46,6 +47,7 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *auth.JWTService, rea
 	handlers.Token.Register(humaAPI)
 	handlers.Node.Register(humaAPI)
 	handlers.Group.Register(humaAPI)
+	handlers.ProbeJobs.Register(humaAPI)
 	handlers.PublicSource.Register(humaAPI)
 	handlers.Settings.Register(humaAPI)
 	handlers.Admin.Register(humaAPI)

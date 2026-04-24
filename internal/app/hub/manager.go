@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -20,38 +18,47 @@ import (
 // ManagerConfig holds runtime settings for the Hub manager.
 type ManagerConfig struct {
 	ConfigPath   string
-	XrayBinary   string
 	SyncInterval time.Duration
 	Inbound      xray.HubInboundConfig
 }
 
-// Manager owns the Xray child process and keeps its config in sync with the DB.
+// RuntimeController abstracts how hub starts/reloads/stops edge Xray runtime.
+type RuntimeController interface {
+	Start(configPath string) error
+	Reload(configPath string) error
+	Stop()
+	Description() string
+}
+
+// Manager keeps edge Xray config in sync with DB and delegates runtime lifecycle.
 type Manager struct {
 	tokenRepo domain.TokenRepository
 	nodeRepo  domain.NodeRepository
+	runtime   RuntimeController
 	cfg       ManagerConfig
 	logger    *slog.Logger
 
-	mu      sync.Mutex
-	lastSum string
-	cmd     *exec.Cmd
+	mu            sync.Mutex
+	lastSum       string
+	runtimeActive bool
 }
 
 // NewManager builds a Hub manager.
-func NewManager(tokenRepo domain.TokenRepository, nodeRepo domain.NodeRepository, cfg ManagerConfig, logger *slog.Logger) *Manager {
+func NewManager(tokenRepo domain.TokenRepository, nodeRepo domain.NodeRepository, runtime RuntimeController, cfg ManagerConfig, logger *slog.Logger) *Manager {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = 30 * time.Second
 	}
-	if cfg.XrayBinary == "" {
-		cfg.XrayBinary = "xray"
-	}
 	if cfg.ConfigPath == "" {
 		cfg.ConfigPath = "/var/lib/outless/xray-hub.json"
+	}
+	if runtime == nil {
+		runtime = noopRuntimeController{}
 	}
 
 	return &Manager{
 		tokenRepo: tokenRepo,
 		nodeRepo:  nodeRepo,
+		runtime:   runtime,
 		cfg:       cfg,
 		logger:    logger,
 	}
@@ -65,9 +72,11 @@ func (m *Manager) Run(ctx context.Context) error {
 		return fmt.Errorf("initial hub sync: %w", err)
 	}
 
-	if err := m.startXray(); err != nil {
-		return fmt.Errorf("starting xray: %w", err)
+	if err := m.runtime.Start(m.cfg.ConfigPath); err != nil {
+		return fmt.Errorf("starting runtime (%s): %w", m.runtime.Description(), err)
 	}
+	m.runtimeActive = true
+	m.logger.Info("xray runtime started", slog.String("controller", m.runtime.Description()))
 
 	ticker := time.NewTicker(m.cfg.SyncInterval)
 	defer ticker.Stop()
@@ -76,7 +85,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			m.logger.Info("hub manager shutting down")
-			m.stopXray()
+			m.runtime.Stop()
 			return nil
 		case <-ticker.C:
 			if err := m.Sync(ctx); err != nil {
@@ -125,71 +134,12 @@ func (m *Manager) Sync(ctx context.Context) error {
 		slog.String("path", m.cfg.ConfigPath),
 	)
 
-	if m.cmd != nil {
-		if err := m.reloadXrayLocked(); err != nil {
+	if m.runtimeActive {
+		if err := m.runtime.Reload(m.cfg.ConfigPath); err != nil {
 			m.logger.Warn("xray reload failed, restart pending", slog.String("error", err.Error()))
 		}
 	}
 
-	return nil
-}
-
-func (m *Manager) startXray() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cmd != nil {
-		return errors.New("xray already running")
-	}
-
-	cmd := exec.Command(m.cfg.XrayBinary, "run", "-c", m.cfg.ConfigPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting xray process: %w", err)
-	}
-
-	m.cmd = cmd
-	m.logger.Info("xray started", slog.Int("pid", cmd.Process.Pid), slog.String("binary", m.cfg.XrayBinary))
-	return nil
-}
-
-func (m *Manager) stopXray() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cmd == nil || m.cmd.Process == nil {
-		return
-	}
-	if err := m.cmd.Process.Signal(os.Interrupt); err != nil {
-		m.logger.Warn("xray interrupt failed", slog.String("error", err.Error()))
-		_ = m.cmd.Process.Kill()
-	}
-	_ = m.cmd.Wait()
-	m.cmd = nil
-}
-
-// reloadXrayLocked restarts the child process to pick up the new config.
-// Xray has no universal SIGHUP reload across versions, so we do a clean restart.
-// Caller must hold m.mu.
-func (m *Manager) reloadXrayLocked() error {
-	if m.cmd == nil || m.cmd.Process == nil {
-		return nil
-	}
-	if err := m.cmd.Process.Signal(os.Interrupt); err != nil {
-		_ = m.cmd.Process.Kill()
-	}
-	_ = m.cmd.Wait()
-	m.cmd = nil
-
-	cmd := exec.Command(m.cfg.XrayBinary, "run", "-c", m.cfg.ConfigPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("restarting xray: %w", err)
-	}
-	m.cmd = cmd
-	m.logger.Info("xray restarted", slog.Int("pid", cmd.Process.Pid))
 	return nil
 }
 
@@ -213,3 +163,10 @@ func writeAtomic(path string, data []byte) error {
 	}
 	return nil
 }
+
+type noopRuntimeController struct{}
+
+func (noopRuntimeController) Start(string) error  { return nil }
+func (noopRuntimeController) Reload(string) error { return nil }
+func (noopRuntimeController) Stop()               {}
+func (noopRuntimeController) Description() string { return "noop" }

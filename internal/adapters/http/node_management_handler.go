@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -17,17 +16,17 @@ import (
 type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
+	jobRepo   domain.ProbeJobRepository
 	realtime  *RealtimeHandler
-	engine    domain.ProxyEngine
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, engine domain.ProxyEngine, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, jobRepo domain.ProbeJobRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
+		jobRepo:   jobRepo,
 		realtime:  realtime,
-		engine:    engine,
 		logger:    logger,
 	}
 }
@@ -74,11 +73,29 @@ type DeleteNodeInput struct {
 	ID string `path:"id" required:"true"`
 }
 
+type GetNodeInput struct {
+	ID string `path:"id" required:"true"`
+}
+
+type GetNodeOutput struct {
+	Body NodeItem `json:"node"`
+}
+
 type ProbeNodeInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
 		Mode     string `json:"mode,omitempty"`
 		ProbeURL string `json:"probe_url,omitempty"`
+	}
+}
+
+type ProbeNodeOutput struct {
+	Status int `json:"-" status:"202"`
+	Body   struct {
+		JobID       string `json:"job_id"`
+		NodeID      string `json:"node_id"`
+		Status      string `json:"status"`
+		RequestedBy string `json:"requested_by"`
 	}
 }
 
@@ -94,6 +111,7 @@ type NodeItem struct {
 func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/nodes", h.CreateNode)
 	huma.Get(api, "/v1/nodes", h.ListNodes)
+	huma.Get(api, "/v1/nodes/{id}", h.GetNode)
 	huma.Put(api, "/v1/nodes/{id}", h.UpdateNode)
 	huma.Post(api, "/v1/nodes/{id}/probe", h.ProbeNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
@@ -124,6 +142,9 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {
+		if errors.Is(err, domain.ErrDuplicateNode) {
+			return nil, huma.Error409Conflict("node already exists")
+		}
 		h.logger.Error("failed to create node", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create node")
 	}
@@ -242,6 +263,28 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 	return nil, nil
 }
 
+func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput) (*GetNodeOutput, error) {
+	node, err := h.nodeRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			return nil, huma.Error404NotFound("node not found")
+		}
+		h.logger.Error("failed to get node", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to get node")
+	}
+
+	return &GetNodeOutput{
+		Body: NodeItem{
+			ID:      node.ID,
+			URL:     node.URL,
+			GroupID: node.GroupID,
+			Latency: int64(node.Latency.Milliseconds()),
+			Status:  string(node.Status),
+			Country: domain.NormalizeCountryCode(node.Country),
+		},
+	}, nil
+}
+
 func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNodeInput) (*struct{}, error) {
 	if err := h.nodeRepo.Delete(ctx, input.ID); err != nil {
 		h.logger.Error("failed to delete node", slog.String("id", input.ID), slog.String("error", err.Error()))
@@ -254,7 +297,7 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	return nil, nil
 }
 
-func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeInput) (*struct{}, error) {
+func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeInput) (*ProbeNodeOutput, error) {
 	node, err := h.nodeRepo.FindByID(ctx, input.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNodeNotFound) {
@@ -264,25 +307,43 @@ func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeI
 		return nil, huma.Error500InternalServerError("failed to find node")
 	}
 
-	if strings.EqualFold(strings.TrimSpace(input.Body.Mode), string(domain.ProbeModeFast)) {
-		ctx = domain.WithProbeMode(ctx, domain.ProbeModeFast)
-	} else {
-		ctx = domain.WithProbeMode(ctx, domain.ProbeModeNormal)
-	}
-	ctx = domain.WithProbeURL(ctx, input.Body.ProbeURL)
-	result := nodeprobe.ProbeWithEngine(ctx, h.engine, node)
-	if err = h.nodeRepo.UpdateProbeResult(ctx, result); err != nil {
-		h.logger.Error("failed to save probe result", slog.String("id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to save probe result")
-	}
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(true, true)
+	mode := parseProbeMode(input.Body.Mode)
+	requestedBy := requestedByFromContext(ctx)
+	job, err := h.jobRepo.EnqueueNode(ctx, domain.ProbeJobCreate{
+		NodeID:      node.ID,
+		GroupID:     node.GroupID,
+		RequestedBy: requestedBy,
+		Mode:        mode,
+		ProbeURL:    input.Body.ProbeURL,
+	})
+	if err != nil {
+		h.logger.Error("failed to enqueue probe job", slog.String("node_id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to enqueue probe")
 	}
 
-	return nil, nil
+	out := &ProbeNodeOutput{Status: 202}
+	out.Body.JobID = job.ID
+	out.Body.NodeID = node.ID
+	out.Body.Status = string(job.Status)
+	out.Body.RequestedBy = requestedBy
+	return out, nil
 }
 
 func generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
+}
+
+func parseProbeMode(raw string) domain.ProbeMode {
+	if strings.EqualFold(strings.TrimSpace(raw), string(domain.ProbeModeFast)) {
+		return domain.ProbeModeFast
+	}
+	return domain.ProbeModeNormal
+}
+
+func requestedByFromContext(ctx context.Context) string {
+	if claims := GetClaims(ctx); claims != nil {
+		return strings.TrimSpace(claims.Username)
+	}
+	return ""
 }

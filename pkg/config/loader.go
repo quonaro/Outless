@@ -48,6 +48,9 @@ func (l *Loader) LoadOrCreate(path string, defaults any) error {
 	if err := yaml.Unmarshal(data, defaults); err != nil {
 		return fmt.Errorf("parsing config YAML: %w", err)
 	}
+	if cfg, ok := defaults.(*Config); ok {
+		cfg.ApplyCompatibility()
+	}
 
 	return nil
 }
@@ -56,6 +59,7 @@ func (l *Loader) LoadOrCreate(path string, defaults any) error {
 func (l *Loader) createDefault(path string, config any) error {
 	// Auto-generate secrets for config
 	if cfg, ok := config.(*Config); ok {
+		cfg.ApplyCompatibility()
 		if cfg.API.JWT.Secret == "CHANGE_ME_IN_PRODUCTION" {
 			secret, err := GenerateRandomSecret(32)
 			if err != nil {
@@ -79,6 +83,9 @@ func (l *Loader) createDefault(path string, config any) error {
 
 // Save writes config to file atomically.
 func (l *Loader) Save(path string, config any) error {
+	if cfg, ok := config.(*Config); ok {
+		cfg.ApplyCompatibility()
+	}
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)

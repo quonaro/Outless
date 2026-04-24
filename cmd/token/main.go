@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"outless/internal/adapters/postgres"
+	"outless/pkg/logging"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := logging.New("token")
 
 	owner := flag.String("owner", "dev-user", "token owner label")
 	groupID := flag.String("group", "", "token group id")

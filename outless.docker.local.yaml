@@ -1,0 +1,55 @@
+database:
+  url: "postgres://outless:outless@postgres:5432/outless?sslmode=disable"
+
+api:
+  shutdown_timeout: "10s"
+  jwt:
+    secret: "876719ad32e1805c2a3a63a6efa21ef38316d52b3aae9e37e1b1bc0ecf7ea50e"
+    expiry: "24h"
+  admin:
+    login: ""
+    password: ""
+
+checker:
+  workers: 16
+  latency_filter: "500ms"
+  public_refresh_interval: "10m"
+  job_poll_interval: "5s"
+  check_interval: "10m"
+  xray:
+    admin_url: "http://xray-probe:10085"
+    probe_url: "https://www.google.com/generate_204"
+    socks_addr: "xray-probe:1080"
+    geoip_db_path: "/app/tmp/GeoLite2-Country.mmdb"
+    geoip_db_url: "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+    geoip_auto: false
+    geoip_ttl: "24h"
+
+hub:
+  host: "localhost"
+  port: 443
+  sni: "www.google.com"
+  public_key: "C9_cqLdlKo4qZ-3PKDoOelm-u3pSzJhuuYSeChVyWBQ"
+  private_key: "wHzJBcabwsRZmq-MQDHKlIcKvZ1-uTuyWp6pQYwNtXY"
+  short_id: "bf9581aaad9c389d"
+  fingerprint: "chrome"
+  listen_address: ":443"
+  config_path: "/var/lib/outless/xray-hub.json"
+  xray_binary: "xray"
+  sync_interval: "30s"
+
+xray:
+  edge:
+    runtime_mode: "external"
+    admin_url: "http://xray-edge:10086"
+    socks_addr: "xray-edge:1081"
+    config_path: "/var/lib/outless/xray-hub.json"
+    xray_binary: ""
+  probe:
+    admin_url: "http://xray-probe:10085"
+    probe_url: "https://www.google.com/generate_204"
+    socks_addr: "xray-probe:1080"
+    geoip_db_path: "/app/tmp/GeoLite2-Country.mmdb"
+    geoip_db_url: "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+    geoip_auto: false
+    geoip_ttl: "24h"

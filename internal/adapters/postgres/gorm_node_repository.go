@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 
 	"outless/internal/domain"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -143,6 +145,9 @@ func (r *GormNodeRepository) Create(ctx context.Context, node domain.Node) error
 	}
 
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("creating node via gorm: %w", domain.ErrDuplicateNode)
+		}
 		return fmt.Errorf("creating node via gorm: %w", err)
 	}
 
@@ -493,4 +498,12 @@ func derefString(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }

@@ -1,0 +1,9 @@
+.git
+.cursor
+tmp
+node_modules
+dist
+*.log
+*.tmp
+.env
+outless.yaml
