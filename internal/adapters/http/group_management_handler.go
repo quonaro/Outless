@@ -97,6 +97,14 @@ type ProbeUnavailableNodesOutput struct {
 	}
 }
 
+type GetGroupProbeUnavailableStateInput struct {
+	ID string `path:"id" required:"true"`
+}
+
+type GetGroupProbeUnavailableStateOutput struct {
+	Body GroupProbeUnavailableState `json:"state"`
+}
+
 type GroupItem struct {
 	ID                    string     `json:"id"`
 	Name                  string     `json:"name"`
@@ -116,6 +124,7 @@ func (h *GroupManagementHandler) Register(api huma.API) {
 	huma.Put(api, "/v1/groups/{id}", h.UpdateGroup)
 	huma.Post(api, "/v1/groups/{id}/nodes/delete-unavailable", h.DeleteUnavailableNodes)
 	huma.Post(api, "/v1/groups/{id}/nodes/probe-unavailable", h.ProbeUnavailableNodes)
+	huma.Get(api, "/v1/groups/{id}/probe-unavailable-state", h.GetGroupProbeUnavailableState)
 	huma.Delete(api, "/v1/groups/{id}", h.DeleteGroup)
 }
 
@@ -238,6 +247,20 @@ func (h *GroupManagementHandler) DeleteUnavailableNodes(ctx context.Context, inp
 		h.realtime.NotifyInvalidate(true, true)
 	}
 	return out, nil
+}
+
+func (h *GroupManagementHandler) GetGroupProbeUnavailableState(ctx context.Context, input *GetGroupProbeUnavailableStateInput) (*GetGroupProbeUnavailableStateOutput, error) {
+	if _, err := h.groupRepo.FindByID(ctx, input.ID); err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			return nil, huma.Error404NotFound("group not found")
+		}
+		h.logger.Error("failed to find group", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to find group")
+	}
+	if h.realtime == nil {
+		return &GetGroupProbeUnavailableStateOutput{Body: idleGroupProbeUnavailableState()}, nil
+	}
+	return &GetGroupProbeUnavailableStateOutput{Body: h.realtime.ProbeUnavailableStateForGroup(input.ID)}, nil
 }
 
 func (h *GroupManagementHandler) ProbeUnavailableNodes(ctx context.Context, input *ProbeUnavailableNodesInput) (*ProbeUnavailableNodesOutput, error) {

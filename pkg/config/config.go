@@ -120,8 +120,9 @@ type XrayEdgeConfig struct {
 
 // XrayProbeConfig holds settings for checker/API probe Xray instance.
 type XrayProbeConfig struct {
-	AdminURL string `yaml:"admin_url"`
-	ProbeURL string `yaml:"probe_url"`
+	AdminURL string                 `yaml:"admin_url"`
+	ProbeURL string                 `yaml:"probe_url"`
+	Shards   []XrayProbeShardConfig `yaml:"shards"`
 	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
 	SocksAddr string `yaml:"socks_addr"`
 	// GeoIPDBPath points to a local MMDB file for offline country lookup (e.g. /app/GeoLite2-Country.mmdb).
@@ -132,6 +133,12 @@ type XrayProbeConfig struct {
 	GeoIPAuto bool `yaml:"geoip_auto"`
 	// GeoIPTTL defines refresh interval for auto-update.
 	GeoIPTTL time.Duration `yaml:"geoip_ttl"`
+}
+
+// XrayProbeShardConfig defines one independent probe runtime channel.
+type XrayProbeShardConfig struct {
+	AdminURL  string `yaml:"admin_url"`
+	SocksAddr string `yaml:"socks_addr"`
 }
 
 // DefaultConfig returns default configuration.
@@ -271,6 +278,29 @@ func (c *Config) ApplyCompatibility() {
 	}
 	if c.Xray.Probe.GeoIPTTL <= 0 {
 		c.Xray.Probe.GeoIPTTL = 24 * time.Hour
+	}
+	if len(c.Xray.Probe.Shards) == 0 {
+		c.Xray.Probe.Shards = []XrayProbeShardConfig{
+			{
+				AdminURL:  c.Xray.Probe.AdminURL,
+				SocksAddr: c.Xray.Probe.SocksAddr,
+			},
+		}
+	} else {
+		for i := range c.Xray.Probe.Shards {
+			if strings.TrimSpace(c.Xray.Probe.Shards[i].AdminURL) == "" {
+				c.Xray.Probe.Shards[i].AdminURL = c.Xray.Probe.AdminURL
+			}
+			if strings.TrimSpace(c.Xray.Probe.Shards[i].SocksAddr) == "" {
+				c.Xray.Probe.Shards[i].SocksAddr = c.Xray.Probe.SocksAddr
+			}
+		}
+	}
+	if strings.TrimSpace(c.Xray.Probe.AdminURL) == "" && len(c.Xray.Probe.Shards) > 0 {
+		c.Xray.Probe.AdminURL = c.Xray.Probe.Shards[0].AdminURL
+	}
+	if strings.TrimSpace(c.Xray.Probe.SocksAddr) == "" && len(c.Xray.Probe.Shards) > 0 {
+		c.Xray.Probe.SocksAddr = c.Xray.Probe.Shards[0].SocksAddr
 	}
 
 	// Backfill legacy fields for transitional compatibility.

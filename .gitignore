@@ -26,6 +26,9 @@ outless.yaml
 
 # IDE
 .idea/
+.cursor/
+.windsurf/
+.antigravity/
 *.swp
 *.swo
 *~

@@ -99,6 +99,17 @@ services:
       - ./xray/config.json:/etc/xray/config.json:ro
     command: ["run", "-config", "/etc/xray/config.json"]
 
+  xray-probe-2:
+    image: ghcr.io/xtls/xray-core:latest
+    restart: unless-stopped
+    container_name: outless-xray-probe-2
+    expose:
+      - "10085"
+      - "1080"
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-config", "/etc/xray/config.json"]
+
 volumes:
   postgres_data:
     name: outless-db

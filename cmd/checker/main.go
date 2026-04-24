@@ -32,7 +32,7 @@ func main() {
 		logger.Error("invalid config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	logXrayStartupStatus(cfg.XrayAdminURL, logger)
+	logXrayStartupStatus(cfg.XrayShards, logger)
 
 	db, err := postgres.NewGormDB(cfg.DatabaseURL)
 	if err != nil {
@@ -42,12 +42,16 @@ func main() {
 
 	repo := postgres.NewGormNodeRepository(db, logger)
 	jobRepo := postgres.NewGormProbeJobRepository(db, logger)
-	engine := xray.NewEngine(logger, cfg.ProbeURL, cfg.XrayAdminURL, cfg.XraySocksAddr, xray.GeoIPConfig{
+	engine, err := xray.NewProbeEnginePool(logger, cfg.ProbeURL, cfg.XrayShards, xray.GeoIPConfig{
 		DBPath: cfg.XrayGeoIPDBPath,
 		DBURL:  cfg.XrayGeoIPDBURL,
 		Auto:   cfg.XrayGeoIPAuto,
 		TTL:    cfg.XrayGeoIPTTL,
 	}, 10*time.Second)
+	if err != nil {
+		logger.Error("failed to configure xray probe pool", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
 	jobRunner := checker.NewJobRunner(jobRepo, repo, engine, logger)
 
@@ -81,6 +85,7 @@ type Config struct {
 	ProbeURL        string
 	XrayAdminURL    string
 	XraySocksAddr   string
+	XrayShards      []config.XrayProbeShardConfig
 	XrayGeoIPDBPath string
 	XrayGeoIPDBURL  string
 	XrayGeoIPAuto   bool
@@ -103,6 +108,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		ProbeURL:        yamlCfg.Xray.Probe.ProbeURL,
 		XrayAdminURL:    yamlCfg.Xray.Probe.AdminURL,
 		XraySocksAddr:   yamlCfg.Xray.Probe.SocksAddr,
+		XrayShards:      yamlCfg.Xray.Probe.Shards,
 		XrayGeoIPDBPath: yamlCfg.Xray.Probe.GeoIPDBPath,
 		XrayGeoIPDBURL:  yamlCfg.Xray.Probe.GeoIPDBURL,
 		XrayGeoIPAuto:   yamlCfg.Xray.Probe.GeoIPAuto,
@@ -123,6 +129,17 @@ func validateProbeConfig(cfg Config) error {
 	if strings.TrimSpace(cfg.XraySocksAddr) == "" {
 		return errors.New("xray.probe.socks_addr is required")
 	}
+	if len(cfg.XrayShards) == 0 {
+		return errors.New("xray.probe.shards must contain at least one shard")
+	}
+	for i := range cfg.XrayShards {
+		if strings.TrimSpace(cfg.XrayShards[i].AdminURL) == "" {
+			return fmt.Errorf("xray.probe.shards[%d].admin_url is required", i)
+		}
+		if strings.TrimSpace(cfg.XrayShards[i].SocksAddr) == "" {
+			return fmt.Errorf("xray.probe.shards[%d].socks_addr is required", i)
+		}
+	}
 	if strings.TrimSpace(cfg.ProbeURL) == "" {
 		return errors.New("xray.probe.probe_url is required")
 	}
@@ -135,13 +152,22 @@ func validateProbeConfig(cfg Config) error {
 	return nil
 }
 
-func logXrayStartupStatus(adminURL string, logger *slog.Logger) {
-	checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := xray.CheckXrayAPI(checkCtx, adminURL); err != nil {
-		logger.Error("Xray is dead", slog.String("admin_url", adminURL), slog.String("error", err.Error()))
-		return
+func logXrayStartupStatus(shards []config.XrayProbeShardConfig, logger *slog.Logger) {
+	for i := range shards {
+		checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := xray.CheckXrayAPI(checkCtx, shards[i].AdminURL)
+		cancel()
+		if err != nil {
+			logger.Error("Xray probe shard is unavailable",
+				slog.Int("shard_index", i),
+				slog.String("admin_url", shards[i].AdminURL),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		logger.Info("Xray probe shard is ready",
+			slog.Int("shard_index", i),
+			slog.String("admin_url", shards[i].AdminURL),
+		)
 	}
-	logger.Info("Xray is ready", slog.String("admin_url", adminURL))
 }

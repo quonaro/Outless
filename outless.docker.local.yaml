@@ -49,6 +49,11 @@ xray:
     admin_url: "http://xray-probe:10085"
     probe_url: "https://www.google.com/generate_204"
     socks_addr: "xray-probe:1080"
+    shards:
+      - admin_url: "http://xray-probe:10085"
+        socks_addr: "xray-probe:1080"
+      - admin_url: "http://xray-probe-2:10085"
+        socks_addr: "xray-probe-2:1080"
     geoip_db_path: "/app/tmp/GeoLite2-Country.mmdb"
     geoip_db_url: "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
     geoip_auto: false
