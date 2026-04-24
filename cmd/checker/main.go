@@ -35,19 +35,6 @@ func main() {
 		logger.Error("invalid config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	logXrayStartupStatus(cfg.XrayShards, logger)
-
-	dockerManager, err := docker.NewContainerManager(logger, cfg.ConfigVolume, cfg.XrayConfigPath)
-	if err != nil {
-		logger.Error("failed to create docker manager", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer dockerManager.Close()
-
-	// Copy config from host to volume if needed
-	if err := copyConfigToVolume(cfg.XrayConfigPath, "/host-xray-config.json", logger); err != nil {
-		logger.Warn("failed to copy config to volume", slog.String("error", err.Error()))
-	}
 
 	db, err := postgres.NewGormDB(cfg.DatabaseURL)
 	if err != nil {
@@ -57,69 +44,141 @@ func main() {
 
 	repo := postgres.NewGormNodeRepository(db, logger)
 	jobRepo := postgres.NewGormProbeJobRepository(db, logger)
-	engine, err := xray.NewProbeEnginePool(logger, cfg.ProbeURL, cfg.XrayShards, xray.GeoIPConfig{
-		DBPath: cfg.XrayGeoIPDBPath,
-		DBURL:  cfg.XrayGeoIPDBURL,
-		Auto:   cfg.XrayGeoIPAuto,
-		TTL:    cfg.XrayGeoIPTTL,
-	}, 10*time.Second)
-	if err != nil {
-		logger.Error("failed to configure xray probe pool", slog.String("error", err.Error()))
-		os.Exit(1)
+
+	var engine *xray.ProbeEnginePool
+	var probePool *xray.ProbeRuntimePool
+	var dockerManager *docker.ContainerManager
+
+	// Choose runtime mode based on config
+	if cfg.RuntimeMode == config.XrayRuntimeEmbedded {
+		logger.Info("checker using embedded probe runtime", slog.Int("shard_count", cfg.ShardCount))
+
+		probePool = xray.NewProbeRuntimePool(logger, cfg.XrayBinary, 10085, "/tmp/outless-probe")
+		if err := probePool.Start(ctx, cfg.ShardCount); err != nil {
+			logger.Error("failed to start embedded probe pool", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		defer probePool.Stop()
+
+		// Use shard configs from embedded pool
+		shards := probePool.ShardConfigs()
+		logXrayStartupStatus(shards, logger)
+
+		engine, err = xray.NewProbeEnginePool(logger, cfg.ProbeURL, shards, xray.GeoIPConfig{
+			DBPath: cfg.XrayGeoIPDBPath,
+			DBURL:  cfg.XrayGeoIPDBURL,
+			Auto:   cfg.XrayGeoIPAuto,
+			TTL:    cfg.XrayGeoIPTTL,
+		}, 10*time.Second)
+		if err != nil {
+			logger.Error("failed to configure xray probe pool", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("checker using docker probe runtime", slog.Int("shard_count", cfg.ShardCount))
+		logXrayStartupStatus(cfg.XrayShards, logger)
+
+		dockerManager, err = docker.NewContainerManager(logger, cfg.ConfigVolume, cfg.XrayConfigPath)
+		if err != nil {
+			logger.Error("failed to create docker manager", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		defer dockerManager.Close()
+
+		// Copy config from host to volume if needed
+		if err := copyConfigToVolume(cfg.XrayConfigPath, "/host-xray-config.json", logger); err != nil {
+			logger.Warn("failed to copy config to volume", slog.String("error", err.Error()))
+		}
+
+		// Initial sync of probe containers
+		if err := syncProbeContainers(ctx, dockerManager, cfg.ShardCount, logger); err != nil {
+			logger.Error("initial probe container sync failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+
+		engine, err = xray.NewProbeEnginePool(logger, cfg.ProbeURL, cfg.XrayShards, xray.GeoIPConfig{
+			DBPath: cfg.XrayGeoIPDBPath,
+			DBURL:  cfg.XrayGeoIPDBURL,
+			Auto:   cfg.XrayGeoIPAuto,
+			TTL:    cfg.XrayGeoIPTTL,
+		}, 10*time.Second)
+		if err != nil {
+			logger.Error("failed to configure xray probe pool", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+
+		// Cleanup probe containers on exit
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := cleanupProbeContainers(cleanupCtx, dockerManager, logger); err != nil {
+			logger.Error("probe container cleanup failed", slog.String("error", err.Error()))
+		}
 	}
+
 	service := checker.NewService(repo, engine, logger, checker.Config{Workers: cfg.Workers})
 	jobRunner := checker.NewJobRunner(jobRepo, repo, engine, logger)
-
-	// Initial sync of probe containers
-	if err := syncProbeContainers(ctx, dockerManager, cfg.ShardCount, logger); err != nil {
-		logger.Error("initial probe container sync failed", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
 
 	jobTicker := time.NewTicker(cfg.JobPollInterval)
 	defer jobTicker.Stop()
 	fullCheckTicker := time.NewTicker(cfg.CheckInterval)
 	defer fullCheckTicker.Stop()
-	probeSyncTicker := time.NewTicker(30 * time.Second)
-	defer probeSyncTicker.Stop()
+	var probeSyncTicker *time.Ticker
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		for {
-			select {
-			case <-gCtx.Done():
-				logger.Info("checker shutting down gracefully")
-				return gCtx.Err()
-			case <-jobTicker.C:
-				if err = jobRunner.RunPending(gCtx, cfg.Workers*2, cfg.Workers); err != nil {
-					logger.Error("probe jobs run failed", slog.String("error", err.Error()))
-					return err
-				}
-			case <-fullCheckTicker.C:
-				if err = service.RunOnce(gCtx); err != nil {
-					logger.Error("checker run failed", slog.String("error", err.Error()))
-					return err
-				}
-			case <-probeSyncTicker.C:
-				if err := syncProbeContainers(gCtx, dockerManager, cfg.ShardCount, logger); err != nil {
-					logger.Warn("probe container sync failed", slog.String("error", err.Error()))
+	// Only sync probe containers in docker mode
+	if cfg.RuntimeMode == config.XrayRuntimeExternal {
+		probeSyncTicker = time.NewTicker(30 * time.Second)
+		defer probeSyncTicker.Stop()
+
+		g.Go(func() error {
+			for {
+				select {
+				case <-gCtx.Done():
+					logger.Info("checker shutting down gracefully")
+					return gCtx.Err()
+				case <-jobTicker.C:
+					if err = jobRunner.RunPending(gCtx, cfg.Workers*2, cfg.Workers); err != nil {
+						logger.Error("probe jobs run failed", slog.String("error", err.Error()))
+						return err
+					}
+				case <-fullCheckTicker.C:
+					if err = service.RunOnce(gCtx); err != nil {
+						logger.Error("checker run failed", slog.String("error", err.Error()))
+						return err
+					}
+				case <-probeSyncTicker.C:
+					if err := syncProbeContainers(gCtx, dockerManager, cfg.ShardCount, logger); err != nil {
+						logger.Warn("probe container sync failed", slog.String("error", err.Error()))
+					}
 				}
 			}
-		}
-	})
+		})
+	} else {
+		g.Go(func() error {
+			for {
+				select {
+				case <-gCtx.Done():
+					logger.Info("checker shutting down gracefully")
+					return gCtx.Err()
+				case <-jobTicker.C:
+					if err = jobRunner.RunPending(gCtx, cfg.Workers*2, cfg.Workers); err != nil {
+						logger.Error("probe jobs run failed", slog.String("error", err.Error()))
+						return err
+					}
+				case <-fullCheckTicker.C:
+					if err = service.RunOnce(gCtx); err != nil {
+						logger.Error("checker run failed", slog.String("error", err.Error()))
+						return err
+					}
+				}
+			}
+		})
+	}
 
 	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("checker exited with error", slog.String("error", err.Error()))
 		os.Exit(1)
-	}
-
-	// Cleanup probe containers on exit
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := cleanupProbeContainers(cleanupCtx, dockerManager, logger); err != nil {
-		logger.Error("probe container cleanup failed", slog.String("error", err.Error()))
 	}
 
 	logger.Info("checker shutdown complete")
@@ -137,6 +196,8 @@ type Config struct {
 	XrayGeoIPDBURL  string
 	XrayGeoIPAuto   bool
 	XrayGeoIPTTL    time.Duration
+	RuntimeMode     config.XrayRuntimeMode
+	XrayBinary      string
 	JobPollInterval time.Duration
 	CheckInterval   time.Duration
 	ShardCount      int
@@ -163,6 +224,8 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		XrayGeoIPDBURL:  yamlCfg.Xray.Probe.GeoIPDBURL,
 		XrayGeoIPAuto:   yamlCfg.Xray.Probe.GeoIPAuto,
 		XrayGeoIPTTL:    yamlCfg.Xray.Probe.GeoIPTTL,
+		RuntimeMode:     yamlCfg.Xray.Probe.RuntimeMode,
+		XrayBinary:      yamlCfg.Xray.Probe.XrayBinary,
 		JobPollInterval: yamlCfg.Checker.JobPollInterval,
 		CheckInterval:   yamlCfg.Checker.CheckInterval,
 		ShardCount:      yamlCfg.Xray.Probe.ShardCount,
@@ -192,20 +255,35 @@ func validateProbeConfig(cfg Config) error {
 	if cfg.CheckInterval <= 0 {
 		return errors.New("checker.check_interval must be greater than 0")
 	}
-	if cfg.ShardCount <= 0 {
-		return errors.New("xray.probe.shard_count must be greater than 0")
-	}
-	if len(cfg.XrayShards) == 0 {
-		return errors.New("xray.probe.shards must contain at least one shard (or set shard_count)")
-	}
-	for i := range cfg.XrayShards {
-		if strings.TrimSpace(cfg.XrayShards[i].AdminURL) == "" {
-			return fmt.Errorf("xray.probe.shards[%d].admin_url is required", i)
+
+	// Embedded mode specific validation
+	if cfg.RuntimeMode == config.XrayRuntimeEmbedded {
+		if cfg.ShardCount <= 0 {
+			return errors.New("xray.probe.shard_count must be greater than 0 in embedded mode")
 		}
-		if strings.TrimSpace(cfg.XrayShards[i].SocksAddr) == "" {
-			return fmt.Errorf("xray.probe.shards[%d].socks_addr is required", i)
+		if strings.TrimSpace(cfg.XrayBinary) == "" {
+			return errors.New("xray.probe.xray_binary is required in embedded mode")
 		}
 	}
+
+	// Docker mode specific validation
+	if cfg.RuntimeMode == config.XrayRuntimeExternal {
+		if cfg.ShardCount <= 0 {
+			return errors.New("xray.probe.shard_count must be greater than 0 in docker mode")
+		}
+		if len(cfg.XrayShards) == 0 {
+			return errors.New("xray.probe.shards must contain at least one shard in docker mode")
+		}
+		for i := range cfg.XrayShards {
+			if strings.TrimSpace(cfg.XrayShards[i].AdminURL) == "" {
+				return fmt.Errorf("xray.probe.shards[%d].admin_url is required", i)
+			}
+			if strings.TrimSpace(cfg.XrayShards[i].SocksAddr) == "" {
+				return fmt.Errorf("xray.probe.shards[%d].socks_addr is required", i)
+			}
+		}
+	}
+
 	return nil
 }
 

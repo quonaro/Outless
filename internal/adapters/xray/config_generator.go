@@ -31,8 +31,8 @@ type HubInboundConfig struct {
 //   - adds "direct" and "block" fallbacks for control traffic.
 func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubInboundConfig) ([]byte, error) {
 	clients := buildClients(tokens, nodes)
-	outbounds, nodesByGroup, _ := buildOutbounds(nodes)
-	routingRules := buildDirectRouting(clients, nodesByGroup)
+	outbounds, _, _ := buildOutbounds(nodes)
+	routingRules := buildDirectRouting(clients)
 
 	dest := inbound.Destination
 	if dest == "" {
@@ -183,7 +183,7 @@ func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
 
 // buildDirectRouting creates direct routing rules by email without balancers.
 // Each email (token-node) routes directly to its specific outbound.
-func buildDirectRouting(clients []map[string]any, nodesByGroup map[string][]domain.Node) []any {
+func buildDirectRouting(clients []map[string]any) []any {
 	rules := make([]any, 0)
 
 	for _, client := range clients {

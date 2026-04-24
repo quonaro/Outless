@@ -128,6 +128,10 @@ type XrayProbeConfig struct {
 	// If set, shards are auto-generated as xray-probe-1, xray-probe-2, etc.
 	// Takes precedence over explicit Shards array when both are present.
 	ShardCount int `yaml:"shard_count"`
+	// RuntimeMode defines how probe Xray processes are managed (embedded or docker).
+	RuntimeMode XrayRuntimeMode `yaml:"runtime_mode"`
+	// XrayBinary is the path to the Xray binary for embedded mode.
+	XrayBinary string `yaml:"xray_binary"`
 	// SocksAddr is the host:port of the local SOCKS inbound used to run HTTP probes through Xray (e.g. 127.0.0.1:1080).
 	SocksAddr string `yaml:"socks_addr"`
 	// GeoIPDBPath points to a local MMDB file for offline country lookup (e.g. /app/GeoLite2-Country.mmdb).
@@ -296,6 +300,12 @@ func (c *Config) ApplyCompatibility() {
 	}
 	if strings.TrimSpace(c.Xray.Probe.SocksAddr) == "" {
 		c.Xray.Probe.SocksAddr = defaultProbeSocks
+	}
+	if c.Xray.Probe.RuntimeMode == "" {
+		c.Xray.Probe.RuntimeMode = XrayRuntimeEmbedded
+	}
+	if strings.TrimSpace(c.Xray.Probe.XrayBinary) == "" {
+		c.Xray.Probe.XrayBinary = defaultEdgeBinary
 	}
 	if c.Xray.Probe.GeoIPTTL <= 0 {
 		c.Xray.Probe.GeoIPTTL = 24 * time.Hour

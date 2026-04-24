@@ -27,12 +27,12 @@ services:
       timeout: 3s
       retries: 20
 
-  api:
+  outless:
     build:
       context: .
       dockerfile: Dockerfile
-      target: api
-    container_name: outless-api
+      target: unified
+    container_name: outless
     restart: unless-stopped
     depends_on:
       postgres:
@@ -40,118 +40,21 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '2'
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
     ports:
-      - "41220:41220"
+      - "41220:41220" # API
+      - "443:443" # Hub
     volumes:
       - ./outless.yaml:/app/outless.yaml:rw
+      - outless_runtime:/var/lib/outless
       - outless_tmp:/app/tmp
     command: [ "-config", "/app/outless.yaml" ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:41220/v1/stats || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  hub:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: hub
-    container_name: outless-hub
-    user: "0:0"
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    volumes:
-      - ./outless.yaml:/app/outless.yaml:rw
-      - outless_runtime:/var/lib/outless
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: [ "-config", "/app/outless.yaml" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "pgrep -f hub || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  checker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: checker
-    container_name: outless-checker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    user: "0:0"
-    environment:
-      XRAY_CONFIG_PATH: /app/xray/config.json
-      XRAY_CONFIG_VOLUME: outless-xray-config
-      DOCKER_NETWORK: backend_default
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    volumes:
-      - ./outless.yaml:/app/outless.yaml:rw
-      - outless_tmp:/app/tmp
-      # SECURITY WARNING: Direct Docker socket mount gives full control over host Docker daemon.
-      # For production, consider using docker-socket-proxy (https://github.com/Tecnativa/docker-socket-proxy)
-      # to restrict API access to only container management operations.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./xray/config.json:/host-xray-config.json:ro
-      - xray_config:/app/xray
-    command: [ "-config", "/app/outless.yaml" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "pgrep -f checker || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  xray-edge:
-    image: ghcr.io/xtls/xray-core:latest
-    restart: unless-stopped
-    container_name: outless-xray-edge
-    user: "0:0"
-    depends_on:
-      hub:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    ports:
-      - "443:443"
-    expose:
-      - "10086"
-      - "1081"
-    volumes:
-      - outless_runtime:/var/lib/outless
-    command: [ "run", "-config", "/var/lib/outless/xray-hub.json" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:10086/debug || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -163,5 +66,3 @@ volumes:
     name: outless-runtime
   outless_tmp:
     name: outless-tmp
-  xray_config:
-    name: outless-xray-config
