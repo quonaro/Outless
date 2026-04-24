@@ -108,7 +108,7 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 
 		groupLabel := resolveGroupLabel(groupNames, node.GroupID)
 		hostLabel := extractNodeHost(node.URL)
-		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country))
+		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
 		urls = append(urls, s.formatVLESSURL(token.UUID, remark))
 	}
 
@@ -212,11 +212,16 @@ func extractNodeHost(rawURL string) string {
 	return host
 }
 
-func buildConnectionRemark(groupName string, host string, country string) string {
+func buildConnectionRemark(groupName string, host string, country string, latency time.Duration) string {
 	groupName = sanitizeRemarkPart(groupName, "ungrouped")
 	host = sanitizeRemarkPart(host, "unknown-host")
 	country = sanitizeRemarkPart(country, "XX")
-	return fmt.Sprintf("%s-%s-%s", groupName, host, country)
+	flag := countryFlagEmoji(country)
+	latencyMS := latency.Milliseconds()
+	if latencyMS < 0 {
+		latencyMS = 0
+	}
+	return fmt.Sprintf("🛰️ %s | 🖥️ %s | 🌍 %s %s | ⚡ %dms", groupName, host, country, flag, latencyMS)
 }
 
 func sanitizeRemarkPart(value string, fallback string) string {
@@ -231,4 +236,22 @@ func sanitizeRemarkPart(value string, fallback string) string {
 		return ip.String()
 	}
 	return value
+}
+
+func countryFlagEmoji(code string) string {
+	if len(code) != 2 {
+		return "🏳️"
+	}
+	code = strings.ToUpper(code)
+	first := rune(code[0])
+	second := rune(code[1])
+	if first < 'A' || first > 'Z' || second < 'A' || second > 'Z' {
+		return "🏳️"
+	}
+
+	const regionalIndicatorA = rune(0x1F1E6)
+	return string([]rune{
+		regionalIndicatorA + (first - 'A'),
+		regionalIndicatorA + (second - 'A'),
+	})
 }

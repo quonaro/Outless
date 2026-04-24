@@ -1,6 +1,9 @@
 package subscription
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestExtractNodeHost(t *testing.T) {
 	t.Parallel()
@@ -54,21 +57,21 @@ func TestBuildConnectionRemark(t *testing.T) {
 			group:   "test",
 			host:    "1.2.3.4",
 			country: "DE",
-			want:    "test-1.2.3.4-DE",
+			want:    "🛰️ test | 🖥️ 1.2.3.4 | 🌍 DE 🇩🇪 | ⚡ 0ms",
 		},
 		{
 			name:    "replaces spaces and slashes",
 			group:   "group one",
 			host:    "node/domain",
 			country: "US",
-			want:    "group_one-node_domain-US",
+			want:    "🛰️ group_one | 🖥️ node_domain | 🌍 US 🇺🇸 | ⚡ 0ms",
 		},
 		{
 			name:    "uses fallback values",
 			group:   "",
 			host:    "",
 			country: "",
-			want:    "ungrouped-unknown-host-XX",
+			want:    "🛰️ ungrouped | 🖥️ unknown-host | 🌍 XX 🇽🇽 | ⚡ 0ms",
 		},
 	}
 
@@ -76,10 +79,20 @@ func TestBuildConnectionRemark(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := buildConnectionRemark(tt.group, tt.host, tt.country)
+			got := buildConnectionRemark(tt.group, tt.host, tt.country, 0)
 			if got != tt.want {
 				t.Fatalf("buildConnectionRemark() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildConnectionRemarkWithLatency(t *testing.T) {
+	t.Parallel()
+
+	got := buildConnectionRemark("test", "188.124.59.143", "CZ", 120*time.Millisecond)
+	want := "🛰️ test | 🖥️ 188.124.59.143 | 🌍 CZ 🇨🇿 | ⚡ 120ms"
+	if got != want {
+		t.Fatalf("buildConnectionRemark() = %q, want %q", got, want)
 	}
 }
