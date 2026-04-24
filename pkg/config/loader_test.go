@@ -9,30 +9,43 @@ import (
 	"time"
 )
 
-func TestLoadOrCreate_AppliesLegacyXrayFallback(t *testing.T) {
+func TestLoadOrCreate_NewConfigStructure(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "outless.yaml")
 	yamlContent := `database:
   url: "postgres://example"
-checker:
+jwt:
+  secret: "test-secret"
+  expiry: "24h"
+admin:
+  login: "admin"
+  password: "pass"
+api:
+  shutdown: "10s"
+monitor:
   workers: 8
-  xray:
-    admin_url: "http://legacy-probe:10085"
-    probe_url: "https://probe.example.com/generate_204"
-    socks_addr: "127.0.0.1:2080"
-    geoip_db_path: "/tmp/geo.mmdb"
-    geoip_db_url: "https://example.com/geo.mmdb"
-    geoip_auto: true
-    geoip_ttl: "12h"
-hub:
-  host: "hub.example.com"
+  refresh_interval: "10m"
+  poll_interval: "5s"
+  check_interval: "10m"
+  geoip:
+    db_path: "/tmp/geo.mmdb"
+    db_url: "https://example.com/geo.mmdb"
+    auto: true
+    ttl: "12h"
+  agents:
+    workers: 2
+    url: "https://probe.example.com/generate_204"
+router:
   port: 443
+  sni: "www.google.com"
   public_key: "public"
   private_key: "private"
-  config_path: "/var/lib/outless/legacy-hub.json"
-  xray_binary: "/usr/local/bin/xray"
+  short_id: "abc"
+  fingerprint: "chrome"
+  address: ":443"
+  sync_interval: "5s"
 `
 	if err := os.WriteFile(path, []byte(yamlContent), 0o600); err != nil {
 		t.Fatalf("write yaml: %v", err)
@@ -44,19 +57,22 @@ hub:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if got := cfg.Xray.Edge.ConfigPath; got != "/var/lib/outless/legacy-hub.json" {
-		t.Fatalf("unexpected edge config path: %q", got)
+	if got := cfg.Database.URL; got != "postgres://example" {
+		t.Fatalf("unexpected database url: %q", got)
 	}
-	if got := cfg.Xray.Edge.XrayBinary; got != "/usr/local/bin/xray" {
-		t.Fatalf("unexpected edge binary: %q", got)
+	if got := cfg.API.JWT.Secret; got != "test-secret" {
+		t.Fatalf("unexpected jwt secret: %q", got)
 	}
-	if got := cfg.Xray.Probe.AdminURL; got != "http://legacy-probe:10085" {
-		t.Fatalf("unexpected probe admin url: %q", got)
+	if got := cfg.Monitor.Workers; got != 8 {
+		t.Fatalf("unexpected monitor workers: %d", got)
 	}
-	if got := cfg.Xray.Probe.SocksAddr; got != "127.0.0.1:2080" {
-		t.Fatalf("unexpected probe socks addr: %q", got)
+	if got := cfg.Monitor.GeoIP.TTL; got != 12*time.Hour {
+		t.Fatalf("unexpected geoip ttl: %s", got)
 	}
-	if got := cfg.Xray.Probe.GeoIPTTL; got != 12*time.Hour {
-		t.Fatalf("unexpected probe ttl: %s", got)
+	if got := cfg.Monitor.Agents.Workers; got != 2 {
+		t.Fatalf("unexpected agents workers: %d", got)
+	}
+	if got := cfg.Router.Port; got != 443 {
+		t.Fatalf("unexpected router port: %d", got)
 	}
 }

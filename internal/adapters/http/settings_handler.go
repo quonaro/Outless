@@ -26,27 +26,26 @@ func NewSettingsHandler(configPath string, logger *slog.Logger) *SettingsHandler
 // SafeAPIConfig exposes only non-sensitive API settings.
 // JWT secret and admin credentials are intentionally omitted.
 type SafeAPIConfig struct {
-	ShutdownTimeout string           `json:"shutdown_timeout"`
-	JWTExpiry       string           `json:"jwt_expiry"`
-	AdminLogin      string           `json:"admin_login"`
-	Hub             config.HubConfig `json:"hub"`
+	Shutdown string `json:"shutdown"`
 }
 
-// SafeCheckerConfig exposes checker settings without secrets.
-type SafeCheckerConfig struct {
-	Workers               int               `json:"workers"`
-	LatencyFilter         string            `json:"latency_filter"`
-	PublicRefreshInterval string            `json:"public_refresh_interval"`
-	CheckInterval         string            `json:"check_interval"`
-	Xray                  config.XrayConfig `json:"xray"`
+// SafeMonitorConfig exposes monitor settings without secrets.
+type SafeMonitorConfig struct {
+	Workers         int                 `json:"workers"`
+	RefreshInterval string              `json:"refresh_interval"`
+	PollInterval    string              `json:"poll_interval"`
+	CheckInterval   string              `json:"check_interval"`
+	GeoIP           config.GeoIPConfig  `json:"geoip"`
+	Agents          config.AgentsConfig `json:"agents"`
 }
 
 // SettingsOutput is returned by GET /v1/settings.
 type SettingsOutput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      SafeAPIConfig         `json:"api"`
-		Checker  SafeCheckerConfig     `json:"checker"`
+		API      config.APIConfig      `json:"api"`
+		Monitor  SafeMonitorConfig     `json:"monitor"`
+		Router   config.RouterConfig   `json:"router"`
 	}
 }
 
@@ -54,12 +53,9 @@ type SettingsOutput struct {
 type UpdateSettingsInput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      struct {
-			ShutdownTimeout string           `json:"shutdown_timeout"`
-			JWTExpiry       string           `json:"jwt_expiry"`
-			Hub             config.HubConfig `json:"hub"`
-		} `json:"api"`
-		Checker SafeCheckerConfig `json:"checker"`
+		API      config.APIConfig      `json:"api"`
+		Monitor  SafeMonitorConfig     `json:"monitor"`
+		Router   config.RouterConfig   `json:"router"`
 	}
 }
 
@@ -81,27 +77,16 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 
 	out := &SettingsOutput{}
 	out.Body.Database = cfg.Database
-	out.Body.API = SafeAPIConfig{
-		ShutdownTimeout: cfg.API.ShutdownTimeout.String(),
-		JWTExpiry:       cfg.API.JWT.Expiry.String(),
-		AdminLogin:      cfg.API.Admin.Login,
-		Hub:             cfg.Hub,
+	out.Body.API = cfg.API
+	out.Body.Monitor = SafeMonitorConfig{
+		Workers:         cfg.Monitor.Workers,
+		RefreshInterval: cfg.Monitor.RefreshInterval.String(),
+		PollInterval:    cfg.Monitor.PollInterval.String(),
+		CheckInterval:   cfg.Monitor.CheckInterval.String(),
+		GeoIP:           cfg.Monitor.GeoIP,
+		Agents:          cfg.Monitor.Agents,
 	}
-	out.Body.Checker = SafeCheckerConfig{
-		Workers:               cfg.Checker.Workers,
-		LatencyFilter:         cfg.Checker.LatencyFilter.String(),
-		PublicRefreshInterval: cfg.Checker.PublicRefreshInterval.String(),
-		CheckInterval:         cfg.Checker.CheckInterval.String(),
-		Xray: config.XrayConfig{
-			AdminURL:    cfg.Xray.Probe.AdminURL,
-			ProbeURL:    cfg.Xray.Probe.ProbeURL,
-			SocksAddr:   cfg.Xray.Probe.SocksAddr,
-			GeoIPDBPath: cfg.Xray.Probe.GeoIPDBPath,
-			GeoIPDBURL:  cfg.Xray.Probe.GeoIPDBURL,
-			GeoIPAuto:   cfg.Xray.Probe.GeoIPAuto,
-			GeoIPTTL:    cfg.Xray.Probe.GeoIPTTL,
-		},
-	}
+	out.Body.Router = cfg.Router
 
 	return out, nil
 }
@@ -116,37 +101,22 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	}
 
 	cfg.Database = input.Body.Database
+	cfg.API = input.Body.API
 
-	if d := config.ParseDuration(input.Body.API.ShutdownTimeout, cfg.API.ShutdownTimeout); d > 0 {
-		cfg.API.ShutdownTimeout = d
+	cfg.Monitor.Workers = input.Body.Monitor.Workers
+	if d := config.ParseDuration(input.Body.Monitor.RefreshInterval, cfg.Monitor.RefreshInterval); d > 0 {
+		cfg.Monitor.RefreshInterval = d
 	}
-	if d := config.ParseDuration(input.Body.API.JWTExpiry, cfg.API.JWT.Expiry); d > 0 {
-		cfg.API.JWT.Expiry = d
+	if d := config.ParseDuration(input.Body.Monitor.PollInterval, cfg.Monitor.PollInterval); d > 0 {
+		cfg.Monitor.PollInterval = d
 	}
-	cfg.Hub = input.Body.API.Hub
-	cfg.Xray.Edge.ConfigPath = input.Body.API.Hub.ConfigPath
-	cfg.Xray.Edge.XrayBinary = input.Body.API.Hub.XrayBinary
+	if d := config.ParseDuration(input.Body.Monitor.CheckInterval, cfg.Monitor.CheckInterval); d > 0 {
+		cfg.Monitor.CheckInterval = d
+	}
+	cfg.Monitor.GeoIP = input.Body.Monitor.GeoIP
+	cfg.Monitor.Agents = input.Body.Monitor.Agents
 
-	cfg.Checker.Workers = input.Body.Checker.Workers
-	if d := config.ParseDuration(input.Body.Checker.LatencyFilter, cfg.Checker.LatencyFilter); d > 0 {
-		cfg.Checker.LatencyFilter = d
-	}
-	if d := config.ParseDuration(input.Body.Checker.PublicRefreshInterval, cfg.Checker.PublicRefreshInterval); d > 0 {
-		cfg.Checker.PublicRefreshInterval = d
-	}
-	if d := config.ParseDuration(input.Body.Checker.CheckInterval, cfg.Checker.CheckInterval); d > 0 {
-		cfg.Checker.CheckInterval = d
-	}
-	cfg.Checker.Xray = input.Body.Checker.Xray
-	cfg.Xray.Probe = config.XrayProbeConfig{
-		AdminURL:    input.Body.Checker.Xray.AdminURL,
-		ProbeURL:    input.Body.Checker.Xray.ProbeURL,
-		SocksAddr:   input.Body.Checker.Xray.SocksAddr,
-		GeoIPDBPath: input.Body.Checker.Xray.GeoIPDBPath,
-		GeoIPDBURL:  input.Body.Checker.Xray.GeoIPDBURL,
-		GeoIPAuto:   input.Body.Checker.Xray.GeoIPAuto,
-		GeoIPTTL:    input.Body.Checker.Xray.GeoIPTTL,
-	}
+	cfg.Router = input.Body.Router
 
 	if err := loader.Save(h.configPath, &cfg); err != nil {
 		h.logger.Error("failed to save config", slog.String("error", err.Error()))

@@ -9,8 +9,13 @@ import (
 	"time"
 
 	"outless/internal/domain"
-	"outless/pkg/config"
 )
+
+// ProbeShardConfig defines connection details for a single probe runtime.
+type ProbeShardConfig struct {
+	AdminURL  string
+	SocksAddr string
+}
 
 // ProbeEnginePool dispatches ProbeNode calls across independent probe shards.
 type ProbeEnginePool struct {
@@ -22,7 +27,7 @@ type ProbeEnginePool struct {
 func NewProbeEnginePool(
 	logger *slog.Logger,
 	probeURL string,
-	shards []config.XrayProbeShardConfig,
+	shards []ProbeShardConfig,
 	geoIP GeoIPConfig,
 	probeTimeout time.Duration,
 ) (*ProbeEnginePool, error) {

@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: unified
+      target: outless
     container_name: outless
     restart: unless-stopped
     depends_on:

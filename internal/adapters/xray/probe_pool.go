@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-
-	"outless/pkg/config"
 )
 
 // ProbeRuntimePool manages multiple embedded Xray probe processes.
@@ -111,13 +109,13 @@ func (p *ProbeRuntimePool) GetRuntime() *EmbeddedProbeRuntime {
 }
 
 // ShardConfigs returns shard configs compatible with ProbeEnginePool.
-func (p *ProbeRuntimePool) ShardConfigs() []config.XrayProbeShardConfig {
+func (p *ProbeRuntimePool) ShardConfigs() []ProbeShardConfig {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	configs := make([]config.XrayProbeShardConfig, len(p.runtimes))
+	configs := make([]ProbeShardConfig, len(p.runtimes))
 	for i, runtime := range p.runtimes {
-		configs[i] = config.XrayProbeShardConfig{
+		configs[i] = ProbeShardConfig{
 			AdminURL:  "http://" + runtime.AdminURL(),
 			SocksAddr: runtime.SocksAddr(),
 		}

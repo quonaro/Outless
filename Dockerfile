@@ -10,10 +10,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/hub ./cmd/hub
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/checker ./cmd/checker
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/unified ./cmd/unified
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/outless ./cmd/outless
 
 # Download Xray binary for embedded mode
 FROM alpine:3.22 AS xray-downloader
@@ -33,16 +30,6 @@ COPY --from=xray-downloader /usr/local/bin/xray /usr/local/bin/xray
 
 USER appuser
 
-FROM runtime-base AS api
-EXPOSE 41220
-ENTRYPOINT ["/usr/local/bin/api"]
-
-FROM runtime-base AS hub
-ENTRYPOINT ["/usr/local/bin/hub"]
-
-FROM runtime-base AS checker
-ENTRYPOINT ["/usr/local/bin/checker"]
-
-FROM runtime-base AS unified
+FROM runtime-base AS outless
 EXPOSE 41220 443
-ENTRYPOINT ["/usr/local/bin/unified"]
+ENTRYPOINT ["/usr/local/bin/outless"]
