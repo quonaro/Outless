@@ -27,44 +27,6 @@ services:
       timeout: 3s
       retries: 20
 
-  probe-manager:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: probe-manager
-    container_name: outless-probe-manager
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    user: "0:0"
-    environment:
-      XRAY_CONFIG_PATH: /app/xray/config.json
-      XRAY_CONFIG_VOLUME: outless-xray-config
-      DOCKER_NETWORK: backend_default
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 128M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
-    volumes:
-      - ./outless.yaml:/app/outless.yaml:ro
-      # SECURITY WARNING: Direct Docker socket mount gives full control over host Docker daemon.
-      # For production, consider using docker-socket-proxy (https://github.com/Tecnativa/docker-socket-proxy)
-      # to restrict API access to only container management operations.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./xray/config.json:/host-xray-config.json:ro
-      - xray_config:/app/xray
-    command: [ "-config", "/app/outless.yaml" ]
-    healthcheck:
-      test: [ "CMD-SHELL", "pgrep -f probe-manager || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
   api:
     build:
       context: .
@@ -74,8 +36,6 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
-        condition: service_healthy
-      probe-manager:
         condition: service_healthy
     deploy:
       resources:
@@ -137,8 +97,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      probe-manager:
-        condition: service_healthy
+    user: "0:0"
+    environment:
+      XRAY_CONFIG_PATH: /app/xray/config.json
+      XRAY_CONFIG_VOLUME: outless-xray-config
+      DOCKER_NETWORK: backend_default
     deploy:
       resources:
         limits:
@@ -150,6 +113,12 @@ services:
     volumes:
       - ./outless.yaml:/app/outless.yaml:rw
       - outless_tmp:/app/tmp
+      # SECURITY WARNING: Direct Docker socket mount gives full control over host Docker daemon.
+      # For production, consider using docker-socket-proxy (https://github.com/Tecnativa/docker-socket-proxy)
+      # to restrict API access to only container management operations.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./xray/config.json:/host-xray-config.json:ro
+      - xray_config:/app/xray
     command: [ "-config", "/app/outless.yaml" ]
     healthcheck:
       test: [ "CMD-SHELL", "pgrep -f checker || exit 1" ]
