@@ -63,13 +63,17 @@ func main() {
 	configPath := flag.String("config", "outless.yaml", "path to config file")
 	flag.Parse()
 
+	// Create initial logger for config loading errors
 	logger := logging.New("unified")
 
-	cfg, err := loadConfig(*configPath, logger)
+	cfg, yamlCfg, err := loadConfig(*configPath, logger)
 	if err != nil {
 		logger.Error("invalid config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+
+	// Re-create logger with config-based settings
+	logger = logging.NewFromConfig("unified", yamlCfg.Logs)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -307,16 +311,16 @@ func runPublicSourceWorker(
 	}
 }
 
-func loadConfig(path string, logger *slog.Logger) (Config, error) {
+func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error) {
 	loader := config.NewLoader(logger)
 	yamlCfg := config.DefaultConfig()
 
 	if err := loader.LoadOrCreate(path, &yamlCfg); err != nil {
-		return Config{}, fmt.Errorf("loading config: %w", err)
+		return Config{}, config.Config{}, fmt.Errorf("loading config: %w", err)
 	}
 
 	if err := yamlCfg.Validate(); err != nil {
-		return Config{}, fmt.Errorf("config validation failed: %w", err)
+		return Config{}, config.Config{}, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	cfg := Config{
@@ -351,7 +355,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, error) {
 		cfg.AgentsWorkers = 1
 	}
 
-	return cfg, nil
+	return cfg, yamlCfg, nil
 }
 
 func bootstrapAdminFromEnv(ctx context.Context, adminRepo domain.AdminRepository, cfg Config, logger *slog.Logger) error {

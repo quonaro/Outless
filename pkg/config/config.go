@@ -13,6 +13,7 @@ type Config struct {
 	Monitor  MonitorConfig  `yaml:"monitor"`
 	Router   RouterConfig   `yaml:"router"`
 	Xray     XrayConfig     `yaml:"xray"`
+	Logs     LogsConfig     `yaml:"logs"`
 }
 
 // DatabaseConfig holds database connection settings.
@@ -100,6 +101,13 @@ type XrayInstanceConfig struct {
 	GeoIPTTL    time.Duration `yaml:"geoip_ttl,omitempty"`
 }
 
+// LogsConfig holds logging configuration.
+type LogsConfig struct {
+	Level   string `yaml:"level"`
+	Colored bool   `yaml:"colored"`
+	Type    string `yaml:"type"`
+}
+
 // DefaultConfig returns default configuration.
 func DefaultConfig() Config {
 	return Config{
@@ -167,6 +175,11 @@ func DefaultConfig() Config {
 				GeoIPAuto:   true,
 				GeoIPTTL:    24 * time.Hour,
 			},
+		},
+		Logs: LogsConfig{
+			Level:   "info",
+			Colored: true,
+			Type:    "pretty",
 		},
 	}
 }
