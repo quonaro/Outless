@@ -37,7 +37,7 @@ func TestBuildClients(t *testing.T) {
 		},
 	}
 
-	clients := buildClients(tokens, nodes)
+	clients := buildClients(tokens, nodes, nil)
 
 	// Should have 2 client entries (token-1 + node-1, token-1 + node-2)
 	if len(clients) != 2 {
@@ -73,7 +73,8 @@ func TestBuildDirectRouting(t *testing.T) {
 		},
 	}
 
-	rules := buildDirectRouting(clients)
+	nodesByGroup := make(map[string][]domain.Node)
+	rules := buildDirectRouting(clients, nodesByGroup, nil)
 
 	// Should have 2 routing rules
 	if len(rules) != 2 {

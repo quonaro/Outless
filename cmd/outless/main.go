@@ -42,6 +42,7 @@ type Config struct {
 	AdminPassword         string
 	PublicRefreshInterval time.Duration
 	RouterPort            int
+	RouterDomain          string
 	RouterSNI             string
 	RouterPrivateKey      string
 	RouterPublicKey       string
@@ -118,7 +119,8 @@ func main() {
 	}
 
 	// Start embedded Xray edge
-	hubManager := router.NewManager(tokenRepo, nodeRepo, nil, router.ManagerConfig{
+	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/app/tmp/xray-hub.json")
+	hubManager := router.NewManager(tokenRepo, nodeRepo, hubRuntime, router.ManagerConfig{
 		ConfigPath:   "/app/tmp/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{
@@ -156,7 +158,7 @@ func main() {
 	// Initialize services
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, groupRepo, subscription.HubConfig{
-		Host:        cfg.RouterSNI,
+		Host:        cfg.RouterDomain,
 		Port:        cfg.RouterPort,
 		SNI:         cfg.RouterSNI,
 		PublicKey:   cfg.RouterPublicKey,
@@ -352,6 +354,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 		AdminPassword:         yamlCfg.Admin.Password,
 		PublicRefreshInterval: yamlCfg.Monitor.RefreshInterval,
 		RouterPort:            yamlCfg.Router.Port,
+		RouterDomain:          yamlCfg.Router.Domain,
 		RouterSNI:             yamlCfg.Router.SNI,
 		RouterPrivateKey:      yamlCfg.Router.PrivateKey,
 		RouterPublicKey:       yamlCfg.Router.PublicKey,

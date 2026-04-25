@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -29,23 +30,31 @@ type HubInboundConfig struct {
 //   - creates one VLESS outbound per healthy exit node (tagged by node.ID);
 //   - uses direct routing by email so each token+node combo routes to its specific outbound;
 //   - adds "direct" and "block" fallbacks for control traffic.
-func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubInboundConfig) ([]byte, error) {
-	clients := buildClients(tokens, nodes)
-	outbounds, _, _ := buildOutbounds(nodes)
-	routingRules := buildDirectRouting(clients)
+func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubInboundConfig, logger *slog.Logger) ([]byte, error) {
+	logger.Debug("Generating Xray Hub config",
+		slog.Int("tokens", len(tokens)),
+		slog.Int("nodes", len(nodes)),
+		slog.String("inbound_dest", inbound.Destination),
+		slog.String("inbound_sni", inbound.SNI),
+		slog.String("inbound_shortid", inbound.ShortID),
+	)
+	clients := buildClients(tokens, nodes, logger)
+	outbounds, nodesByGroup, _ := buildOutbounds(nodes, logger)
+	routingRules := buildDirectRouting(clients, nodesByGroup, logger)
 
 	dest := inbound.Destination
-	if dest == "" {
-		dest = "www.google.com:443"
-	}
 	sni := inbound.SNI
-	if sni == "" {
-		sni = "www.google.com"
-	}
-	shortIDs := []string{""}
+	// Use empty array when ShortID not set to match client that sends sid=""
+	shortIDs := []string{}
 	if inbound.ShortID != "" {
 		shortIDs = []string{inbound.ShortID}
 	}
+	logger.Debug("REALITY inbound settings",
+		slog.String("dest", dest),
+		slog.String("sni", sni),
+		slog.String("shortIds", fmt.Sprintf("%v", shortIDs)),
+		slog.Bool("has_private_key", inbound.PrivateKey != ""),
+	)
 	listen := inbound.Listen
 	if listen == "" {
 		listen = "0.0.0.0"
@@ -57,7 +66,7 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 
 	cfg := map[string]any{
 		"log": map[string]any{
-			"loglevel": "warning",
+			"loglevel": "info",
 		},
 		"inbounds": []any{
 			map[string]any{
@@ -102,6 +111,16 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 		return nil, fmt.Errorf("marshaling xray config: %w", err)
 	}
 
+	if logger != nil {
+		logger.Info("Generated Xray Hub config",
+			slog.Int("tokens", len(tokens)),
+			slog.Int("nodes", len(nodes)),
+			slog.Int("clients", len(clients)),
+			slog.Int("outbounds", len(outbounds)),
+			slog.Int("routing_rules", len(routingRules)),
+		)
+	}
+
 	return data, nil
 }
 
@@ -122,7 +141,7 @@ func generateUUIDFromTokenNode(tokenID, nodeID string) string {
 
 // buildClients returns VLESS client entries for the inbound.
 // Creates one client entry per token+node combination with unique UUID for direct routing.
-func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
+func buildClients(tokens []domain.Token, nodes []domain.Node, logger *slog.Logger) []map[string]any {
 	clients := make([]map[string]any, 0)
 
 	for _, token := range tokens {
@@ -139,6 +158,10 @@ func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
 			allowedGroups[token.GroupID] = struct{}{}
 		}
 		allGroupsAllowed := len(allowedGroups) == 0
+
+		if logger != nil {
+			logger.Info(fmt.Sprintf("Processing token: id=%s uuid=%s all_groups=%v", token.ID, token.UUID, allGroupsAllowed))
+		}
 
 		hasAccess := false
 
@@ -163,6 +186,17 @@ func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
 				"flow":  "xtls-rprx-vision",
 				"level": 0,
 			})
+
+			if logger != nil {
+				logger.Debug("Created client entry",
+					slog.String("token_id", token.ID),
+					slog.String("node_id", node.ID),
+					slog.String("group_id", node.GroupID),
+					slog.String("uuid", uuid),
+					slog.String("email", email),
+				)
+			}
+
 			hasAccess = true
 		}
 
@@ -175,6 +209,13 @@ func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
 				"flow":  "xtls-rprx-vision",
 				"level": 0,
 			})
+
+			if logger != nil {
+				logger.Warn("Token has no access to any nodes, creating blocked entry",
+					slog.String("token_id", token.ID),
+					slog.String("email", email),
+				)
+			}
 		}
 	}
 
@@ -183,7 +224,7 @@ func buildClients(tokens []domain.Token, nodes []domain.Node) []map[string]any {
 
 // buildDirectRouting creates direct routing rules by email without balancers.
 // Each email (token-node) routes directly to its specific outbound.
-func buildDirectRouting(clients []map[string]any) []any {
+func buildDirectRouting(clients []map[string]any, nodesByGroup map[string][]domain.Node, logger *slog.Logger) []any {
 	rules := make([]any, 0)
 
 	for _, client := range clients {
@@ -201,6 +242,10 @@ func buildDirectRouting(clients []map[string]any) []any {
 				"user":        []string{email},
 				"outboundTag": "block",
 			})
+
+			if logger != nil {
+				logger.Warn(fmt.Sprintf("Created block rule: email=%s", email))
+			}
 			continue
 		}
 
@@ -210,14 +255,23 @@ func buildDirectRouting(clients []map[string]any) []any {
 			continue
 		}
 		nodeID := strings.TrimSuffix(parts[1], "@outless")
+		outboundTag := outboundTag(nodeID)
 
 		// Create direct routing rule
 		rules = append(rules, map[string]any{
 			"type":        "field",
 			"inboundTag":  []string{"vless-in"},
 			"user":        []string{email},
-			"outboundTag": outboundTag(nodeID),
+			"outboundTag": outboundTag,
 		})
+
+		if logger != nil {
+			logger.Debug("Created routing rule",
+				slog.String("email", email),
+				slog.String("node_id", nodeID),
+				slog.String("outbound", outboundTag),
+			)
+		}
 	}
 
 	return rules
@@ -225,18 +279,24 @@ func buildDirectRouting(clients []map[string]any) []any {
 
 // buildOutbounds creates one VLESS outbound per healthy exit node and returns
 // nodes indexed by group id for routing resolution.
-func buildOutbounds(nodes []domain.Node) ([]any, map[string][]domain.Node, []string) {
+func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string][]domain.Node, []string) {
 	outbounds := make([]any, 0, len(nodes))
 	nodesByGroup := make(map[string][]domain.Node, 8)
 	allSelectors := make([]string, 0, len(nodes))
 
 	for _, node := range nodes {
 		if node.Status != domain.NodeStatusHealthy {
+			if logger != nil {
+				logger.Info(fmt.Sprintf("Skipping unhealthy node: id=%s status=%s", node.ID, node.Status))
+			}
 			continue
 		}
 
 		parsed, err := parseVLESSURL(node.URL)
 		if err != nil {
+			if logger != nil {
+				logger.Error(fmt.Sprintf("Failed to parse VLESS URL: node=%s error=%s", node.ID, err.Error()))
+			}
 			continue
 		}
 
@@ -262,6 +322,10 @@ func buildOutbounds(nodes []domain.Node) ([]any, map[string][]domain.Node, []str
 			},
 			"streamSettings": parsed.streamSettings(),
 		})
+
+		if logger != nil {
+			logger.Info(fmt.Sprintf("Created outbound: node=%s group=%s tag=%s host=%s:%d", node.ID, node.GroupID, tag, parsed.host, parsed.port))
+		}
 
 		nodesByGroup[node.GroupID] = append(nodesByGroup[node.GroupID], node)
 	}

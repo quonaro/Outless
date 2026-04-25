@@ -110,7 +110,39 @@ func (m *Manager) Sync(ctx context.Context) error {
 		return fmt.Errorf("listing nodes: %w", err)
 	}
 
-	payload, err := xray.GenerateHubConfig(tokens, nodes, m.cfg.Inbound)
+	m.logger.Info("Sync: loaded tokens and nodes",
+		slog.Int("tokens", len(tokens)),
+		slog.Int("nodes", len(nodes)),
+	)
+
+	// Log token details for debugging
+	for _, token := range tokens {
+		m.logger.Debug("Active token",
+			slog.String("id", token.ID),
+			slog.String("uuid", token.UUID),
+			slog.String("group", token.GroupID),
+			slog.Any("groups", token.GroupIDs),
+		)
+	}
+
+	// Log node details for debugging
+	for _, node := range nodes {
+		m.logger.Debug("Node",
+			slog.String("id", node.ID),
+			slog.String("group", node.GroupID),
+			slog.String("status", string(node.Status)),
+			slog.String("country", node.Country),
+		)
+	}
+
+	m.logger.Debug("Generating Xray config with inbound settings",
+		slog.String("inbound_dest", m.cfg.Inbound.Destination),
+		slog.String("inbound_sni", m.cfg.Inbound.SNI),
+		slog.String("inbound_shortid", m.cfg.Inbound.ShortID),
+		slog.Bool("has_private_key", m.cfg.Inbound.PrivateKey != ""),
+	)
+
+	payload, err := xray.GenerateHubConfig(tokens, nodes, m.cfg.Inbound, m.logger)
 	if err != nil {
 		return fmt.Errorf("generating xray config: %w", err)
 	}

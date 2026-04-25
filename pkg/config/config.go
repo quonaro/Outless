@@ -67,6 +67,7 @@ type AgentsConfig struct {
 
 // RouterConfig holds Router (Xray edge) configuration.
 type RouterConfig struct {
+	Domain       string        `yaml:"domain"`
 	Port         int           `yaml:"port"`
 	SNI          string        `yaml:"sni"`
 	PublicKey    string        `yaml:"public_key"`
@@ -119,8 +120,9 @@ func DefaultConfig() Config {
 			},
 		},
 		Router: RouterConfig{
+			Domain:       "",
 			Port:         443,
-			SNI:          "www.google.com",
+			SNI:          "",
 			PublicKey:    "",
 			PrivateKey:   "",
 			ShortID:      "",
@@ -144,6 +146,9 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.JWT.Secret) == "" {
 		return fmt.Errorf("JWT secret cannot be empty")
+	}
+	if strings.TrimSpace(c.Router.Domain) == "" {
+		return fmt.Errorf("router domain cannot be empty")
 	}
 	return nil
 }

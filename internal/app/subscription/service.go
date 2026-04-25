@@ -83,10 +83,15 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 		return "", err
 	}
 
+	s.logger.Info(fmt.Sprintf("Building VLESS subscription: token=%s uuid=%s group=%s groups=%v nodes=%d", tokenInfo.ID, tokenInfo.UUID, tokenInfo.GroupID, tokenInfo.GroupIDs, len(countries)))
+
 	hubURLs := s.buildHubURLs(tokenInfo, countries, groupNames)
 	if len(hubURLs) == 0 {
+		s.logger.Warn(fmt.Sprintf("No hub URLs generated for token: %s", tokenInfo.ID))
 		return "", nil
 	}
+
+	s.logger.Info(fmt.Sprintf("Generated VLESS subscription: token=%s urls=%d", tokenInfo.ID, len(hubURLs)))
 
 	payload := strings.Join(hubURLs, "\n")
 	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
@@ -138,10 +143,14 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
 		// Generate unique UUID for this token+node combination
 		uuid := generateUUIDFromTokenNode(token.ID, node.ID)
+
+		s.logger.Info(fmt.Sprintf("Generated VLESS URL: token=%s node=%s group=%s uuid=%s", token.ID, node.ID, node.GroupID, uuid))
+
 		urls = append(urls, s.formatVLESSURL(uuid, remark))
 	}
 
 	if len(urls) == 0 {
+		s.logger.Warn(fmt.Sprintf("No accessible nodes for token, using fallback: token=%s uuid=%s", token.ID, token.UUID))
 		urls = append(urls, s.formatVLESSURL(token.UUID, "Outless"))
 	}
 
@@ -159,9 +168,6 @@ func (s *Service) formatVLESSURL(uuid string, remark string) string {
 		port = 443
 	}
 	sni := s.hub.SNI
-	if sni == "" {
-		sni = "www.google.com"
-	}
 	fingerprint := s.hub.Fingerprint
 	if fingerprint == "" {
 		fingerprint = "chrome"
@@ -177,9 +183,8 @@ func (s *Service) formatVLESSURL(uuid string, remark string) string {
 	if s.hub.PublicKey != "" {
 		params.Set("pbk", s.hub.PublicKey)
 	}
-	if s.hub.ShortID != "" {
-		params.Set("sid", s.hub.ShortID)
-	}
+	// Always include sid (even if empty) to ensure REALITY handshake compatibility
+	params.Set("sid", s.hub.ShortID)
 
 	return fmt.Sprintf("vless://%s@%s:%s?%s#%s",
 		uuid,

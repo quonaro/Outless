@@ -11,7 +11,8 @@
 # Output of the go coverage tool
 *.out
 
-
+# Binary
+outless
 
 # Dependency directories
 vendor/
