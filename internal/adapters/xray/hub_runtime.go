@@ -6,22 +6,30 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"outless/pkg/config"
+	"outless/pkg/logging"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // EmbeddedHubRuntime manages the Xray hub child process for routing traffic.
 type EmbeddedHubRuntime struct {
-	logger     *slog.Logger
-	binary     string
-	configPath string
+	logger      *slog.Logger
+	binary      string
+	configPath  string
+	xrayLogPath string
+	rotationCfg config.RotationConfig
 
 	mu  sync.Mutex
 	cmd *exec.Cmd
 }
 
 // NewEmbeddedHubRuntime creates a new embedded hub runtime.
-func NewEmbeddedHubRuntime(logger *slog.Logger, binary, configPath string) *EmbeddedHubRuntime {
+func NewEmbeddedHubRuntime(logger *slog.Logger, binary, configPath, xrayLogPath string, rotationCfg config.RotationConfig) *EmbeddedHubRuntime {
 	if binary == "" {
 		binary = "xray"
 	}
@@ -29,9 +37,11 @@ func NewEmbeddedHubRuntime(logger *slog.Logger, binary, configPath string) *Embe
 		configPath = "/var/lib/outless/xray-hub.json"
 	}
 	return &EmbeddedHubRuntime{
-		logger:     logger,
-		binary:     binary,
-		configPath: configPath,
+		logger:      logger,
+		binary:      binary,
+		configPath:  configPath,
+		xrayLogPath: xrayLogPath,
+		rotationCfg: rotationCfg,
 	}
 }
 
@@ -48,8 +58,34 @@ func (r *EmbeddedHubRuntime) Start(configPath string) error {
 	r.configPath = configPath
 
 	cmd := exec.Command(r.binary, "run", "-c", r.configPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	// Setup logging to file with rotation if path is specified
+	if r.xrayLogPath != "" {
+		// Create directory if it doesn't exist
+		if err := os.MkdirAll(filepath.Dir(r.xrayLogPath), 0755); err != nil {
+			r.logger.Warn("failed to create xray log directory", slog.String("error", err.Error()))
+		} else {
+			// Use lumberjack for rotation
+			lumberjackLogger := &lumberjack.Logger{
+				Filename:   r.xrayLogPath,
+				MaxSize:    r.rotationCfg.MaxSizeMB,
+				MaxBackups: r.rotationCfg.MaxBackups,
+				MaxAge:     r.rotationCfg.MaxAgeDays,
+				Compress:   r.rotationCfg.Compress,
+			}
+			// Create prefixed writer for hub logs
+			prefixedWriter := logging.NewPrefixWriter("xray_hub_1: ", lumberjackLogger)
+			cmd.Stdout = prefixedWriter
+			cmd.Stderr = prefixedWriter
+		}
+	}
+
+	// Fallback to stdout if file logging fails or not configured
+	if cmd.Stdout == nil {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
 	if err := cmd.Start(); err != nil {
 		r.mu.Unlock()
 		return err

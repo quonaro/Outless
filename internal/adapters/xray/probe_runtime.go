@@ -9,8 +9,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"outless/pkg/config"
+	"outless/pkg/logging"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // EmbeddedProbeRuntime manages a single Xray probe child process.
@@ -20,13 +26,16 @@ type EmbeddedProbeRuntime struct {
 	adminPort   int
 	socksPort   int
 	configPath  string
+	xrayLogPath string
+	rotationCfg config.RotationConfig
+	workerIndex int
 
 	mu  sync.Mutex
 	cmd *exec.Cmd
 }
 
 // NewEmbeddedProbeRuntime creates a new embedded probe runtime.
-func NewEmbeddedProbeRuntime(logger *slog.Logger, binary string, adminPort, socksPort int, configPath string) *EmbeddedProbeRuntime {
+func NewEmbeddedProbeRuntime(logger *slog.Logger, binary string, adminPort, socksPort int, configPath, xrayLogPath string, rotationCfg config.RotationConfig, workerIndex int) *EmbeddedProbeRuntime {
 	if binary == "" {
 		binary = "xray"
 	}
@@ -40,11 +49,14 @@ func NewEmbeddedProbeRuntime(logger *slog.Logger, binary string, adminPort, sock
 		configPath = "/tmp/xray-probe-config.json"
 	}
 	return &EmbeddedProbeRuntime{
-		logger:     logger,
-		binary:     binary,
-		adminPort:  adminPort,
-		socksPort:  socksPort,
-		configPath: configPath,
+		logger:      logger,
+		binary:      binary,
+		adminPort:   adminPort,
+		socksPort:   socksPort,
+		configPath:  configPath,
+		xrayLogPath: xrayLogPath,
+		rotationCfg: rotationCfg,
+		workerIndex: workerIndex,
 	}
 }
 
@@ -67,8 +79,35 @@ func (r *EmbeddedProbeRuntime) Start(ctx context.Context) error {
 	}
 
 	cmd := exec.Command(r.binary, "run", "-c", r.configPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	// Setup logging to file with rotation if path is specified
+	if r.xrayLogPath != "" {
+		// Create directory if it doesn't exist
+		if err := os.MkdirAll(filepath.Dir(r.xrayLogPath), 0755); err != nil {
+			r.logger.Warn("failed to create xray log directory", slog.String("error", err.Error()))
+		} else {
+			// Use lumberjack for rotation
+			lumberjackLogger := &lumberjack.Logger{
+				Filename:   r.xrayLogPath,
+				MaxSize:    r.rotationCfg.MaxSizeMB,
+				MaxBackups: r.rotationCfg.MaxBackups,
+				MaxAge:     r.rotationCfg.MaxAgeDays,
+				Compress:   r.rotationCfg.Compress,
+			}
+			// Create prefixed writer for probe logs with worker index
+			prefix := fmt.Sprintf("xray_probe_%d: ", r.workerIndex)
+			prefixedWriter := logging.NewPrefixWriter(prefix, lumberjackLogger)
+			cmd.Stdout = prefixedWriter
+			cmd.Stderr = prefixedWriter
+		}
+	}
+
+	// Fallback to stdout if file logging fails or not configured
+	if cmd.Stdout == nil {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting probe process: %w", err)
 	}
@@ -177,7 +216,7 @@ func (r *EmbeddedProbeRuntime) generateConfig() ([]byte, error) {
 // waitForReady waits for the Xray gRPC API to become available.
 func (r *EmbeddedProbeRuntime) waitForReady(ctx context.Context) error {
 	addr := fmt.Sprintf("127.0.0.1:%d", r.adminPort)
-	
+
 	for i := 0; i < 30; i++ {
 		select {
 		case <-ctx.Done():

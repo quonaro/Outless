@@ -8,14 +8,18 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+
+	"outless/pkg/config"
 )
 
 // ProbeRuntimePool manages multiple embedded Xray probe processes.
 type ProbeRuntimePool struct {
-	logger    *slog.Logger
-	binary    string
-	basePort  int
-	configDir string
+	logger      *slog.Logger
+	binary      string
+	basePort    int
+	configDir   string
+	xrayLogPath string
+	rotationCfg config.RotationConfig
 
 	mu       sync.Mutex
 	runtimes []*EmbeddedProbeRuntime
@@ -24,7 +28,7 @@ type ProbeRuntimePool struct {
 
 // NewProbeRuntimePool creates a pool for managing N probe processes.
 // basePort is the starting port number (admin port), subsequent probes use basePort + 2*i
-func NewProbeRuntimePool(logger *slog.Logger, binary string, basePort int, configDir string) *ProbeRuntimePool {
+func NewProbeRuntimePool(logger *slog.Logger, binary string, basePort int, configDir, xrayLogPath string, rotationCfg config.RotationConfig) *ProbeRuntimePool {
 	if binary == "" {
 		binary = "xray"
 	}
@@ -35,10 +39,12 @@ func NewProbeRuntimePool(logger *slog.Logger, binary string, basePort int, confi
 		configDir = "/tmp/outless-probe"
 	}
 	return &ProbeRuntimePool{
-		logger:    logger,
-		binary:    binary,
-		basePort:  basePort,
-		configDir: configDir,
+		logger:      logger,
+		binary:      binary,
+		basePort:    basePort,
+		configDir:   configDir,
+		xrayLogPath: xrayLogPath,
+		rotationCfg: rotationCfg,
 	}
 }
 
@@ -62,7 +68,7 @@ func (p *ProbeRuntimePool) Start(ctx context.Context, count int) error {
 		socksPort := p.basePort + i*2 + 1
 		configPath := filepath.Join(p.configDir, fmt.Sprintf("probe-%d.json", i))
 
-		runtime := NewEmbeddedProbeRuntime(p.logger, p.binary, adminPort, socksPort, configPath)
+		runtime := NewEmbeddedProbeRuntime(p.logger, p.binary, adminPort, socksPort, configPath, p.xrayLogPath, p.rotationCfg, i)
 		if err := runtime.Start(ctx); err != nil {
 			// Cleanup already started runtimes
 			for j := 0; j < i; j++ {

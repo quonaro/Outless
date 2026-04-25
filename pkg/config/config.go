@@ -79,12 +79,23 @@ type RouterConfig struct {
 	NameTemplate string        `yaml:"name_template" json:"NameTemplate"`
 }
 
+// RotationConfig holds log rotation configuration.
+type RotationConfig struct {
+	MaxSizeMB  int  `yaml:"max_size_mb"`
+	MaxBackups int  `yaml:"max_backups"`
+	MaxAgeDays int  `yaml:"max_age_days"`
+	Compress   bool `yaml:"compress"`
+}
+
 // LogsConfig holds logging configuration.
 type LogsConfig struct {
-	Level    string `yaml:"level"`
-	Colored  bool   `yaml:"colored"`
-	Type     string `yaml:"type"`
-	FilePath string `yaml:"file_path"`
+	Level        string         `yaml:"level"`
+	Colored      bool           `yaml:"colored"`
+	Type         string         `yaml:"type"`
+	FilePath     string         `yaml:"file_path"`
+	FilePattern  string         `yaml:"file_pattern"`
+	XrayFilePath string         `yaml:"xray_file_path"`
+	Rotation     RotationConfig `yaml:"rotation"`
 }
 
 // DefaultConfig returns default configuration.
@@ -133,10 +144,18 @@ func DefaultConfig() Config {
 			NameTemplate: "{{vless.country_flag}} {{vless.country}} | {{vless.group}} | {{vless.ping}}ms",
 		},
 		Logs: LogsConfig{
-			Level:    "info",
-			Colored:  true,
-			Type:     "pretty",
-			FilePath: "/var/log/outless/outless.log",
+			Level:        "info",
+			Colored:      true,
+			Type:         "pretty",
+			FilePath:     "/var/log/outless/outless.log",
+			FilePattern:  "/var/log/outless/{module}.json",
+			XrayFilePath: "/var/log/outless/xray.json",
+			Rotation: RotationConfig{
+				MaxSizeMB:  100,
+				MaxBackups: 10,
+				MaxAgeDays: 30,
+				Compress:   true,
+			},
 		},
 	}
 }

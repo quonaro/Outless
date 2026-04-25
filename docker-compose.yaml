@@ -31,6 +31,7 @@ services:
       - "443:443"
     volumes:
       - ./outless.yaml:/app/outless.yaml
+      - /var/log/outless:/var/log/outless
     command: [ "-config", "/app/outless.yaml" ]
 
 volumes:

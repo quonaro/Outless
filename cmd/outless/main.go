@@ -119,7 +119,7 @@ func main() {
 	}
 
 	// Start embedded Xray edge
-	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/var/lib/outless/xray-hub.json")
+	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/var/lib/outless/xray-hub.json", yamlCfg.Logs.XrayFilePath, yamlCfg.Logs.Rotation)
 	hubManager := router.NewManager(tokenRepo, nodeRepo, hubRuntime, router.ManagerConfig{
 		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
@@ -134,7 +134,7 @@ func main() {
 	}, routerLogger)
 
 	// Start embedded probe pool
-	probePool := xray.NewProbeRuntimePool(agentLogger, "xray", 10085, "/tmp/outless-probe")
+	probePool := xray.NewProbeRuntimePool(agentLogger, "xray", 10085, "/tmp/outless-probe", yamlCfg.Logs.XrayFilePath, yamlCfg.Logs.Rotation)
 	if err := probePool.Start(ctx, cfg.AgentsWorkers); err != nil {
 		logger.Error("failed to start embedded probe pool", slog.String("error", err.Error()))
 		os.Exit(1)

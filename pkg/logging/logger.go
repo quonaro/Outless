@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"outless/pkg/config"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -83,10 +85,20 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 		})
 	}
 
+	// Determine file path: prefer FilePattern with module substitution, fallback to FilePath
+	var filePath string
+	if cfg.FilePattern != "" && strings.Contains(cfg.FilePattern, "{module}") {
+		filePath = strings.ReplaceAll(cfg.FilePattern, "{module}", moduleName)
+	} else if cfg.FilePattern != "" {
+		filePath = cfg.FilePattern
+	} else {
+		filePath = cfg.FilePath
+	}
+
 	// Create file handler if file path is specified
 	var handler slog.Handler
-	if cfg.FilePath != "" {
-		fileHandler, err := createFileHandler(cfg.FilePath, level)
+	if filePath != "" {
+		fileHandler, err := createFileHandler(filePath, level, cfg.Rotation)
 		if err != nil {
 			// If file handler fails, fall back to console only
 			handler = consoleHandler
@@ -201,21 +213,24 @@ func (h *minimalHandler) WithGroup(name string) slog.Handler {
 	return h
 }
 
-// createFileHandler creates a JSON handler for file logging.
-func createFileHandler(filePath string, level slog.Level) (slog.Handler, error) {
+// createFileHandler creates a JSON handler for file logging with rotation support.
+func createFileHandler(filePath string, level slog.Level, rotation config.RotationConfig) (slog.Handler, error) {
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 
-	// Open file in append mode
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
+	// Use lumberjack for log rotation
+	lumberjackLogger := &lumberjack.Logger{
+		Filename:   filePath,
+		MaxSize:    rotation.MaxSizeMB,
+		MaxBackups: rotation.MaxBackups,
+		MaxAge:     rotation.MaxAgeDays,
+		Compress:   rotation.Compress,
 	}
 
-	return slog.NewJSONHandler(file, &slog.HandlerOptions{
+	return slog.NewJSONHandler(lumberjackLogger, &slog.HandlerOptions{
 		Level:       level,
 		ReplaceAttr: replaceBuiltInAttrs,
 	}), nil
