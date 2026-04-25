@@ -38,9 +38,10 @@ type Manager struct {
 	cfg       ManagerConfig
 	logger    *slog.Logger
 
-	mu            sync.Mutex
-	lastSum       string
-	runtimeActive bool
+	mu               sync.Mutex
+	lastSum          string
+	lastActiveTokens int
+	runtimeActive    bool
 }
 
 // NewManager builds a Hub manager.
@@ -56,11 +57,12 @@ func NewManager(tokenRepo domain.TokenRepository, nodeRepo domain.NodeRepository
 	}
 
 	return &Manager{
-		tokenRepo: tokenRepo,
-		nodeRepo:  nodeRepo,
-		runtime:   runtime,
-		cfg:       cfg,
-		logger:    logger,
+		tokenRepo:        tokenRepo,
+		nodeRepo:         nodeRepo,
+		runtime:          runtime,
+		cfg:              cfg,
+		logger:           logger,
+		lastActiveTokens: -1, // Initialize to -1 to force first reload
 	}
 }
 
@@ -148,11 +150,17 @@ func (m *Manager) Sync(ctx context.Context) error {
 	}
 
 	sum := checksum(payload)
+	activeTokens := len(tokens)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if sum == m.lastSum {
+	// Reload if config changed OR number of active tokens changed
+	// This ensures Xray restarts even when going from 0 to 0 tokens (same empty config)
+	configChanged := sum != m.lastSum
+	tokensChanged := activeTokens != m.lastActiveTokens
+	
+	if !configChanged && !tokensChanged {
 		return nil
 	}
 
@@ -160,10 +168,14 @@ func (m *Manager) Sync(ctx context.Context) error {
 		return fmt.Errorf("writing xray config: %w", err)
 	}
 	m.lastSum = sum
+	m.lastActiveTokens = activeTokens
+	
 	m.logger.Info("xray config updated",
-		slog.Int("tokens", len(tokens)),
+		slog.Int("tokens", activeTokens),
 		slog.Int("nodes", len(nodes)),
 		slog.String("path", m.cfg.ConfigPath),
+		slog.Bool("config_changed", configChanged),
+		slog.Bool("tokens_changed", tokensChanged),
 	)
 
 	if m.runtimeActive {

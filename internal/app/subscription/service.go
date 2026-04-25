@@ -94,7 +94,7 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 	s.logger.Info(fmt.Sprintf("Generated VLESS subscription: token=%s urls=%d", tokenInfo.ID, len(hubURLs)))
 
 	payload := strings.Join(hubURLs, "\n")
-	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
+return base64.StdEncoding.EncodeToString([]byte(payload)), nil
 }
 
 // generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.

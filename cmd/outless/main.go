@@ -119,9 +119,9 @@ func main() {
 	}
 
 	// Start embedded Xray edge
-	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/app/tmp/xray-hub.json")
+	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/var/lib/outless/xray-hub.json")
 	hubManager := router.NewManager(tokenRepo, nodeRepo, hubRuntime, router.ManagerConfig{
-		ConfigPath:   "/app/tmp/xray-hub.json",
+		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{
 			Listen:      listenHost(cfg.RouterAddress),

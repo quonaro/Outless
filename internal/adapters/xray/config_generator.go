@@ -121,7 +121,7 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 		)
 	}
 
-	return data, nil
+return data, nil
 }
 
 // generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.
