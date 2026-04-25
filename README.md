@@ -63,6 +63,66 @@ Execution model:
 - `checker` is the only executor that claims jobs and writes probe results
 - Failed jobs are retried automatically (up to 3 attempts)
 
+## Name Template for Subscription API
+
+The subscription API supports a micro-template system for generating dynamic connection names (remarks) in VLESS URLs. This is configured via the `router.name_template` field in `outless.yaml`.
+
+### Available Variables
+
+All variables are prefixed with `vless.`:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `vless.name` | Original name from VLESS URL fragment | `Poland Premium` |
+| `vless.host` / `vless.ip` | Host IP or domain | `82.22.41.75` |
+| `vless.port` | Port number | `443` |
+| `vless.sni` | SNI (Server Name Indication) | `www.google.com` |
+| `vless.security` | Security type | `reality` |
+| `vless.encryption` | Encryption method | `none` |
+| `vless.flow` | Flow type | `xtls-rprx-vision` |
+| `vless.fp` | Fingerprint | `chrome` |
+| `vless.country` | Full country name | `Poland` |
+| `vless.country_short` | 2-letter country code | `PL` |
+| `vless.country_flag` | Country flag emoji | `🇵🇱` |
+| `vless.ping` | Latency in milliseconds | `150` |
+| `vless.group` | Group name | `Premium` |
+| `vless.user` | Token owner email | `user@example.com` |
+
+### Template Syntax
+
+- `{{var}}` - Simple variable substitution
+- `{{var|"default"}}` - Fallback to string literal if variable is empty
+- `{{var|other_var}}` - Fallback to another variable if variable is empty
+
+### Examples
+
+```yaml
+router:
+  name_template: "{{vless.country_flag}} {{vless.country}} | {{vless.group}} | {{vless.ping}}ms"
+```
+
+Result: `🇵🇱 Poland | Premium | 150ms`
+
+```yaml
+router:
+  name_template: "{{vless.name|vless.host}} | {{vless.country_flag}}"
+```
+
+Result: If `vless.name` is empty, falls back to `vless.host`: `82.22.41.75 | 🇵🇱`
+
+```yaml
+router:
+  name_template: "{{vless.country_flag}} {{vless.country_short}} | {{vless.group|\"Default\"}} | {{vless.ping}}ms"
+```
+
+Result: `🇵🇱 PL | Premium | 150ms` (or `Default` if group is empty)
+
+### Notes
+
+- Only `vless.country_flag` returns an emoji; all other variables return plain text values
+- Empty variables return the original `{{var}}` placeholder unless a fallback is provided
+- Template is applied only in the subscription API when generating VLESS URLs
+
 ## Repository standards
 
 - Contribution rules: see `CONTRIBUTING.md`

@@ -3,6 +3,7 @@ package xray
 import (
 	"encoding/json"
 	"log/slog"
+	vlesspkg "outless/pkg/vless"
 	"testing"
 )
 
@@ -41,20 +42,20 @@ func TestBuildProbeRoutingConfig(t *testing.T) {
 func TestParseVLESSURLRealitySpx(t *testing.T) {
 	t.Parallel()
 	raw := "vless://b7128fbf-7b20-479d-9c18-82edb96cca5c@82.22.41.75:51855?type=tcp&security=reality&sni=www.yandex.ru&fp=firefox&pbk=testpbk&sid=e1e386&spx=%2Fwp#r"
-	p, err := parseVLESSURL(raw)
+	p, err := vlesspkg.ParseURL(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Spx != "/wp" {
-		t.Fatalf("spx: got %q want /wp", p.Spx)
+	if p.SPX != "/wp" {
+		t.Fatalf("spx: got %q want /wp", p.SPX)
 	}
-	ss := p.streamSettings()
+	ss := p.StreamSettings()
 	rs, ok := ss["realitySettings"].(map[string]any)
 	if !ok {
 		t.Fatal("missing realitySettings")
 	}
 	if rs["spiderX"] != "/wp" {
-		t.Fatalf("spiderX: got %v", rs["spiderX"])
+		t.Fatalf("spiderX: got %v want /wp", rs["spiderX"])
 	}
 }
 

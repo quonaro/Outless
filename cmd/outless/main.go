@@ -158,12 +158,13 @@ func main() {
 	// Initialize services
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, groupRepo, subscription.HubConfig{
-		Host:        cfg.RouterDomain,
-		Port:        cfg.RouterPort,
-		SNI:         cfg.RouterSNI,
-		PublicKey:   cfg.RouterPublicKey,
-		ShortID:     cfg.RouterShortID,
-		Fingerprint: cfg.RouterFingerprint,
+		Host:         cfg.RouterDomain,
+		Port:         cfg.RouterPort,
+		SNI:          cfg.RouterSNI,
+		PublicKey:    cfg.RouterPublicKey,
+		ShortID:      cfg.RouterShortID,
+		Fingerprint:  cfg.RouterFingerprint,
+		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
 	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, monitorLogger)
 

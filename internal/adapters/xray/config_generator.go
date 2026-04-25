@@ -6,11 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"outless/internal/domain"
+	"outless/pkg/vless"
 )
 
 // HubInboundConfig holds Reality inbound parameters for the generated Xray config.
@@ -292,7 +291,7 @@ func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string
 			continue
 		}
 
-		parsed, err := parseVLESSURL(node.URL)
+		parsed, err := vless.ParseURL(node.URL)
 		if err != nil {
 			if logger != nil {
 				logger.Error(fmt.Sprintf("Failed to parse VLESS URL: node=%s error=%s", node.ID, err.Error()))
@@ -308,23 +307,23 @@ func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string
 			"settings": map[string]any{
 				"vnext": []any{
 					map[string]any{
-						"address": parsed.host,
-						"port":    parsed.port,
+						"address": parsed.Host,
+						"port":    parsed.Port,
 						"users": []any{
 							map[string]any{
-								"id":         parsed.uuid,
-								"encryption": parsed.encryption,
-								"flow":       parsed.flow,
+								"id":         parsed.UUID,
+								"encryption": parsed.Encryption,
+								"flow":       parsed.Flow,
 							},
 						},
 					},
 				},
 			},
-			"streamSettings": parsed.streamSettings(),
+			"streamSettings": parsed.StreamSettings(),
 		})
 
 		if logger != nil {
-			logger.Debug(fmt.Sprintf("Created outbound: node=%s group=%s tag=%s host=%s:%d", node.ID, node.GroupID, tag, parsed.host, parsed.port))
+			logger.Debug(fmt.Sprintf("Created outbound: node=%s group=%s tag=%s host=%s:%d", node.ID, node.GroupID, tag, parsed.Host, parsed.Port))
 		}
 
 		nodesByGroup[node.GroupID] = append(nodesByGroup[node.GroupID], node)
@@ -444,133 +443,4 @@ func sanitizeTag(raw string) string {
 		}
 	}
 	return b.String()
-}
-
-// parsedVLESS holds the extracted parts of a vless:// URL required for an Xray outbound.
-type parsedVLESS struct {
-	host        string
-	port        int
-	uuid        string
-	encryption  string
-	flow        string
-	network     string
-	security    string
-	sni         string
-	fp          string
-	pbk         string
-	sid         string
-	alpn        []string
-	path        string
-	hostHeader  string
-	serviceName string
-	// Spx is the Reality "spiderX" path from the sharing link (query key "spx").
-	Spx string
-}
-
-// parseVLESSURL parses a vless://uuid@host:port?params#remark URL into its parts.
-func parseVLESSURL(raw string) (parsedVLESS, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return parsedVLESS{}, fmt.Errorf("parsing vless url: %w", err)
-	}
-	if u.Scheme != "vless" {
-		return parsedVLESS{}, fmt.Errorf("unsupported scheme: %s", u.Scheme)
-	}
-	if u.User == nil {
-		return parsedVLESS{}, fmt.Errorf("vless url missing user")
-	}
-
-	host := u.Hostname()
-	portStr := u.Port()
-	if portStr == "" {
-		portStr = "443"
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return parsedVLESS{}, fmt.Errorf("parsing port: %w", err)
-	}
-
-	q := u.Query()
-	p := parsedVLESS{
-		host:        host,
-		port:        port,
-		uuid:        u.User.Username(),
-		encryption:  valueOr(q.Get("encryption"), "none"),
-		flow:        q.Get("flow"),
-		network:     valueOr(q.Get("type"), "tcp"),
-		security:    valueOr(q.Get("security"), "none"),
-		sni:         q.Get("sni"),
-		fp:          q.Get("fp"),
-		pbk:         q.Get("pbk"),
-		sid:         q.Get("sid"),
-		path:        q.Get("path"),
-		hostHeader:  q.Get("host"),
-		serviceName: q.Get("serviceName"),
-		Spx:         strings.TrimSpace(q.Get("spx")),
-	}
-	if alpn := q.Get("alpn"); alpn != "" {
-		p.alpn = strings.Split(alpn, ",")
-	}
-	return p, nil
-}
-
-func valueOr(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
-}
-
-// streamSettings translates the parsed VLESS URL into Xray streamSettings.
-func (p parsedVLESS) streamSettings() map[string]any {
-	stream := map[string]any{
-		"network":  p.network,
-		"security": p.security,
-	}
-
-	switch p.security {
-	case "reality":
-		reality := map[string]any{
-			"show":         false,
-			"fingerprint":  valueOr(p.fp, "chrome"),
-			"masterKeyLog": "", // Disable master key logging to avoid file open errors
-		}
-		if p.sni != "" {
-			reality["serverName"] = p.sni
-		}
-		if p.pbk != "" {
-			reality["publicKey"] = p.pbk
-		}
-		if p.sid != "" {
-			reality["shortId"] = p.sid
-		}
-		if p.Spx != "" {
-			reality["spiderX"] = p.Spx
-		}
-		stream["realitySettings"] = reality
-	case "tls":
-		tls := map[string]any{
-			"fingerprint": valueOr(p.fp, "chrome"),
-		}
-		if p.sni != "" {
-			tls["serverName"] = p.sni
-		}
-		if len(p.alpn) > 0 {
-			tls["alpn"] = p.alpn
-		}
-		stream["tlsSettings"] = tls
-	}
-
-	switch p.network {
-	case "ws":
-		ws := map[string]any{"path": valueOr(p.path, "/")}
-		if p.hostHeader != "" {
-			ws["headers"] = map[string]string{"Host": p.hostHeader}
-		}
-		stream["wsSettings"] = ws
-	case "grpc":
-		stream["grpcSettings"] = map[string]any{"serviceName": p.serviceName}
-	}
-
-	return stream
 }

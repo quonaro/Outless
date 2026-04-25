@@ -16,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"outless/internal/domain"
+	vlesspkg "outless/pkg/vless"
+
 	handlercmd "github.com/xtls/xray-core/app/proxyman/command"
 	approuter "github.com/xtls/xray-core/app/router"
 	routercmd "github.com/xtls/xray-core/app/router/command"
@@ -27,8 +30,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-
-	"outless/internal/domain"
 )
 
 const defaultSocksInboundTag = "socks-in"
@@ -132,7 +133,7 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 		return domain.ProbeResult{}, fmt.Errorf("probing node %s: xray admin url not configured", node.ID)
 	}
 
-	parsed, err := parseVLESSURL(node.URL)
+	parsed, err := vlesspkg.ParseURL(node.URL)
 	if err != nil {
 		return domain.ProbeResult{}, fmt.Errorf("parsing node url for node %s: %w", node.ID, err)
 	}
@@ -231,7 +232,7 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 
 	country := domain.NormalizeCountryCode(node.Country)
 	if !domain.IsFastProbe(ctx) && e.countryByIP != nil {
-		if detectedCountry, ok := e.countryByIP.CountryByHost(ctx, parsed.host); ok {
+		if detectedCountry, ok := e.countryByIP.CountryByHost(ctx, parsed.Host); ok {
 			country = detectedCountry
 		}
 	}
@@ -301,17 +302,17 @@ func (e *Engine) socksHTTPClient() (*http.Client, error) {
 	}, nil
 }
 
-func buildVLESSOutboundConfig(tag string, p parsedVLESS) (*xcore.OutboundHandlerConfig, error) {
+func buildVLESSOutboundConfig(tag string, p vlesspkg.Parsed) (*xcore.OutboundHandlerConfig, error) {
 	settingsObj := map[string]any{
 		"vnext": []any{
 			map[string]any{
-				"address": p.host,
-				"port":    p.port,
+				"address": p.Host,
+				"port":    p.Port,
 				"users": []any{
 					map[string]any{
-						"id":         p.uuid,
-						"encryption": p.encryption,
-						"flow":       p.flow,
+						"id":         p.UUID,
+						"encryption": p.Encryption,
+						"flow":       p.Flow,
 					},
 				},
 			},
@@ -321,7 +322,7 @@ func buildVLESSOutboundConfig(tag string, p parsedVLESS) (*xcore.OutboundHandler
 		"tag":            tag,
 		"protocol":       "vless",
 		"settings":       settingsObj,
-		"streamSettings": p.streamSettings(),
+		"streamSettings": p.StreamSettings(),
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

@@ -76,6 +76,7 @@ type RouterConfig struct {
 	Fingerprint  string        `yaml:"fingerprint" json:"Fingerprint"`
 	Address      string        `yaml:"address" json:"Address"`
 	SyncInterval time.Duration `yaml:"sync_interval" json:"SyncInterval"`
+	NameTemplate string        `yaml:"name_template" json:"NameTemplate"`
 }
 
 // LogsConfig holds logging configuration.
@@ -129,6 +130,7 @@ func DefaultConfig() Config {
 			Fingerprint:  "chrome",
 			Address:      ":443",
 			SyncInterval: 30 * time.Second,
+			NameTemplate: "{{vless.country_flag}} {{vless.country}} | {{vless.group}} | {{vless.ping}}ms",
 		},
 		Logs: LogsConfig{
 			Level:    "info",

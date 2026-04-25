@@ -15,19 +15,21 @@ import (
 	"time"
 
 	"outless/internal/domain"
+	"outless/pkg/template"
+	"outless/pkg/vless"
 )
 
 // HubConfig describes the Hub endpoint clients connect to.
 // These values are embedded into every VLESS URL returned by the subscription.
 type HubConfig struct {
-	Host string
-	Port int
-	SNI  string
-	// Added a new field to the HubConfig struct
-	APIKey      string
-	PublicKey   string
-	ShortID     string
-	Fingerprint string
+	Host         string
+	Port         int
+	SNI          string
+	APIKey       string
+	PublicKey    string
+	ShortID      string
+	Fingerprint  string
+	NameTemplate string
 }
 
 // Service prepares subscription payloads.
@@ -94,7 +96,7 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 	s.logger.Info(fmt.Sprintf("Generated VLESS subscription: token=%s urls=%d", tokenInfo.ID, len(hubURLs)))
 
 	payload := strings.Join(hubURLs, "\n")
-return base64.StdEncoding.EncodeToString([]byte(payload)), nil
+	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
 }
 
 // generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.
@@ -138,9 +140,35 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 			continue
 		}
 
-		groupLabel := resolveGroupLabel(groupNames, node.GroupID)
-		hostLabel := extractNodeHost(node.URL)
-		remark := buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
+		// Parse VLESS URL to extract original data
+		parsed, err := vless.ParseURL(node.URL)
+		if err != nil {
+			s.logger.Warn(fmt.Sprintf("Failed to parse VLESS URL: node=%s error=%s", node.ID, err.Error()))
+			continue
+		}
+
+		// Generate remark using template or fallback
+		var remark string
+		if s.hub.NameTemplate != "" {
+			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
+			vlessData := template.VLESSData{
+				Name:       parsed.Name,
+				Host:       parsed.Host,
+				Port:       parsed.Port,
+				SNI:        parsed.SNI,
+				Security:   parsed.Security,
+				Encryption: parsed.Encryption,
+				Flow:       parsed.Flow,
+				FP:         parsed.FP,
+			}
+			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, node.Latency, token.Owner)
+			remark = template.RenderTemplate(s.hub.NameTemplate, templateData)
+		} else {
+			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
+			hostLabel := extractNodeHost(node.URL)
+			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
+		}
+
 		// Generate unique UUID for this token+node combination
 		uuid := generateUUIDFromTokenNode(token.ID, node.ID)
 
