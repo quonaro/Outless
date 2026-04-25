@@ -21,6 +21,8 @@ type groupModel struct {
 	UnhealthyNodes        int64      `gorm:"column:unhealthy_nodes"`
 	UnknownNodes          int64      `gorm:"column:unknown_nodes"`
 	AutoDeleteUnavailable bool       `gorm:"column:auto_delete_unavailable"`
+	RandomEnabled         bool       `gorm:"column:random_enabled"`
+	RandomLimit           *int64     `gorm:"column:random_limit"`
 	LastSyncedAt          *time.Time `gorm:"column:last_synced_at"`
 	CreatedAt             time.Time  `gorm:"column:created_at"`
 }
@@ -46,6 +48,8 @@ func (r *GormGroupRepository) Create(ctx context.Context, group domain.Group) er
 		Name:                  group.Name,
 		SourceURL:             nullableGroupString(group.SourceURL),
 		AutoDeleteUnavailable: group.AutoDeleteUnavailable,
+		RandomEnabled:         group.RandomEnabled,
+		RandomLimit:           nullableGroupInt(group.RandomLimit),
 		LastSyncedAt:          group.LastSyncedAt,
 		CreatedAt:             group.CreatedAt,
 	}
@@ -75,6 +79,8 @@ func (r *GormGroupRepository) FindByID(ctx context.Context, id string) (domain.G
 		Name:                  model.Name,
 		SourceURL:             derefGroupString(model.SourceURL),
 		AutoDeleteUnavailable: model.AutoDeleteUnavailable,
+		RandomEnabled:         model.RandomEnabled,
+		RandomLimit:           derefGroupInt(model.RandomLimit),
 		LastSyncedAt:          model.LastSyncedAt,
 		CreatedAt:             model.CreatedAt,
 	}, nil
@@ -85,7 +91,7 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 	err := r.db.WithContext(ctx).
 		Model(&groupModel{}).
 		Select(
-			"groups.id", "groups.name", "groups.source_url", "groups.auto_delete_unavailable", "groups.last_synced_at", "groups.created_at",
+			"groups.id", "groups.name", "groups.source_url", "groups.auto_delete_unavailable", "groups.random_enabled", "groups.random_limit", "groups.last_synced_at", "groups.created_at",
 			"COUNT(nodes.id) AS total_nodes",
 			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'healthy') AS healthy_nodes",
 			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'unhealthy') AS unhealthy_nodes",
@@ -110,6 +116,8 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 			UnhealthyNodes:        int(model.UnhealthyNodes),
 			UnknownNodes:          int(model.UnknownNodes),
 			AutoDeleteUnavailable: model.AutoDeleteUnavailable,
+			RandomEnabled:         model.RandomEnabled,
+			RandomLimit:           derefGroupInt(model.RandomLimit),
 			LastSyncedAt:          model.LastSyncedAt,
 			CreatedAt:             model.CreatedAt,
 		})
@@ -126,6 +134,8 @@ func (r *GormGroupRepository) Update(ctx context.Context, group domain.Group) er
 			"name":                    group.Name,
 			"source_url":              nullableGroupString(group.SourceURL),
 			"auto_delete_unavailable": group.AutoDeleteUnavailable,
+			"random_enabled":          group.RandomEnabled,
+			"random_limit":            nullableGroupInt(group.RandomLimit),
 			"last_synced_at":          group.LastSyncedAt,
 		})
 
@@ -193,4 +203,20 @@ func derefGroupString(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+func nullableGroupInt(v *int) *int64 {
+	if v == nil {
+		return nil
+	}
+	val := int64(*v)
+	return &val
+}
+
+func derefGroupInt(v *int64) *int {
+	if v == nil {
+		return nil
+	}
+	val := int(*v)
+	return &val
 }

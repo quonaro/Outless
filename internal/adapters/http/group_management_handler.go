@@ -39,6 +39,8 @@ type CreateGroupInput struct {
 		Name                  string `json:"name" required:"true" maxLength:"100"`
 		SourceURL             string `json:"source_url"`
 		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
+		RandomEnabled         bool   `json:"random_enabled" default:"false"`
+		RandomLimit           *int   `json:"random_limit"`
 	}
 }
 
@@ -48,6 +50,8 @@ type CreateGroupOutput struct {
 		Name                  string     `json:"name"`
 		SourceURL             string     `json:"source_url"`
 		AutoDeleteUnavailable bool       `json:"auto_delete_unavailable"`
+		RandomEnabled         bool       `json:"random_enabled"`
+		RandomLimit           *int       `json:"random_limit"`
 		LastSyncedAt          *time.Time `json:"last_synced_at"`
 		CreatedAt             time.Time  `json:"created_at"`
 	}
@@ -63,6 +67,8 @@ type UpdateGroupInput struct {
 		Name                  string `json:"name" required:"true" maxLength:"100"`
 		SourceURL             string `json:"source_url"`
 		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
+		RandomEnabled         bool   `json:"random_enabled" default:"false"`
+		RandomLimit           *int   `json:"random_limit"`
 	}
 }
 
@@ -114,6 +120,8 @@ type GroupItem struct {
 	UnhealthyNodes        int        `json:"unhealthy_nodes"`
 	UnknownNodes          int        `json:"unknown_nodes"`
 	AutoDeleteUnavailable bool       `json:"auto_delete_unavailable"`
+	RandomEnabled         bool       `json:"random_enabled"`
+	RandomLimit           *int       `json:"random_limit"`
 	LastSyncedAt          *time.Time `json:"last_synced_at"`
 	CreatedAt             time.Time  `json:"created_at"`
 }
@@ -145,6 +153,8 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 		Name:                  input.Body.Name,
 		SourceURL:             strings.TrimSpace(input.Body.SourceURL),
 		AutoDeleteUnavailable: input.Body.AutoDeleteUnavailable,
+		RandomEnabled:         input.Body.RandomEnabled,
+		RandomLimit:           input.Body.RandomLimit,
 		CreatedAt:             time.Now().UTC(),
 	}
 
@@ -161,6 +171,8 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	out.Body.Name = group.Name
 	out.Body.SourceURL = group.SourceURL
 	out.Body.AutoDeleteUnavailable = group.AutoDeleteUnavailable
+	out.Body.RandomEnabled = group.RandomEnabled
+	out.Body.RandomLimit = group.RandomLimit
 	out.Body.LastSyncedAt = group.LastSyncedAt
 	out.Body.CreatedAt = group.CreatedAt
 
@@ -186,6 +198,8 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 			UnhealthyNodes:        g.UnhealthyNodes,
 			UnknownNodes:          g.UnknownNodes,
 			AutoDeleteUnavailable: g.AutoDeleteUnavailable,
+			RandomEnabled:         g.RandomEnabled,
+			RandomLimit:           g.RandomLimit,
 			LastSyncedAt:          g.LastSyncedAt,
 			CreatedAt:             g.CreatedAt,
 		})
@@ -215,6 +229,8 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	group.Name = input.Body.Name
 	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
 	group.AutoDeleteUnavailable = input.Body.AutoDeleteUnavailable
+	group.RandomEnabled = input.Body.RandomEnabled
+	group.RandomLimit = input.Body.RandomLimit
 	if err := h.groupRepo.Update(ctx, group); err != nil {
 		h.logger.Error("failed to update group", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update group")

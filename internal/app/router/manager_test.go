@@ -69,7 +69,9 @@ type nodeRepoStub struct {
 func (s *nodeRepoStub) IterateNodes(context.Context) iter.Seq2[domain.Node, error] {
 	return func(func(domain.Node, error) bool) {}
 }
-func (s *nodeRepoStub) ListVLESSURLs(context.Context, string) ([]string, error) { return nil, nil }
+func (s *nodeRepoStub) ListVLESSURLs(context.Context, string, bool, *int) ([]string, error) {
+	return nil, nil
+}
 func (s *nodeRepoStub) UpdateProbeResult(context.Context, domain.ProbeResult) error {
 	return nil
 }

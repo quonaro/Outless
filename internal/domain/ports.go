@@ -9,7 +9,7 @@ import (
 // NodeRepository provides persistence operations for proxy nodes.
 type NodeRepository interface {
 	IterateNodes(ctx context.Context) iter.Seq2[Node, error]
-	ListVLESSURLs(ctx context.Context, groupID string) ([]string, error)
+	ListVLESSURLs(ctx context.Context, groupID string, randomEnabled bool, randomLimit *int) ([]string, error)
 	UpdateProbeResult(ctx context.Context, result ProbeResult) error
 	Create(ctx context.Context, node Node) error
 	CreateIfAbsent(ctx context.Context, node Node) (bool, error)

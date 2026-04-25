@@ -75,7 +75,13 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
 	}
 
-	countries, err := s.repo.List(ctx)
+	// Load group settings to apply random/limit per group
+	groupSettings, err := s.loadGroupSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	nodes, err := s.repo.List(ctx)
 	if err != nil {
 		return "", fmt.Errorf("loading nodes metadata: %w", err)
 	}
@@ -85,9 +91,9 @@ func (s *Service) BuildBase64VLESS(ctx context.Context, token string) (string, e
 		return "", err
 	}
 
-	s.logger.Info(fmt.Sprintf("Building VLESS subscription: token=%s uuid=%s group=%s groups=%v nodes=%d", tokenInfo.ID, tokenInfo.UUID, tokenInfo.GroupID, tokenInfo.GroupIDs, len(countries)))
+	s.logger.Info(fmt.Sprintf("Building VLESS subscription: token=%s uuid=%s group=%s groups=%v nodes=%d", tokenInfo.ID, tokenInfo.UUID, tokenInfo.GroupID, tokenInfo.GroupIDs, len(nodes)))
 
-	hubURLs := s.buildHubURLs(tokenInfo, countries, groupNames)
+	hubURLs := s.buildHubURLsWithGroupSettings(tokenInfo, nodes, groupNames, groupSettings)
 	if len(hubURLs) == 0 {
 		s.logger.Warn(fmt.Sprintf("No hub URLs generated for token: %s", tokenInfo.ID))
 		return "", nil
@@ -185,6 +191,64 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 	return urls
 }
 
+// buildHubURLsWithGroupSettings constructs VLESS URLs with group-specific random/limit settings.
+func (s *Service) buildHubURLsWithGroupSettings(token domain.Token, allNodes []domain.Node, groupNames map[string]string, groupSettings map[string]domain.Group) []string {
+	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
+	for _, groupID := range token.GroupIDs {
+		allowedGroups[groupID] = struct{}{}
+	}
+	if len(allowedGroups) == 0 && token.GroupID != "" {
+		allowedGroups[token.GroupID] = struct{}{}
+	}
+	allGroupsAllowed := len(allowedGroups) == 0
+
+	// Group nodes by group ID to apply random/limit per group
+	nodesByGroup := make(map[string][]domain.Node)
+	for _, node := range allNodes {
+		if node.Status != domain.NodeStatusHealthy {
+			continue
+		}
+		if !allGroupsAllowed {
+			if _, ok := allowedGroups[node.GroupID]; !ok {
+				continue
+			}
+		}
+		if node.URL == "" {
+			continue
+		}
+		nodesByGroup[node.GroupID] = append(nodesByGroup[node.GroupID], node)
+	}
+
+	var selectedNodes []domain.Node
+	for groupID, nodes := range nodesByGroup {
+		settings := groupSettings[groupID]
+		groupNodes := nodes
+
+		// Apply random selection if enabled
+		if settings.RandomEnabled {
+			shuffleNodes(groupNodes)
+		}
+
+		// Apply limit if set
+		if settings.RandomLimit != nil && *settings.RandomLimit > 0 && len(groupNodes) > *settings.RandomLimit {
+			groupNodes = groupNodes[:*settings.RandomLimit]
+		}
+
+		selectedNodes = append(selectedNodes, groupNodes...)
+	}
+
+	// Build URLs from selected nodes
+	return s.buildHubURLs(token, selectedNodes, groupNames)
+}
+
+// shuffleNodes randomly shuffles a slice of nodes in place using Fisher-Yates algorithm.
+func shuffleNodes(nodes []domain.Node) {
+	for i := len(nodes) - 1; i > 0; i-- {
+		j := int(time.Now().UnixNano()) % (i + 1)
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	}
+}
+
 // formatVLESSURL assembles a Reality-ready VLESS URL pointing to the Hub.
 func (s *Service) formatVLESSURL(uuid string, remark string) string {
 	host := s.hub.Host
@@ -261,13 +325,27 @@ func (s *Service) loadGroupNames(ctx context.Context) (map[string]string, error)
 	}
 
 	s.groupCacheMu.Lock()
-	s.groupCache[cacheKey] = cachedGroupNames{
-		data:      names,
-		expiresAt: time.Now().Add(cacheTTL),
-	}
+	s.groupCache[cacheKey] = cachedGroupNames{data: names, expiresAt: time.Now().Add(cacheTTL)}
 	s.groupCacheMu.Unlock()
 
 	return names, nil
+}
+
+func (s *Service) loadGroupSettings(ctx context.Context) (map[string]domain.Group, error) {
+	groups, err := s.groupRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading groups metadata: %w", err)
+	}
+
+	settings := make(map[string]domain.Group, len(groups))
+	for _, group := range groups {
+		if strings.TrimSpace(group.ID) == "" {
+			continue
+		}
+		settings[group.ID] = group
+	}
+
+	return settings, nil
 }
 
 // invalidateGroupCache clears the group names cache.

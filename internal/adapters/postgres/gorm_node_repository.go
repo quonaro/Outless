@@ -76,7 +76,8 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 }
 
 // ListVLESSURLs returns node URLs for subscription output, filtered by group if specified and latency if configured.
-func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string) ([]string, error) {
+// Supports random selection and limit per group to handle large groups efficiently.
+func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string, randomEnabled bool, randomLimit *int) ([]string, error) {
 	type row struct {
 		URL string `gorm:"column:url"`
 	}
@@ -91,7 +92,17 @@ func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string) 
 		query = query.Where("group_id = ?", groupID)
 	}
 
-	query = query.Order("latency_ms ASC").Limit(50)
+	if randomEnabled {
+		query = query.Order("RANDOM()")
+	} else {
+		query = query.Order("latency_ms ASC")
+	}
+
+	limit := 50
+	if randomLimit != nil && *randomLimit > 0 {
+		limit = *randomLimit
+	}
+	query = query.Limit(limit)
 
 	rows := make([]row, 0, 64)
 	err := query.Find(&rows).Error

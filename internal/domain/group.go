@@ -12,6 +12,8 @@ type Group struct {
 	UnhealthyNodes        int
 	UnknownNodes          int
 	AutoDeleteUnavailable bool
+	RandomEnabled         bool
+	RandomLimit           *int
 	LastSyncedAt          *time.Time
 	CreatedAt             time.Time
 }
