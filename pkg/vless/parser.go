@@ -86,9 +86,8 @@ func (p Parsed) StreamSettings() map[string]any {
 	switch p.Security {
 	case "reality":
 		reality := map[string]any{
-			"show":         false,
-			"fingerprint":  valueOr(p.FP, "chrome"),
-			"masterKeyLog": "",
+			"show":        false,
+			"fingerprint": valueOr(p.FP, "chrome"),
 		}
 		if p.SNI != "" {
 			reality["serverName"] = p.SNI
@@ -125,6 +124,18 @@ func (p Parsed) StreamSettings() map[string]any {
 		stream["wsSettings"] = ws
 	case "grpc":
 		stream["grpcSettings"] = map[string]any{"serviceName": p.Service}
+	case "http", "httpupgrade", "splithttp", "xhttp":
+		// HTTP-based transports use minimal config
+		if p.Path != "" {
+			stream["httpSettings"] = map[string]any{"path": p.Path}
+		}
+		if p.HostHeader != "" {
+			if stream["httpSettings"] == nil {
+				stream["httpSettings"] = map[string]any{}
+			}
+			httpSettings := stream["httpSettings"].(map[string]any)
+			httpSettings["host"] = []string{p.HostHeader}
+		}
 	}
 
 	return stream

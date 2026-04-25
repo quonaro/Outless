@@ -17,6 +17,7 @@ import (
 	"outless/internal/adapters/postgres"
 	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
+	"outless/pkg/vless"
 )
 
 // syncLoadBatchSize limits rows per INSERT for Load to keep queries and WS fan-out bounded.
@@ -461,21 +462,45 @@ func (s *Service) fetchSource(ctx context.Context, url string) (string, error) {
 }
 
 // parseVLESSLines extracts VLESS URLs from content (one per line).
+// Filters out invalid URLs that would cause Xray config errors.
 func (s *Service) parseVLESSLines(content string) []string {
 	lines := strings.Split(content, "\n")
 	urls := make([]string, 0)
+	skipped := 0
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "vless://") {
-			urls = append(urls, line)
+		if !strings.HasPrefix(line, "vless://") {
+			continue
 		}
+
+		// Validate VLESS URL to prevent Xray config errors
+		if _, err := vless.ParseURL(line); err != nil {
+			s.logger.Debug("skipping invalid VLESS URL",
+				slog.String("error", err.Error()),
+				slog.String("url_prefix", line[:min(100, len(line))]))
+			skipped++
+			continue
+		}
+
+		urls = append(urls, line)
+	}
+
+	if skipped > 0 {
+		s.logger.Info("filtered invalid VLESS URLs during import", slog.Int("skipped", skipped))
 	}
 
 	return urls
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // importURLs adds VLESS URLs as nodes to the database.

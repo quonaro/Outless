@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o
 # Download Xray binary for embedded mode
 FROM alpine:3.22 AS xray-downloader
 RUN apk add --no-cache curl && \
-    curl -L -o /xray "https://github.com/XTLS/Xray-core/releases/download/v1.8.24/Xray-linux-64.zip" && \
+    curl -L -o /xray "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip" && \
     unzip -p /xray xray > /usr/local/bin/xray && \
     chmod +x /usr/local/bin/xray && \
     rm /xray
