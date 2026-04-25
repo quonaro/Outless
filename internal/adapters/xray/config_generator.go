@@ -210,7 +210,7 @@ func buildClients(tokens []domain.Token, nodes []domain.Node, logger *slog.Logge
 			})
 
 			if logger != nil {
-				logger.Warn("Token has no access to any nodes, creating blocked entry",
+				logger.Debug("Token has no access to any nodes, creating blocked entry",
 					slog.String("token_id", token.ID),
 					slog.String("email", email),
 				)
@@ -243,7 +243,7 @@ func buildDirectRouting(clients []map[string]any, logger *slog.Logger) []any {
 			})
 
 			if logger != nil {
-				logger.Warn(fmt.Sprintf("Created block rule: email=%s", email))
+				logger.Debug(fmt.Sprintf("Created block rule: email=%s", email))
 			}
 			continue
 		}

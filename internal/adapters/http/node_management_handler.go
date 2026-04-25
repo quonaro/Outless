@@ -64,8 +64,8 @@ type ListNodesInput struct {
 type UpdateNodeInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		URL     string `json:"url" required:"true"`
-		GroupID string `json:"group_id"`
+		URL     string `json:"url,omitempty"`
+		GroupID string `json:"group_id,omitempty"`
 	}
 }
 
@@ -112,7 +112,7 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/nodes", h.CreateNode)
 	huma.Get(api, "/v1/nodes", h.ListNodes)
 	huma.Get(api, "/v1/nodes/{id}", h.GetNode)
-	huma.Put(api, "/v1/nodes/{id}", h.UpdateNode)
+	huma.Patch(api, "/v1/nodes/{id}", h.UpdateNode)
 	huma.Post(api, "/v1/nodes/{id}/probe", h.ProbeNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
 }
@@ -231,8 +231,27 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 }
 
 func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNodeInput) (*struct{}, error) {
-	if input.Body.URL == "" {
-		return nil, huma.Error400BadRequest("url is required")
+	if input.Body.URL == "" && input.Body.GroupID == "" {
+		return nil, huma.Error400BadRequest("at least one field (url or group_id) is required")
+	}
+
+	existingNode, err := h.nodeRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			return nil, huma.Error404NotFound("node not found")
+		}
+		h.logger.Error("failed to find node for update", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to find node")
+	}
+
+	updates := domain.Node{
+		ID:      input.ID,
+		URL:     existingNode.URL,
+		GroupID: existingNode.GroupID,
+	}
+
+	if input.Body.URL != "" {
+		updates.URL = input.Body.URL
 	}
 
 	if input.Body.GroupID != "" {
@@ -244,15 +263,10 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 			h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
 			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
+		updates.GroupID = input.Body.GroupID
 	}
 
-	node := domain.Node{
-		ID:      input.ID,
-		URL:     input.Body.URL,
-		GroupID: input.Body.GroupID,
-	}
-
-	if err := h.nodeRepo.Update(ctx, node); err != nil {
+	if err := h.nodeRepo.Update(ctx, updates); err != nil {
 		h.logger.Error("failed to update node", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update node")
 	}
