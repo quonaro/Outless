@@ -25,14 +25,12 @@ services:
       target: outless
     restart: unless-stopped
     depends_on:
-      database:
-        condition: service_healthy
+      - database
     ports:
       - "41220:41220"
       - "443:443"
     volumes:
       - ./outless.yaml:/app/outless.yaml
-      - ./migrations:/app/migrations
     command: [ "-config", "/app/outless.yaml" ]
 
 volumes:

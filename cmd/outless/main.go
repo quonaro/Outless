@@ -84,12 +84,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Run database migrations
-	if err := postgres.MigrateDatabase(cfg.DatabaseURL, "/app/migrations", logger); err != nil {
-		logger.Error("failed to run database migrations", slog.String("error", err.Error()), slog.String("db_url", cfg.DatabaseURL))
-		os.Exit(1)
-	}
-
 	db, err := postgres.NewGormDB(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect postgres orm", slog.String("error", err.Error()))
