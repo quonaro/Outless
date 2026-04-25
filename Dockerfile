@@ -23,7 +23,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.22 AS runtime-base
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata docker-cli && adduser -D -u 10001 appuser && mkdir -p /app/tmp /var/lib/outless /var/log/outless && chown appuser:appuser /app/tmp /var/lib/outless /var/log/outless
+RUN apk add --no-cache ca-certificates tzdata docker-cli && adduser -D -u 10001 appuser && mkdir -p /app/tmp /app/logs /var/lib/outless && chown appuser:appuser /app/tmp /app/logs /var/lib/outless
 
 COPY --from=builder /out/ /usr/local/bin/
 COPY --from=xray-downloader /usr/local/bin/xray /usr/local/bin/xray
