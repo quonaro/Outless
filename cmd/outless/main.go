@@ -23,6 +23,7 @@ import (
 	"outless/internal/app/router"
 	"outless/internal/app/subscription"
 	"outless/internal/domain"
+	"outless/internal/migrations"
 	"outless/pkg/config"
 	"outless/pkg/logging"
 
@@ -87,6 +88,18 @@ func main() {
 	db, err := postgres.NewGormDB(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect postgres orm", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	// Run database migrations
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.Error("failed to get sql db from gorm", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	migrator := migrations.NewMigrator(sqlDB, logger)
+	if err := migrator.Up(ctx); err != nil {
+		logger.Error("failed to run migrations", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 

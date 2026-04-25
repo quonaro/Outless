@@ -43,11 +43,10 @@ If you work on networking/runtime behavior, assume Xray compatibility is a hard 
 4. Run services:
 
    ```bash
-   go run ./cmd/api -config outless.yaml
-   go run ./cmd/checker -config outless.yaml
-   go run ./cmd/hub -config outless.yaml
-   go run ./cmd/token -config outless.yaml
+   go run ./cmd/outless -config outless.yaml
    ```
+
+**Note:** Database migrations are embedded in the binary and applied automatically on startup.
 
 ## Async probe jobs (API contract)
 
