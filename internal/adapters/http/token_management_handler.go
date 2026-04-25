@@ -56,6 +56,15 @@ type DeleteTokenInput struct {
 	ID string `path:"id" required:"true"`
 }
 
+type UpdateTokenInput struct {
+	ID   string `path:"id" required:"true"`
+	Body struct {
+		Owner     string   `json:"owner" required:"true" maxLength:"64"`
+		GroupIDs  []string `json:"group_ids"`
+		ExpiresIn string   `json:"expires_in" example:"24h"`
+	}
+}
+
 type TokenItem struct {
 	ID        string    `json:"id"`
 	Owner     string    `json:"owner"`
@@ -70,6 +79,7 @@ type TokenItem struct {
 func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/tokens", h.CreateToken)
 	huma.Get(api, "/v1/tokens", h.ListTokens)
+	huma.Put(api, "/v1/tokens/{id}", h.UpdateToken)
 	huma.Post(api, "/v1/tokens/{id}/deactivate", h.DeactivateToken)
 	huma.Post(api, "/v1/tokens/{id}/activate", h.ActivateToken)
 	huma.Delete(api, "/v1/tokens/{id}", h.RemoveToken)
@@ -175,6 +185,44 @@ func (h *TokenManagementHandler) RemoveToken(ctx context.Context, input *DeleteT
 	if err := h.tokenRepo.Remove(ctx, input.ID); err != nil {
 		h.logger.Error("failed to remove token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to remove token")
+	}
+
+	return nil, nil
+}
+
+func (h *TokenManagementHandler) UpdateToken(ctx context.Context, input *UpdateTokenInput) (*struct{}, error) {
+	if input.Body.Owner == "" {
+		return nil, huma.Error400BadRequest("owner is required")
+	}
+
+	groupIDs := uniqueStringSlice(input.Body.GroupIDs)
+
+	// Validate explicitly selected groups.
+	for _, groupID := range groupIDs {
+		if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+			if errors.Is(err, domain.ErrNodeNotFound) {
+				h.logger.Warn("group not found", slog.String("group_id", groupID))
+				return nil, huma.Error400BadRequest("group not found")
+			}
+			h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate group")
+		}
+	}
+
+	// Parse expiration
+	expiresIn := 30 * 24 * time.Hour // default 30 days
+	if input.Body.ExpiresIn != "" {
+		d, err := time.ParseDuration(input.Body.ExpiresIn)
+		if err != nil {
+			return nil, huma.Error400BadRequest("invalid expires_in format")
+		}
+		expiresIn = d
+	}
+
+	expiresAt := time.Now().UTC().Add(expiresIn)
+	if err := h.tokenRepo.Update(ctx, input.ID, input.Body.Owner, groupIDs, expiresAt); err != nil {
+		h.logger.Error("failed to update token", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to update token")
 	}
 
 	return nil, nil

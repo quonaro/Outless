@@ -317,6 +317,64 @@ func (r *GormTokenRepository) Remove(ctx context.Context, id string) error {
 	return nil
 }
 
+// Update modifies token owner, group IDs, and expiration.
+func (r *GormTokenRepository) Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error {
+	if strings.TrimSpace(owner) == "" {
+		return fmt.Errorf("owner is required")
+	}
+	if expiresAt.IsZero() {
+		return fmt.Errorf("expiresAt is required")
+	}
+
+	legacyGroupID := ""
+	if len(groupIDs) == 1 {
+		legacyGroupID = groupIDs[0]
+	}
+
+	txErr := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Update token row
+		result := tx.Model(&tokenModel{}).
+			Where("id = ?", id).
+			Updates(map[string]interface{}{
+				"owner":      owner,
+				"group_id":   nullableString(legacyGroupID),
+				"expires_at": expiresAt.UTC(),
+			})
+
+		if result.Error != nil {
+			return fmt.Errorf("updating token: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("token not found: %w", domain.ErrNodeNotFound)
+		}
+
+		// Delete existing group links
+		if err := tx.Where("token_id = ?", id).Delete(&tokenGroupModel{}).Error; err != nil {
+			return fmt.Errorf("deleting old group links: %w", err)
+		}
+
+		// Insert new group links
+		for _, groupID := range uniqueNonEmpty(groupIDs) {
+			link := tokenGroupModel{
+				TokenID: id,
+				GroupID: groupID,
+			}
+			if err := tx.Create(&link).Error; err != nil {
+				return fmt.Errorf("creating token_groups link: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if txErr != nil {
+		return txErr
+	}
+
+	r.logger.Info("token updated", slog.String("id", id), slog.String("owner", owner), slog.Int("group_count", len(groupIDs)), slog.Time("expires_at", expiresAt))
+	return nil
+}
+
 func (r *GormTokenRepository) loadGroupIDsByTokenIDs(ctx context.Context, tokenIDs []string) (map[string][]string, error) {
 	if len(tokenIDs) == 0 {
 		return map[string][]string{}, nil

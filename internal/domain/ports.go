@@ -40,6 +40,7 @@ type TokenRepository interface {
 	Deactivate(ctx context.Context, id string) error
 	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
+	Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error
 }
 
 // ProxyEngine validates node reachability through Xray.

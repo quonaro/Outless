@@ -58,6 +58,9 @@ func (s *tokenRepoStub) List(context.Context) ([]domain.Token, error) { return n
 func (s *tokenRepoStub) Deactivate(context.Context, string) error     { return nil }
 func (s *tokenRepoStub) Activate(context.Context, string) error       { return nil }
 func (s *tokenRepoStub) Remove(context.Context, string) error         { return nil }
+func (s *tokenRepoStub) Update(context.Context, string, string, []string, time.Time) error {
+	return nil
+}
 
 type nodeRepoStub struct {
 	nodes []domain.Node
