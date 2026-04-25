@@ -43,6 +43,10 @@ func isPublicPath(path string) bool {
 	if strings.HasPrefix(path, "/v1/sub/") {
 		return true
 	}
+	// Allow GET /v1/settings for read-only access to current configuration
+	if path == "/v1/settings" {
+		return true
+	}
 	// OpenAPI schema and docs that huma exposes by default.
 	if path == "/openapi.json" || path == "/openapi.yaml" || path == "/docs" || strings.HasPrefix(path, "/docs/") || path == "/schemas" {
 		return true

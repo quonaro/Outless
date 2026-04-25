@@ -29,13 +29,34 @@ type SafeAPIConfig struct {
 	Shutdown string `json:"shutdown"`
 }
 
+// SafeGeoIPConfig exposes GeoIP settings with TTL as string.
+type SafeGeoIPConfig struct {
+	DBPath string `json:"db_path"`
+	DBURL  string `json:"db_url"`
+	Auto   bool   `json:"auto"`
+	TTL    string `json:"ttl"`
+}
+
+// SafeRouterConfig exposes Router settings with duration fields as strings.
+type SafeRouterConfig struct {
+	Domain       string `json:"Domain"`
+	Port         int    `json:"Port"`
+	SNI          string `json:"SNI"`
+	PublicKey    string `json:"PublicKey"`
+	PrivateKey   string `json:"PrivateKey"`
+	ShortID      string `json:"ShortID"`
+	Fingerprint  string `json:"Fingerprint"`
+	Address      string `json:"Address"`
+	SyncInterval string `json:"SyncInterval"`
+}
+
 // SafeMonitorConfig exposes monitor settings without secrets.
 type SafeMonitorConfig struct {
 	Workers         int                 `json:"workers"`
 	RefreshInterval string              `json:"refresh_interval"`
 	PollInterval    string              `json:"poll_interval"`
 	CheckInterval   string              `json:"check_interval"`
-	GeoIP           config.GeoIPConfig  `json:"geoip"`
+	GeoIP           SafeGeoIPConfig     `json:"geoip"`
 	Agents          config.AgentsConfig `json:"agents"`
 }
 
@@ -43,9 +64,9 @@ type SafeMonitorConfig struct {
 type SettingsOutput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      config.APIConfig      `json:"api"`
+		API      SafeAPIConfig         `json:"api"`
 		Monitor  SafeMonitorConfig     `json:"monitor"`
-		Router   config.RouterConfig   `json:"router"`
+		Router   SafeRouterConfig      `json:"router"`
 	}
 }
 
@@ -53,9 +74,9 @@ type SettingsOutput struct {
 type UpdateSettingsInput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      config.APIConfig      `json:"api"`
+		API      SafeAPIConfig         `json:"api"`
 		Monitor  SafeMonitorConfig     `json:"monitor"`
-		Router   config.RouterConfig   `json:"router"`
+		Router   SafeRouterConfig      `json:"router"`
 	}
 }
 
@@ -77,16 +98,33 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 
 	out := &SettingsOutput{}
 	out.Body.Database = cfg.Database
-	out.Body.API = cfg.API
+	out.Body.API = SafeAPIConfig{
+		Shutdown: cfg.API.Shutdown.String(),
+	}
 	out.Body.Monitor = SafeMonitorConfig{
 		Workers:         cfg.Monitor.Workers,
 		RefreshInterval: cfg.Monitor.RefreshInterval.String(),
 		PollInterval:    cfg.Monitor.PollInterval.String(),
 		CheckInterval:   cfg.Monitor.CheckInterval.String(),
-		GeoIP:           cfg.Monitor.GeoIP,
-		Agents:          cfg.Monitor.Agents,
+		GeoIP: SafeGeoIPConfig{
+			DBPath: cfg.Monitor.GeoIP.DBPath,
+			DBURL:  cfg.Monitor.GeoIP.DBURL,
+			Auto:   cfg.Monitor.GeoIP.Auto,
+			TTL:    cfg.Monitor.GeoIP.TTL.String(),
+		},
+		Agents: cfg.Monitor.Agents,
 	}
-	out.Body.Router = cfg.Router
+	out.Body.Router = SafeRouterConfig{
+		Domain:       cfg.Router.Domain,
+		Port:         cfg.Router.Port,
+		SNI:          cfg.Router.SNI,
+		PublicKey:    cfg.Router.PublicKey,
+		PrivateKey:   cfg.Router.PrivateKey,
+		ShortID:      cfg.Router.ShortID,
+		Fingerprint:  cfg.Router.Fingerprint,
+		Address:      cfg.Router.Address,
+		SyncInterval: cfg.Router.SyncInterval.String(),
+	}
 
 	return out, nil
 }
@@ -101,7 +139,9 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	}
 
 	cfg.Database = input.Body.Database
-	cfg.API = input.Body.API
+	if d := config.ParseDuration(input.Body.API.Shutdown, cfg.API.Shutdown); d > 0 {
+		cfg.API.Shutdown = d
+	}
 
 	cfg.Monitor.Workers = input.Body.Monitor.Workers
 	if d := config.ParseDuration(input.Body.Monitor.RefreshInterval, cfg.Monitor.RefreshInterval); d > 0 {
@@ -113,10 +153,25 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	if d := config.ParseDuration(input.Body.Monitor.CheckInterval, cfg.Monitor.CheckInterval); d > 0 {
 		cfg.Monitor.CheckInterval = d
 	}
-	cfg.Monitor.GeoIP = input.Body.Monitor.GeoIP
+	cfg.Monitor.GeoIP = config.GeoIPConfig{
+		DBPath: input.Body.Monitor.GeoIP.DBPath,
+		DBURL:  input.Body.Monitor.GeoIP.DBURL,
+		Auto:   input.Body.Monitor.GeoIP.Auto,
+		TTL:    config.ParseDuration(input.Body.Monitor.GeoIP.TTL, cfg.Monitor.GeoIP.TTL),
+	}
 	cfg.Monitor.Agents = input.Body.Monitor.Agents
 
-	cfg.Router = input.Body.Router
+	cfg.Router = config.RouterConfig{
+		Domain:       input.Body.Router.Domain,
+		Port:         input.Body.Router.Port,
+		SNI:          input.Body.Router.SNI,
+		PublicKey:    input.Body.Router.PublicKey,
+		PrivateKey:   input.Body.Router.PrivateKey,
+		ShortID:      input.Body.Router.ShortID,
+		Fingerprint:  input.Body.Router.Fingerprint,
+		Address:      input.Body.Router.Address,
+		SyncInterval: config.ParseDuration(input.Body.Router.SyncInterval, cfg.Router.SyncInterval),
+	}
 
 	if err := loader.Save(h.configPath, &cfg); err != nil {
 		h.logger.Error("failed to save config", slog.String("error", err.Error()))

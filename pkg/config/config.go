@@ -19,7 +19,7 @@ type Config struct {
 
 // DatabaseConfig holds database connection settings.
 type DatabaseConfig struct {
-	URL string `yaml:"url"`
+	URL string `yaml:"url" json:"url"`
 }
 
 // JWTConfig holds JWT authentication settings.
@@ -53,29 +53,29 @@ type MonitorConfig struct {
 
 // GeoIPConfig controls local MMDB country lookup and optional auto-update.
 type GeoIPConfig struct {
-	DBPath string        `yaml:"db_path"`
-	DBURL  string        `yaml:"db_url"`
-	Auto   bool          `yaml:"auto"`
-	TTL    time.Duration `yaml:"ttl"`
+	DBPath string        `yaml:"db_path" json:"db_path"`
+	DBURL  string        `yaml:"db_url" json:"db_url"`
+	Auto   bool          `yaml:"auto" json:"auto"`
+	TTL    time.Duration `yaml:"ttl" json:"ttl"`
 }
 
 // AgentsConfig holds probe agents configuration.
 type AgentsConfig struct {
-	Workers int    `yaml:"workers"`
-	URL     string `yaml:"url"`
+	Workers int    `yaml:"workers" json:"workers"`
+	URL     string `yaml:"url" json:"url"`
 }
 
 // RouterConfig holds Router (Xray edge) configuration.
 type RouterConfig struct {
-	Domain       string        `yaml:"domain"`
-	Port         int           `yaml:"port"`
-	SNI          string        `yaml:"sni"`
-	PublicKey    string        `yaml:"public_key"`
-	PrivateKey   string        `yaml:"private_key"`
-	ShortID      string        `yaml:"short_id"`
-	Fingerprint  string        `yaml:"fingerprint"`
-	Address      string        `yaml:"address"`
-	SyncInterval time.Duration `yaml:"sync_interval"`
+	Domain       string        `yaml:"domain" json:"Domain"`
+	Port         int           `yaml:"port" json:"Port"`
+	SNI          string        `yaml:"sni" json:"SNI"`
+	PublicKey    string        `yaml:"public_key" json:"PublicKey"`
+	PrivateKey   string        `yaml:"private_key" json:"PrivateKey"`
+	ShortID      string        `yaml:"short_id" json:"ShortID"`
+	Fingerprint  string        `yaml:"fingerprint" json:"Fingerprint"`
+	Address      string        `yaml:"address" json:"Address"`
+	SyncInterval time.Duration `yaml:"sync_interval" json:"SyncInterval"`
 }
 
 // LogsConfig holds logging configuration.
