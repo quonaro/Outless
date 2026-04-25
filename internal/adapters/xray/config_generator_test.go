@@ -73,8 +73,7 @@ func TestBuildDirectRouting(t *testing.T) {
 		},
 	}
 
-	nodesByGroup := make(map[string][]domain.Node)
-	rules := buildDirectRouting(clients, nodesByGroup, nil)
+	rules := buildDirectRouting(clients, nil)
 
 	// Should have 2 routing rules
 	if len(rules) != 2 {

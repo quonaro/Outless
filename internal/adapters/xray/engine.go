@@ -180,6 +180,8 @@ func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeR
 				e.logger.Debug("xray RemoveRule cleanup failed", slog.String("rule_tag", ruleTag), slog.String("error", rmErr.Error()))
 			}
 		}
+		// Small delay to allow pending Xray traffic to drain before removing outbound
+		time.Sleep(100 * time.Millisecond)
 		if _, rmErr := e.hs.RemoveOutbound(context.Background(), &handlercmd.RemoveOutboundRequest{Tag: outboundTag}); rmErr != nil {
 			e.logger.Debug("xray RemoveOutbound cleanup failed", slog.String("outbound_tag", outboundTag), slog.String("error", rmErr.Error()))
 		}

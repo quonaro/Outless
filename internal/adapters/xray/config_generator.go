@@ -39,8 +39,8 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 		slog.String("inbound_shortid", inbound.ShortID),
 	)
 	clients := buildClients(tokens, nodes, logger)
-	outbounds, nodesByGroup, _ := buildOutbounds(nodes, logger)
-	routingRules := buildDirectRouting(clients, nodesByGroup, logger)
+	outbounds, _, _ := buildOutbounds(nodes, logger)
+	routingRules := buildDirectRouting(clients, logger)
 
 	dest := inbound.Destination
 	sni := inbound.SNI
@@ -224,7 +224,7 @@ func buildClients(tokens []domain.Token, nodes []domain.Node, logger *slog.Logge
 
 // buildDirectRouting creates direct routing rules by email without balancers.
 // Each email (token-node) routes directly to its specific outbound.
-func buildDirectRouting(clients []map[string]any, nodesByGroup map[string][]domain.Node, logger *slog.Logger) []any {
+func buildDirectRouting(clients []map[string]any, logger *slog.Logger) []any {
 	rules := make([]any, 0)
 
 	for _, client := range clients {
@@ -531,8 +531,9 @@ func (p parsedVLESS) streamSettings() map[string]any {
 	switch p.security {
 	case "reality":
 		reality := map[string]any{
-			"show":        false,
-			"fingerprint": valueOr(p.fp, "chrome"),
+			"show":         false,
+			"fingerprint":  valueOr(p.fp, "chrome"),
+			"masterKeyLog": "", // Disable master key logging to avoid file open errors
 		}
 		if p.sni != "" {
 			reality["serverName"] = p.sni
