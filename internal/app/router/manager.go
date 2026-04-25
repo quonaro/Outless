@@ -112,7 +112,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 		return fmt.Errorf("listing nodes: %w", err)
 	}
 
-	m.logger.Info("Sync: loaded tokens and nodes",
+	m.logger.Debug("Sync: loaded tokens and nodes",
 		slog.Int("tokens", len(tokens)),
 		slog.Int("nodes", len(nodes)),
 	)
@@ -159,7 +159,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	// This ensures Xray restarts even when going from 0 to 0 tokens (same empty config)
 	configChanged := sum != m.lastSum
 	tokensChanged := activeTokens != m.lastActiveTokens
-	
+
 	if !configChanged && !tokensChanged {
 		return nil
 	}
@@ -169,7 +169,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	}
 	m.lastSum = sum
 	m.lastActiveTokens = activeTokens
-	
+
 	m.logger.Info("xray config updated",
 		slog.Int("tokens", activeTokens),
 		slog.Int("nodes", len(nodes)),

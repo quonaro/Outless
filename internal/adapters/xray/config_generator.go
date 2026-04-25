@@ -112,7 +112,7 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 	}
 
 	if logger != nil {
-		logger.Info("Generated Xray Hub config",
+		logger.Debug("Generated Xray Hub config",
 			slog.Int("tokens", len(tokens)),
 			slog.Int("nodes", len(nodes)),
 			slog.Int("clients", len(clients)),
@@ -121,7 +121,7 @@ func GenerateHubConfig(tokens []domain.Token, nodes []domain.Node, inbound HubIn
 		)
 	}
 
-return data, nil
+	return data, nil
 }
 
 // generateUUIDFromTokenNode generates a deterministic UUID from tokenID and nodeID.
@@ -160,7 +160,7 @@ func buildClients(tokens []domain.Token, nodes []domain.Node, logger *slog.Logge
 		allGroupsAllowed := len(allowedGroups) == 0
 
 		if logger != nil {
-			logger.Info(fmt.Sprintf("Processing token: id=%s uuid=%s all_groups=%v", token.ID, token.UUID, allGroupsAllowed))
+			logger.Debug(fmt.Sprintf("Processing token: id=%s uuid=%s all_groups=%v", token.ID, token.UUID, allGroupsAllowed))
 		}
 
 		hasAccess := false
@@ -287,7 +287,7 @@ func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string
 	for _, node := range nodes {
 		if node.Status != domain.NodeStatusHealthy {
 			if logger != nil {
-				logger.Info(fmt.Sprintf("Skipping unhealthy node: id=%s status=%s", node.ID, node.Status))
+				logger.Debug(fmt.Sprintf("Skipping unhealthy node: id=%s status=%s", node.ID, node.Status))
 			}
 			continue
 		}
@@ -324,7 +324,7 @@ func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string
 		})
 
 		if logger != nil {
-			logger.Info(fmt.Sprintf("Created outbound: node=%s group=%s tag=%s host=%s:%d", node.ID, node.GroupID, tag, parsed.host, parsed.port))
+			logger.Debug(fmt.Sprintf("Created outbound: node=%s group=%s tag=%s host=%s:%d", node.ID, node.GroupID, tag, parsed.host, parsed.port))
 		}
 
 		nodesByGroup[node.GroupID] = append(nodesByGroup[node.GroupID], node)
