@@ -37,11 +37,6 @@ jobs:
         images: ${{ env.IMAGE_NAME }}
         tags: |
           type=raw,value=backend
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
