@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"outless/internal/domain"
+	"outless/pkg/vless"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -16,14 +17,16 @@ import (
 type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
+	geoip     domain.GeoIPResolver
 	realtime  *RealtimeHandler
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, geoip domain.GeoIPResolver, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
+		geoip:     geoip,
 		realtime:  realtime,
 		logger:    logger,
 	}
@@ -41,7 +44,6 @@ type CreateNodeOutput struct {
 		ID      string `json:"id"`
 		URL     string `json:"url"`
 		GroupID string `json:"group_id"`
-		Status  string `json:"status"`
 	}
 }
 
@@ -83,8 +85,6 @@ type NodeItem struct {
 	ID      string `json:"id"`
 	URL     string `json:"url"`
 	GroupID string `json:"group_id"`
-	Latency int64  `json:"latency_ms"`
-	Status  string `json:"status"`
 	Country string `json:"country"`
 }
 
@@ -113,10 +113,25 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	}
 
 	nodeID := generateNodeID(input.Body.URL)
+
+	// Resolve country from IP address using GeoIP
+	country := ""
+	if h.geoip != nil {
+		ip := vless.ExtractIPFromVLESS(input.Body.URL)
+		if ip != "" {
+			if resolvedCountry, err := h.geoip.LookupCountry(ctx, ip); err == nil {
+				country = domain.NormalizeCountryCode(resolvedCountry)
+			} else {
+				h.logger.Debug("geoip lookup failed", slog.String("ip", ip), slog.String("error", err.Error()))
+			}
+		}
+	}
+
 	node := domain.Node{
 		ID:      nodeID,
 		URL:     input.Body.URL,
 		GroupID: input.Body.GroupID,
+		Country: country,
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {

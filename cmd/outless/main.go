@@ -171,7 +171,7 @@ func main() {
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, apiLogger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, apiLogger),
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, apiLogger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, realtime, apiLogger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, geoipResolver, realtime, apiLogger),
 		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, realtime, apiLogger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, apiLogger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, apiLogger),

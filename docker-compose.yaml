@@ -43,8 +43,10 @@ services:
     volumes:
       - ./outless.yaml:/app/outless.yaml
       - /var/log/outless:/var/log/outless
-    command: [ "-config", "/app/outless.yaml" ]
+      - geoip_data:/app/tmp
 
 volumes:
   postgres_data:
     name: outless-db
+  geoip_data:
+    name: outless-geoip

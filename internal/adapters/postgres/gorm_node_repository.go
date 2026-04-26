@@ -17,14 +17,11 @@ import (
 )
 
 type nodeModel struct {
-	ID            string    `gorm:"column:id;primaryKey"`
-	URL           string    `gorm:"column:url"`
-	GroupID       *string   `gorm:"column:group_id"`
-	LatencyMS     int64     `gorm:"column:latency_ms"`
-	Status        string    `gorm:"column:status"`
-	Country       string    `gorm:"column:country"`
-	LastCheckedAt time.Time `gorm:"column:last_checked_at"`
-	CreatedAt     time.Time `gorm:"column:created_at"`
+	ID        string    `gorm:"column:id;primaryKey"`
+	URL       string    `gorm:"column:url"`
+	GroupID   *string   `gorm:"column:group_id"`
+	Country   string    `gorm:"column:country"`
+	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
 func (nodeModel) TableName() string {
@@ -47,7 +44,7 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 	return func(yield func(domain.Node, error) bool) {
 		models := make([]nodeModel, 0, 256)
 		err := r.db.WithContext(ctx).
-			Select("id", "url", "group_id", "latency_ms", "status", "country").
+			Select("id", "url", "group_id", "country").
 			Find(&models).Error
 		if err != nil {
 			yield(domain.Node{}, fmt.Errorf("querying nodes via gorm: %w", err))
