@@ -80,12 +80,6 @@ func (r *EmbeddedHubRuntime) Start(configPath string) error {
 		}
 	}
 
-	// Fallback to stdout if file logging fails or not configured
-	if cmd.Stdout == nil {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
-
 	if err := cmd.Start(); err != nil {
 		r.mu.Unlock()
 		return err

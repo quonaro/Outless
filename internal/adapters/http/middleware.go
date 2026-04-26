@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -144,7 +145,7 @@ func (m *LoggingMiddleware) Wrap(next http.Handler) http.Handler {
 		recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 
-		message := extractRemoteIP(r.RemoteAddr) + " " + r.URL.Path
+		message := fmt.Sprintf("%s %s %s %d", extractRemoteIP(r.RemoteAddr), r.Method, r.URL.Path, recorder.statusCode)
 		switch {
 		case recorder.statusCode >= http.StatusInternalServerError:
 			m.logger.Error(message)
