@@ -100,7 +100,6 @@ func (h *GroupManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/groups", h.CreateGroup)
 	huma.Get(api, "/v1/groups", h.ListGroups)
 	huma.Put(api, "/v1/groups/{id}", h.UpdateGroup)
-	huma.Post(api, "/v1/groups/{id}/nodes/delete-unavailable", h.DeleteUnavailableNodes)
 	huma.Delete(api, "/v1/groups/{id}", h.DeleteGroup)
 }
 
@@ -117,13 +116,12 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	}
 
 	group := domain.Group{
-		ID:                    id,
-		Name:                  input.Body.Name,
-		SourceURL:             strings.TrimSpace(input.Body.SourceURL),
-		AutoDeleteUnavailable: input.Body.AutoDeleteUnavailable,
-		RandomEnabled:         input.Body.RandomEnabled,
-		RandomLimit:           input.Body.RandomLimit,
-		CreatedAt:             time.Now().UTC(),
+		ID:            id,
+		Name:          input.Body.Name,
+		SourceURL:     strings.TrimSpace(input.Body.SourceURL),
+		RandomEnabled: input.Body.RandomEnabled,
+		RandomLimit:   input.Body.RandomLimit,
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	if err := h.groupRepo.Create(ctx, group); err != nil {
@@ -138,7 +136,6 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	out.Body.ID = id
 	out.Body.Name = group.Name
 	out.Body.SourceURL = group.SourceURL
-	out.Body.AutoDeleteUnavailable = group.AutoDeleteUnavailable
 	out.Body.RandomEnabled = group.RandomEnabled
 	out.Body.RandomLimit = group.RandomLimit
 	out.Body.LastSyncedAt = group.LastSyncedAt
@@ -158,18 +155,14 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 
 	for _, g := range groups {
 		response = append(response, GroupItem{
-			ID:                    g.ID,
-			Name:                  g.Name,
-			SourceURL:             g.SourceURL,
-			TotalNodes:            g.TotalNodes,
-			HealthyNodes:          g.HealthyNodes,
-			UnhealthyNodes:        g.UnhealthyNodes,
-			UnknownNodes:          g.UnknownNodes,
-			AutoDeleteUnavailable: g.AutoDeleteUnavailable,
-			RandomEnabled:         g.RandomEnabled,
-			RandomLimit:           g.RandomLimit,
-			LastSyncedAt:          g.LastSyncedAt,
-			CreatedAt:             g.CreatedAt,
+			ID:            g.ID,
+			Name:          g.Name,
+			SourceURL:     g.SourceURL,
+			TotalNodes:    g.TotalNodes,
+			RandomEnabled: g.RandomEnabled,
+			RandomLimit:   g.RandomLimit,
+			LastSyncedAt:  g.LastSyncedAt,
+			CreatedAt:     g.CreatedAt,
 		})
 	}
 
@@ -196,7 +189,6 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 
 	group.Name = input.Body.Name
 	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
-	group.AutoDeleteUnavailable = input.Body.AutoDeleteUnavailable
 	group.RandomEnabled = input.Body.RandomEnabled
 	group.RandomLimit = input.Body.RandomLimit
 	if err := h.groupRepo.Update(ctx, group); err != nil {
@@ -208,29 +200,6 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	}
 
 	return nil, nil
-}
-
-func (h *GroupManagementHandler) DeleteUnavailableNodes(ctx context.Context, input *DeleteUnavailableNodesInput) (*DeleteUnavailableNodesOutput, error) {
-	if _, err := h.groupRepo.FindByID(ctx, input.ID); err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			return nil, huma.Error404NotFound("group not found")
-		}
-		h.logger.Error("failed to find group", slog.String("id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to find group")
-	}
-
-	deleted, err := h.nodeRepo.DeleteUnavailableByGroup(ctx, input.ID)
-	if err != nil {
-		h.logger.Error("failed to delete unavailable nodes", slog.String("group_id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to delete unavailable nodes")
-	}
-
-	out := &DeleteUnavailableNodesOutput{}
-	out.Body.Deleted = deleted
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(true, true)
-	}
-	return out, nil
 }
 
 func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteGroupInput) (*struct{}, error) {

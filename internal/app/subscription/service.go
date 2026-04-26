@@ -134,9 +134,6 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 	allGroupsAllowed := len(allowedGroups) == 0
 
 	for _, node := range allNodes {
-		if node.Status != domain.NodeStatusHealthy {
-			continue
-		}
 		if !allGroupsAllowed {
 			if _, ok := allowedGroups[node.GroupID]; !ok {
 				continue
@@ -167,12 +164,12 @@ func (s *Service) buildHubURLs(token domain.Token, allNodes []domain.Node, group
 				Flow:       parsed.Flow,
 				FP:         parsed.FP,
 			}
-			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, node.Latency, token.Owner)
+			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, 0, token.Owner)
 			remark = template.RenderTemplate(s.hub.NameTemplate, templateData)
 		} else {
 			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
 			hostLabel := extractNodeHost(node.URL)
-			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), node.Latency)
+			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), 0)
 		}
 
 		// Generate unique UUID for this token+node combination
@@ -205,9 +202,6 @@ func (s *Service) buildHubURLsWithGroupSettings(token domain.Token, allNodes []d
 	// Group nodes by group ID to apply random/limit per group
 	nodesByGroup := make(map[string][]domain.Node)
 	for _, node := range allNodes {
-		if node.Status != domain.NodeStatusHealthy {
-			continue
-		}
 		if !allGroupsAllowed {
 			if _, ok := allowedGroups[node.GroupID]; !ok {
 				continue

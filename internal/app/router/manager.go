@@ -132,7 +132,6 @@ func (m *Manager) Sync(ctx context.Context) error {
 		m.logger.Debug("Node",
 			slog.String("id", node.ID),
 			slog.String("group", node.GroupID),
-			slog.String("status", string(node.Status)),
 			slog.String("country", node.Country),
 		)
 	}

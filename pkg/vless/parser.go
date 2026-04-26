@@ -147,3 +147,13 @@ func valueOr(v, fallback string) string {
 	}
 	return v
 }
+
+// ExtractIPFromVLESS extracts the IP address from a vless:// URL.
+// Returns empty string if the host is not an IP address.
+func ExtractIPFromVLESS(raw string) string {
+	parsed, err := ParseURL(raw)
+	if err != nil {
+		return ""
+	}
+	return parsed.Host
+}

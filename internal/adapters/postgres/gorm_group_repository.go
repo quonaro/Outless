@@ -44,14 +44,13 @@ func NewGormGroupRepository(db *gorm.DB, logger *slog.Logger) *GormGroupReposito
 
 func (r *GormGroupRepository) Create(ctx context.Context, group domain.Group) error {
 	model := groupModel{
-		ID:                    group.ID,
-		Name:                  group.Name,
-		SourceURL:             nullableGroupString(group.SourceURL),
-		AutoDeleteUnavailable: group.AutoDeleteUnavailable,
-		RandomEnabled:         group.RandomEnabled,
-		RandomLimit:           nullableGroupInt(group.RandomLimit),
-		LastSyncedAt:          group.LastSyncedAt,
-		CreatedAt:             group.CreatedAt,
+		ID:            group.ID,
+		Name:          group.Name,
+		SourceURL:     nullableGroupString(group.SourceURL),
+		RandomEnabled: group.RandomEnabled,
+		RandomLimit:   nullableGroupInt(group.RandomLimit),
+		LastSyncedAt:  group.LastSyncedAt,
+		CreatedAt:     group.CreatedAt,
 	}
 
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
@@ -75,14 +74,13 @@ func (r *GormGroupRepository) FindByID(ctx context.Context, id string) (domain.G
 	}
 
 	return domain.Group{
-		ID:                    model.ID,
-		Name:                  model.Name,
-		SourceURL:             derefGroupString(model.SourceURL),
-		AutoDeleteUnavailable: model.AutoDeleteUnavailable,
-		RandomEnabled:         model.RandomEnabled,
-		RandomLimit:           derefGroupInt(model.RandomLimit),
-		LastSyncedAt:          model.LastSyncedAt,
-		CreatedAt:             model.CreatedAt,
+		ID:            model.ID,
+		Name:          model.Name,
+		SourceURL:     derefGroupString(model.SourceURL),
+		RandomEnabled: model.RandomEnabled,
+		RandomLimit:   derefGroupInt(model.RandomLimit),
+		LastSyncedAt:  model.LastSyncedAt,
+		CreatedAt:     model.CreatedAt,
 	}, nil
 }
 
@@ -91,11 +89,8 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 	err := r.db.WithContext(ctx).
 		Model(&groupModel{}).
 		Select(
-			"groups.id", "groups.name", "groups.source_url", "groups.auto_delete_unavailable", "groups.random_enabled", "groups.random_limit", "groups.last_synced_at", "groups.created_at",
+			"groups.id", "groups.name", "groups.source_url", "groups.random_enabled", "groups.random_limit", "groups.last_synced_at", "groups.created_at",
 			"COUNT(nodes.id) AS total_nodes",
-			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'healthy') AS healthy_nodes",
-			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'unhealthy') AS unhealthy_nodes",
-			"COUNT(nodes.id) FILTER (WHERE nodes.status = 'unknown') AS unknown_nodes",
 		).
 		Joins("LEFT JOIN nodes ON nodes.group_id = groups.id").
 		Group("groups.id").
@@ -108,18 +103,14 @@ func (r *GormGroupRepository) List(ctx context.Context) ([]domain.Group, error) 
 	groups := make([]domain.Group, 0, len(models))
 	for _, model := range models {
 		groups = append(groups, domain.Group{
-			ID:                    model.ID,
-			Name:                  model.Name,
-			SourceURL:             derefGroupString(model.SourceURL),
-			TotalNodes:            int(model.TotalNodes),
-			HealthyNodes:          int(model.HealthyNodes),
-			UnhealthyNodes:        int(model.UnhealthyNodes),
-			UnknownNodes:          int(model.UnknownNodes),
-			AutoDeleteUnavailable: model.AutoDeleteUnavailable,
-			RandomEnabled:         model.RandomEnabled,
-			RandomLimit:           derefGroupInt(model.RandomLimit),
-			LastSyncedAt:          model.LastSyncedAt,
-			CreatedAt:             model.CreatedAt,
+			ID:            model.ID,
+			Name:          model.Name,
+			SourceURL:     derefGroupString(model.SourceURL),
+			TotalNodes:    int(model.TotalNodes),
+			RandomEnabled: model.RandomEnabled,
+			RandomLimit:   derefGroupInt(model.RandomLimit),
+			LastSyncedAt:  model.LastSyncedAt,
+			CreatedAt:     model.CreatedAt,
 		})
 	}
 
@@ -131,12 +122,11 @@ func (r *GormGroupRepository) Update(ctx context.Context, group domain.Group) er
 		Model(&groupModel{}).
 		Where("id = ?", group.ID).
 		Updates(map[string]any{
-			"name":                    group.Name,
-			"source_url":              nullableGroupString(group.SourceURL),
-			"auto_delete_unavailable": group.AutoDeleteUnavailable,
-			"random_enabled":          group.RandomEnabled,
-			"random_limit":            nullableGroupInt(group.RandomLimit),
-			"last_synced_at":          group.LastSyncedAt,
+			"name":           group.Name,
+			"source_url":     nullableGroupString(group.SourceURL),
+			"random_enabled": group.RandomEnabled,
+			"random_limit":   nullableGroupInt(group.RandomLimit),
+			"last_synced_at": group.LastSyncedAt,
 		})
 
 	if result.Error != nil {

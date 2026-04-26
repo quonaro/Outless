@@ -25,6 +25,3 @@ var ErrPublicSourceNotFound = errors.New("public source not found")
 
 // ErrDuplicateNode is returned when attempting to create a node that already exists.
 var ErrDuplicateNode = errors.New("duplicate node")
-
-// ErrProbeJobNotFound is returned when a probe job is not found in storage.
-var ErrProbeJobNotFound = errors.New("probe job not found")

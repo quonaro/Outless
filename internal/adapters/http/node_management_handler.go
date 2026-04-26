@@ -117,7 +117,6 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		ID:      nodeID,
 		URL:     input.Body.URL,
 		GroupID: input.Body.GroupID,
-		Status:  domain.NodeStatusUnknown,
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {
@@ -135,7 +134,6 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	out.Body.ID = nodeID
 	out.Body.URL = input.Body.URL
 	out.Body.GroupID = input.Body.GroupID
-	out.Body.Status = string(domain.NodeStatusUnknown)
 
 	return out, nil
 }
@@ -192,8 +190,6 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 			ID:      n.ID,
 			URL:     n.URL,
 			GroupID: n.GroupID,
-			Latency: int64(n.Latency.Milliseconds()),
-			Status:  string(n.Status),
 			Country: domain.NormalizeCountryCode(n.Country),
 		})
 	}
@@ -271,8 +267,6 @@ func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput
 			ID:      node.ID,
 			URL:     node.URL,
 			GroupID: node.GroupID,
-			Latency: int64(node.Latency.Milliseconds()),
-			Status:  string(node.Status),
 			Country: domain.NormalizeCountryCode(node.Country),
 		},
 	}, nil

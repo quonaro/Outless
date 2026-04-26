@@ -1,14 +1,14 @@
 # Outless Backend
 
-Outless is a Go backend for managing node health checks, tokenized access, and Xray-based runtime configuration.
+Outless is a Go backend for managing node groups, tokenized access, and Xray-based runtime configuration.
 
 ## Why Xray is important here
 
 This project uses the **Xray technology stack** (`xray-core`) as a core transport/runtime component:
 
-- `hub` syncs generated runtime config for Xray edge nodes
-- `checker` probes network quality using Xray-compatible paths
-- runtime mode supports embedded and external Xray operation
+- `api` generates and serves runtime config for Xray edge nodes
+- Backend connects to external Xray via gRPC API for node management
+- Xray runs as a separate container in the production stack
 
 If you work on networking/runtime behavior, assume Xray compatibility is a hard requirement.
 
@@ -17,7 +17,7 @@ If you work on networking/runtime behavior, assume Xray compatibility is a hard 
 - Go 1.26.2+
 - PostgreSQL
 - gRPC
-- `xray-core`
+- `xray-core` (external, via gRPC API)
 - Docker Compose (for local infra)
 
 ## Quick start
@@ -48,20 +48,17 @@ If you work on networking/runtime behavior, assume Xray compatibility is a hard 
 
 **Note:** Database migrations are embedded in the binary and applied automatically on startup.
 
-## Async probe jobs (API contract)
+## Configuration
 
-Node/group probe actions are asynchronous:
+The backend requires an external Xray instance configured via `xray_api` section in `outless.yaml`:
 
-- `POST /v1/nodes/{id}/probe` returns `202 Accepted` with `job_id`
-- `POST /v1/groups/{id}/nodes/probe-unavailable` returns `202 Accepted` with `batch_id`
-- `GET /v1/probe-jobs/{id}` returns a single job status
-- `GET /v1/probe-jobs?status=&group_id=&limit=` lists latest jobs
+```yaml
+xray_api:
+  address: "xray:10085"  # Xray gRPC API address (docker-compose service name)
+  timeout: "5s"
+```
 
-Execution model:
-
-- API only enqueues probe jobs into `probe_jobs`
-- `checker` is the only executor that claims jobs and writes probe results
-- Failed jobs are retried automatically (up to 3 attempts)
+For local development outside docker-compose, set `address` to `127.0.0.1:10085` or your external Xray host.
 
 ## Name Template for Subscription API
 

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	geoipadapter "outless/internal/adapters/geoip"
 	httpadapter "outless/internal/adapters/http"
 	"outless/internal/adapters/postgres"
 	"outless/internal/adapters/xray"
@@ -111,6 +112,20 @@ func main() {
 	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, monitorLogger)
 	adminRepo := postgres.NewGormAdminRepository(db, apiLogger)
 
+	// Initialize GeoIP resolver for country detection
+	var geoipResolver domain.GeoIPResolver
+	if cfg.MonitorGeoIPDBPath != "" {
+		resolver, err := geoipadapter.NewMaxMindAdapter(cfg.MonitorGeoIPDBPath, monitorLogger)
+		if err != nil {
+			logger.Warn("failed to initialize geoip resolver, country detection disabled", slog.String("error", err.Error()))
+			geoipResolver = geoipadapter.NewNullGeoIPResolver()
+		} else {
+			geoipResolver = resolver
+		}
+	} else {
+		geoipResolver = geoipadapter.NewNullGeoIPResolver()
+	}
+
 	// Bootstrap admin from env
 	if err = bootstrapAdminFromEnv(ctx, adminRepo, cfg, logger); err != nil {
 		logger.Error("failed to bootstrap admin from env", slog.String("error", err.Error()))
@@ -142,7 +157,7 @@ func main() {
 		Fingerprint:  cfg.RouterFingerprint,
 		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
-	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, nil, monitorLogger)
+	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, geoipResolver, monitorLogger)
 
 	// Initialize HTTP handlers
 	realtime := httpadapter.NewRealtimeHandler(
@@ -202,6 +217,10 @@ func main() {
 
 		if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
 			return fmt.Errorf("http server shutdown failed: %w", shutdownErr)
+		}
+
+		if closeErr := geoipResolver.Close(); closeErr != nil {
+			logger.Warn("failed to close geoip resolver", slog.String("error", closeErr.Error()))
 		}
 
 		return nil

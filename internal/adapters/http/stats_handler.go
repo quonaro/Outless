@@ -30,12 +30,10 @@ func NewStatsHandler(nodeRepo domain.NodeRepository, tokenRepo domain.TokenRepos
 // StatsOutput is the JSON payload returned by GET /v1/stats.
 type StatsOutput struct {
 	Body struct {
-		NodesTotal      int `json:"nodes_total"`
-		NodesHealthy    int `json:"nodes_healthy"`
-		NodesUnhealthy  int `json:"nodes_unhealthy"`
-		TokensTotal     int `json:"tokens_total"`
-		TokensActive    int `json:"tokens_active"`
-		GroupsTotal     int `json:"groups_total"`
+		NodesTotal   int `json:"nodes_total"`
+		TokensTotal  int `json:"tokens_total"`
+		TokensActive int `json:"tokens_active"`
+		GroupsTotal  int `json:"groups_total"`
 	}
 }
 
@@ -66,14 +64,6 @@ func (h *StatsHandler) GetStats(ctx context.Context, _ *struct{}) (*StatsOutput,
 
 	out := &StatsOutput{}
 	out.Body.NodesTotal = len(nodes)
-	for _, node := range nodes {
-		switch node.Status {
-		case domain.NodeStatusHealthy:
-			out.Body.NodesHealthy++
-		case domain.NodeStatusUnhealthy:
-			out.Body.NodesUnhealthy++
-		}
-	}
 
 	out.Body.TokensTotal = len(tokens)
 	for _, token := range tokens {

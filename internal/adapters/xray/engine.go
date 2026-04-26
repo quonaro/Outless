@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"net"
@@ -16,13 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"outless/internal/domain"
 	vlesspkg "outless/pkg/vless"
 
 	handlercmd "github.com/xtls/xray-core/app/proxyman/command"
 	approuter "github.com/xtls/xray-core/app/router"
 	routercmd "github.com/xtls/xray-core/app/router/command"
-	xserial "github.com/xtls/xray-core/common/serial"
 	xcore "github.com/xtls/xray-core/core"
 	xrayconf "github.com/xtls/xray-core/infra/conf"
 	"golang.org/x/net/proxy"
@@ -125,129 +122,6 @@ func NewEngine(logger *slog.Logger, probeURL, adminURL, socksAddr string, geoIP 
 		probeTimeout: probeTimeout,
 		countryByIP:  newGeoIPCountryResolver(logger, geoIP),
 	}
-}
-
-// ProbeNode checks node connectivity using probeURL (HTTP) via SOCKS after injecting a temporary outbound and rule.
-func (e *Engine) ProbeNode(ctx context.Context, node domain.Node) (domain.ProbeResult, error) {
-	if e.grpcTarget == "" {
-		return domain.ProbeResult{}, fmt.Errorf("probing node %s: xray admin url not configured", node.ID)
-	}
-
-	parsed, err := vlesspkg.ParseURL(node.URL)
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("parsing node url for node %s: %w", node.ID, err)
-	}
-
-	probeURL := strings.TrimSpace(domain.ProbeURLFromContext(ctx))
-	if probeURL == "" {
-		probeURL = strings.TrimSpace(e.probeURL)
-	}
-	probeTarget, err := url.Parse(probeURL)
-	if err != nil || probeTarget.Hostname() == "" {
-		return domain.ProbeResult{}, fmt.Errorf("invalid probe_url for node %s", node.ID)
-	}
-	probeHost := probeTarget.Hostname()
-
-	// Serialize dynamic Xray mutations — concurrent probes would clash on routing for the same domain.
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if err := retryWithBackoff(ctx, e.logger, "ensureConn", e.ensureConn); err != nil {
-		e.logger.Warn("xray grpc unavailable after retries", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-		return domain.ProbeResult{}, fmt.Errorf("probing node %s via xray: %w", node.ID, err)
-	}
-
-	suffix, err := randomSuffix()
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("probing node %s: %w", node.ID, err)
-	}
-	outboundTag := "olp_" + suffix
-	ruleTag := "olr_" + suffix
-
-	ohc, err := buildVLESSOutboundConfig(outboundTag, parsed)
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("building outbound for node %s: %w", node.ID, err)
-	}
-
-	if _, err = e.hs.AddOutbound(ctx, &handlercmd.AddOutboundRequest{Outbound: ohc}); err != nil {
-		e.logger.Warn("xray AddOutbound failed", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-		return domain.ProbeResult{}, fmt.Errorf("xray AddOutbound for node %s: %w", node.ID, err)
-	}
-
-	ruleAdded := false
-	defer func() {
-		if ruleAdded {
-			if _, rmErr := e.rs.RemoveRule(context.Background(), &routercmd.RemoveRuleRequest{RuleTag: ruleTag}); rmErr != nil {
-				e.logger.Debug("xray RemoveRule cleanup failed", slog.String("rule_tag", ruleTag), slog.String("error", rmErr.Error()))
-			}
-		}
-		// Small delay to allow pending Xray traffic to drain before removing outbound
-		time.Sleep(100 * time.Millisecond)
-		if _, rmErr := e.hs.RemoveOutbound(context.Background(), &handlercmd.RemoveOutboundRequest{Tag: outboundTag}); rmErr != nil {
-			e.logger.Debug("xray RemoveOutbound cleanup failed", slog.String("outbound_tag", outboundTag), slog.String("error", rmErr.Error()))
-		}
-	}()
-
-	ruleCfg, err := buildProbeRoutingConfig(ruleTag, e.socksInTag, probeHost, outboundTag)
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("building routing for node %s: %w", node.ID, err)
-	}
-	tm := xserial.ToTypedMessage(ruleCfg)
-	if _, err = e.rs.AddRule(ctx, &routercmd.AddRuleRequest{Config: tm, ShouldAppend: true}); err != nil {
-		e.logger.Warn("xray AddRule failed", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-		return domain.ProbeResult{}, fmt.Errorf("xray AddRule for node %s: %w", node.ID, err)
-	}
-	ruleAdded = true
-
-	start := time.Now()
-	httpClient, err := e.socksHTTPClient()
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("socks http client for node %s: %w", node.ID, err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
-	if err != nil {
-		return domain.ProbeResult{}, fmt.Errorf("creating probe request for node %s: %w", node.ID, err)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		e.logger.Warn("xray probe http failed", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-		return domain.ProbeResult{}, fmt.Errorf("probing node %s via xray: %w", node.ID, err)
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
-
-	latency := time.Since(start)
-	if latency <= 0 {
-		latency = time.Millisecond
-	}
-
-	if !isSuccessfulProbeStatus(resp.StatusCode) {
-		e.logger.Warn("xray probe unexpected status", slog.String("node_id", node.ID), slog.Int("http_status", resp.StatusCode))
-		return domain.ProbeResult{}, fmt.Errorf("unexpected probe status for node %s: %d", node.ID, resp.StatusCode)
-	}
-
-	e.logger.Debug("xray probe success", slog.String("node_id", node.ID), slog.Duration("latency", latency))
-
-	country := domain.NormalizeCountryCode(node.Country)
-	if !domain.IsFastProbe(ctx) && e.countryByIP != nil {
-		if detectedCountry, ok := e.countryByIP.CountryByHost(ctx, parsed.Host); ok {
-			country = detectedCountry
-		}
-	}
-
-	return domain.ProbeResult{
-		NodeID:    node.ID,
-		Latency:   latency,
-		Status:    domain.NodeStatusHealthy,
-		Country:   country,
-		CheckedAt: time.Now().UTC(),
-	}, nil
-}
-
-func isSuccessfulProbeStatus(statusCode int) bool {
-	return statusCode >= http.StatusOK && statusCode < http.StatusBadRequest
 }
 
 func (e *Engine) ensureConn(ctx context.Context) error {

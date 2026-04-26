@@ -10,7 +10,6 @@ import (
 type NodeRepository interface {
 	IterateNodes(ctx context.Context) iter.Seq2[Node, error]
 	ListVLESSURLs(ctx context.Context, groupID string, randomEnabled bool, randomLimit *int) ([]string, error)
-	UpdateProbeResult(ctx context.Context, result ProbeResult) error
 	Create(ctx context.Context, node Node) error
 	CreateIfAbsent(ctx context.Context, node Node) (bool, error)
 	// BulkCreateIfAbsent inserts nodes that do not yet exist (by primary key id).
@@ -23,8 +22,6 @@ type NodeRepository interface {
 	// ListPageByGroup lists nodes in one group with the same ordering as ListPage (for admin UI).
 	ListPageByGroup(ctx context.Context, groupID string, limit int, offset int) ([]Node, error)
 	ListByGroup(ctx context.Context, groupID string) ([]Node, error)
-	ListNonHealthyByGroup(ctx context.Context, groupID string) ([]Node, error)
-	DeleteUnavailableByGroup(ctx context.Context, groupID string) (int64, error)
 	Update(ctx context.Context, node Node) error
 	Delete(ctx context.Context, id string) error
 }
@@ -41,11 +38,6 @@ type TokenRepository interface {
 	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
 	Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error
-}
-
-// ProxyEngine validates node reachability through Xray.
-type ProxyEngine interface {
-	ProbeNode(ctx context.Context, node Node) (ProbeResult, error)
 }
 
 // AdminRepository provides persistence operations for admin users.
@@ -77,13 +69,8 @@ type PublicSourceRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// ProbeJobRepository persists asynchronous node probe jobs.
-type ProbeJobRepository interface {
-	EnqueueNode(ctx context.Context, in ProbeJobCreate) (ProbeJob, error)
-	EnqueueBatch(ctx context.Context, jobs []ProbeJobCreate) ([]ProbeJob, error)
-	ClaimPending(ctx context.Context, limit int) ([]ProbeJob, error)
-	MarkSucceeded(ctx context.Context, id string) error
-	MarkFailed(ctx context.Context, id string, reason string) error
-	GetByID(ctx context.Context, id string) (ProbeJob, error)
-	List(ctx context.Context, filter ProbeJobListFilter) ([]ProbeJob, error)
+// GeoIPResolver provides country lookup by IP address.
+type GeoIPResolver interface {
+	LookupCountry(ctx context.Context, ip string) (string, error)
+	Close() error
 }

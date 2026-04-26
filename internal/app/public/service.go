@@ -10,12 +10,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"outless/internal/adapters/postgres"
-	"outless/internal/app/nodeprobe"
 	"outless/internal/domain"
 	"outless/pkg/vless"
 )
@@ -23,15 +20,12 @@ import (
 // syncLoadBatchSize limits rows per INSERT for Load to keep queries and WS fan-out bounded.
 const syncLoadBatchSize = 500
 
-// probeWorkerPoolSize caps concurrent probes for Check all (TCP / Xray).
-const probeWorkerPoolSize = 32
-
 // Service manages public VLESS sources import.
 type Service struct {
 	nodeRepo   domain.NodeRepository
 	sourceRepo domain.PublicSourceRepository
 	groupRepo  domain.GroupRepository
-	engine     domain.ProxyEngine
+	geoip      domain.GeoIPResolver
 	httpClient *http.Client
 	logger     *slog.Logger
 }
@@ -51,36 +45,13 @@ type SyncEvent struct {
 	NodeID     string         `json:"node_id"`
 	URL        string         `json:"url"`
 	Status     SyncNodeStatus `json:"status"`
-	LatencyMS  int64          `json:"latency_ms"`
 	AddedTotal int            `json:"added_total,omitempty"`
 	Error      string         `json:"error,omitempty"`
 }
 
-// ProbeUnavailableNodeStatus describes per-node status while probing unavailable nodes.
-type ProbeUnavailableNodeStatus string
-
-const (
-	ProbeUnavailableNodeStatusQueued  ProbeUnavailableNodeStatus = "queued"
-	ProbeUnavailableNodeStatusProbing ProbeUnavailableNodeStatus = "probing"
-	ProbeUnavailableNodeStatusReady   ProbeUnavailableNodeStatus = "ready"
-	ProbeUnavailableNodeStatusError   ProbeUnavailableNodeStatus = "error"
-)
-
-// ProbeUnavailableEvent is emitted for each unavailable node probe lifecycle.
-type ProbeUnavailableEvent struct {
-	NodeID     string                     `json:"node_id"`
-	URL        string                     `json:"url"`
-	Status     ProbeUnavailableNodeStatus `json:"status"`
-	LatencyMS  int64                      `json:"latency_ms"`
-	NodeStatus string                     `json:"node_status,omitempty"`
-	Country    string                     `json:"country,omitempty"`
-	Error      string                     `json:"error,omitempty"`
-}
-
 type SyncResult struct {
-	SyncedAt                time.Time
-	DeletedUnavailableCount int64
-	AddedCount              int
+	SyncedAt   time.Time
+	AddedCount int
 }
 
 // NewService constructs a public sources service.
@@ -88,14 +59,14 @@ func NewService(
 	nodeRepo domain.NodeRepository,
 	sourceRepo domain.PublicSourceRepository,
 	groupRepo domain.GroupRepository,
-	engine domain.ProxyEngine,
+	geoip domain.GeoIPResolver,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		nodeRepo:   nodeRepo,
 		sourceRepo: sourceRepo,
 		groupRepo:  groupRepo,
-		engine:     engine,
+		geoip:      geoip,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		logger:     logger,
 	}
@@ -207,11 +178,12 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(in
 
 		nodes := make([]domain.Node, len(chunk))
 		for i, rawURL := range chunk {
+			country := s.resolveCountry(ctx, rawURL)
 			nodes[i] = domain.Node{
 				ID:      s.generateNodeID(rawURL),
 				URL:     rawURL,
 				GroupID: groupID,
-				Status:  domain.NodeStatusUnknown,
+				Country: country,
 			}
 		}
 
@@ -261,7 +233,6 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(in
 					NodeID:     nodeID,
 					URL:        rawURL,
 					Status:     SyncNodeStatusDone,
-					LatencyMS:  0,
 					AddedTotal: addedTotal,
 				})
 			}
@@ -274,134 +245,9 @@ func (s *Service) SyncGroup(ctx context.Context, groupID string, onTotal func(in
 	}
 
 	return SyncResult{
-		SyncedAt:                syncedAt,
-		DeletedUnavailableCount: 0,
-		AddedCount:              addedTotal,
+		SyncedAt:   syncedAt,
+		AddedCount: addedTotal,
 	}, nil
-}
-
-// ProbeUnavailableGroup probes all nodes in a group and emits lifecycle events.
-func (s *Service) ProbeUnavailableGroup(ctx context.Context, groupID string, statuses []domain.NodeStatus, onEvent func(ProbeUnavailableEvent)) (int, error) {
-	if _, err := s.groupRepo.FindByID(ctx, groupID); err != nil {
-		return 0, fmt.Errorf("finding group: %w", err)
-	}
-
-	nodes, err := s.nodeRepo.ListByGroup(ctx, groupID)
-	if err != nil {
-		return 0, fmt.Errorf("listing nodes by group: %w", err)
-	}
-	nodes = filterNodesByStatuses(nodes, statuses)
-
-	for _, node := range nodes {
-		if onEvent != nil {
-			onEvent(ProbeUnavailableEvent{
-				NodeID: node.ID,
-				URL:    node.URL,
-				Status: ProbeUnavailableNodeStatusQueued,
-			})
-		}
-	}
-
-	if len(nodes) == 0 {
-		return 0, nil
-	}
-
-	jobs := make(chan domain.Node, len(nodes))
-	for _, node := range nodes {
-		jobs <- node
-	}
-	close(jobs)
-
-	workers := probeWorkerPoolSize
-	if workers > len(nodes) {
-		workers = len(nodes)
-	}
-
-	var wg sync.WaitGroup
-	var probed atomic.Int64
-
-	runProbe := func(node domain.Node) {
-		if onEvent != nil {
-			onEvent(ProbeUnavailableEvent{
-				NodeID: node.ID,
-				URL:    node.URL,
-				Status: ProbeUnavailableNodeStatusProbing,
-			})
-		}
-
-		result := nodeprobe.ProbeWithEngine(ctx, s.engine, node)
-		if saveErr := s.nodeRepo.UpdateProbeResult(ctx, result); saveErr != nil {
-			if errors.Is(saveErr, context.Canceled) || errors.Is(saveErr, context.DeadlineExceeded) {
-				return
-			}
-			if onEvent != nil {
-				onEvent(ProbeUnavailableEvent{
-					NodeID: node.ID,
-					URL:    node.URL,
-					Status: ProbeUnavailableNodeStatusError,
-					Error:  saveErr.Error(),
-				})
-			}
-			return
-		}
-
-		probed.Add(1)
-		if onEvent != nil {
-			onEvent(ProbeUnavailableEvent{
-				NodeID:     node.ID,
-				URL:        node.URL,
-				Status:     ProbeUnavailableNodeStatusReady,
-				LatencyMS:  result.Latency.Milliseconds(),
-				NodeStatus: string(result.Status),
-				Country:    result.Country,
-			})
-		}
-	}
-
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for node := range jobs {
-				if err := ctx.Err(); err != nil {
-					return
-				}
-				runProbe(node)
-			}
-		}()
-	}
-	wg.Wait()
-
-	if err := ctx.Err(); err != nil {
-		return int(probed.Load()), err
-	}
-	return int(probed.Load()), nil
-}
-
-// CountUnavailableByGroup returns number of nodes in group.
-func (s *Service) CountUnavailableByGroup(ctx context.Context, groupID string, statuses []domain.NodeStatus) (int, error) {
-	nodes, err := s.nodeRepo.ListByGroup(ctx, groupID)
-	if err != nil {
-		return 0, fmt.Errorf("listing nodes by group: %w", err)
-	}
-	return len(filterNodesByStatuses(nodes, statuses)), nil
-}
-
-func filterNodesByStatuses(nodes []domain.Node, statuses []domain.NodeStatus) []domain.Node {
-	if len(statuses) == 0 {
-		return nodes
-	}
-	allowed := make(map[domain.NodeStatus]struct{}, len(statuses))
-	for _, st := range statuses {
-		allowed[st] = struct{}{}
-	}
-	out := make([]domain.Node, 0, len(nodes))
-	for _, node := range nodes {
-		if _, ok := allowed[node.Status]; ok {
-			out = append(out, node)
-		}
-	}
-	return out
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.
@@ -512,14 +358,13 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 			return created, err
 		}
 		nodeID := s.generateNodeID(url)
+		country := s.resolveCountry(ctx, url)
 
 		node := domain.Node{
 			ID:      nodeID,
 			URL:     url,
 			GroupID: groupID,
-			Status:  domain.NodeStatusUnknown,
-			Country: "",
-			Latency: 0,
+			Country: country,
 		}
 
 		createdNow, err := s.nodeRepo.CreateIfAbsent(ctx, node)
@@ -542,4 +387,27 @@ func (s *Service) importURLs(ctx context.Context, urls []string, groupID string)
 func (s *Service) generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
+}
+
+// resolveCountry determines the country for a VLESS URL using GeoIP.
+// Returns empty string if geoip is not configured or lookup fails.
+func (s *Service) resolveCountry(ctx context.Context, vlessURL string) string {
+	if s.geoip == nil {
+		return ""
+	}
+
+	ip := vless.ExtractIPFromVLESS(vlessURL)
+	if ip == "" {
+		return ""
+	}
+
+	country, err := s.geoip.LookupCountry(ctx, ip)
+	if err != nil {
+		s.logger.Debug("geoip lookup failed",
+			slog.String("ip", ip),
+			slog.String("error", err.Error()))
+		return ""
+	}
+
+	return country
 }

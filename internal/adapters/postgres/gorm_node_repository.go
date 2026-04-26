@@ -63,8 +63,6 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 				ID:      model.ID,
 				URL:     model.URL,
 				GroupID: groupID,
-				Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-				Status:  domain.NodeStatus(model.Status),
 				Country: model.Country,
 			}
 
@@ -75,7 +73,7 @@ func (r *GormNodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.
 	}
 }
 
-// ListVLESSURLs returns node URLs for subscription output, filtered by group if specified and latency if configured.
+// ListVLESSURLs returns node URLs for subscription output, filtered by group if specified.
 // Supports random selection and limit per group to handle large groups efficiently.
 func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string, randomEnabled bool, randomLimit *int) ([]string, error) {
 	type row struct {
@@ -85,8 +83,7 @@ func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string, 
 	query := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Select("url").
-		Where("url LIKE ?", "vless://%").
-		Where("status = ?", "healthy")
+		Where("url LIKE ?", "vless://%")
 
 	if groupID != "" {
 		query = query.Where("group_id = ?", groupID)
@@ -95,7 +92,7 @@ func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string, 
 	if randomEnabled {
 		query = query.Order("RANDOM()")
 	} else {
-		query = query.Order("latency_ms ASC")
+		query = query.Order("id ASC")
 	}
 
 	limit := 50
@@ -118,39 +115,12 @@ func (r *GormNodeRepository) ListVLESSURLs(ctx context.Context, groupID string, 
 	return urls, nil
 }
 
-// UpdateProbeResult updates latest probe metadata for a node.
-func (r *GormNodeRepository) UpdateProbeResult(ctx context.Context, result domain.ProbeResult) error {
-	updates := map[string]any{
-		"latency_ms":      result.Latency.Milliseconds(),
-		"status":          string(result.Status),
-		"country":         result.Country,
-		"last_checked_at": result.CheckedAt,
-	}
-
-	tx := r.db.WithContext(ctx).
-		Model(&nodeModel{}).
-		Where("id = ?", result.NodeID).
-		Updates(updates)
-	if tx.Error != nil {
-		return fmt.Errorf("updating probe result for node %s via gorm: %w", result.NodeID, tx.Error)
-	}
-
-	if tx.RowsAffected == 0 {
-		return fmt.Errorf("updating probe result for node %s: %w", result.NodeID, domain.ErrNodeNotFound)
-	}
-
-	r.logger.Debug("node probe result saved", slog.String("node_id", result.NodeID), slog.String("status", string(result.Status)))
-	return nil
-}
-
 // Create inserts a new node into the database.
 func (r *GormNodeRepository) Create(ctx context.Context, node domain.Node) error {
 	model := nodeModel{
 		ID:        node.ID,
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
-		LatencyMS: node.Latency.Milliseconds(),
-		Status:    string(node.Status),
 		Country:   node.Country,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -173,8 +143,6 @@ func (r *GormNodeRepository) CreateIfAbsent(ctx context.Context, node domain.Nod
 		ID:        node.ID,
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
-		LatencyMS: node.Latency.Milliseconds(),
-		Status:    string(node.Status),
 		Country:   node.Country,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -206,25 +174,23 @@ func (r *GormNodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []dom
 	now := time.Now().UTC()
 	var b strings.Builder
 	b.WriteString(`
-INSERT INTO nodes (id, url, group_id, latency_ms, status, country, created_at)
+INSERT INTO nodes (id, url, group_id, country, created_at)
 VALUES `)
-	args := make([]any, 0, len(nodes)*7)
+	args := make([]any, 0, len(nodes)*5)
 	arg := 1
 	for i := range nodes {
 		n := &nodes[i]
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		fmt.Fprintf(&b, "($%d,$%d,$%d,$%d,$%d,$%d,$%d)",
-			arg, arg+1, arg+2, arg+3, arg+4, arg+5, arg+6)
-		arg += 7
+		fmt.Fprintf(&b, "($%d,$%d,$%d,$%d,$%d)",
+			arg, arg+1, arg+2, arg+3, arg+4)
+		arg += 5
 		modelGroup := nullableString(n.GroupID)
 		args = append(args,
 			n.ID,
 			n.URL,
 			modelGroup,
-			n.Latency.Milliseconds(),
-			string(n.Status),
 			n.Country,
 			now,
 		)
@@ -264,8 +230,6 @@ func (r *GormNodeRepository) Upsert(ctx context.Context, node domain.Node) error
 		ID:        node.ID,
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
-		LatencyMS: node.Latency.Milliseconds(),
-		Status:    string(node.Status),
 		Country:   node.Country,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -301,8 +265,6 @@ func (r *GormNodeRepository) FindByID(ctx context.Context, id string) (domain.No
 		ID:      model.ID,
 		URL:     model.URL,
 		GroupID: derefString(model.GroupID),
-		Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-		Status:  domain.NodeStatus(model.Status),
 		Country: model.Country,
 	}, nil
 }
@@ -311,8 +273,6 @@ func (r *GormNodeRepository) FindByID(ctx context.Context, id string) (domain.No
 func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 	var models []nodeModel
 	err := r.db.WithContext(ctx).
-		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
-		Order("latency_ms ASC").
 		Order("created_at DESC").
 		Find(&models).Error
 	if err != nil {
@@ -325,8 +285,6 @@ func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 			ID:      model.ID,
 			URL:     model.URL,
 			GroupID: derefString(model.GroupID),
-			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-			Status:  domain.NodeStatus(model.Status),
 			Country: model.Country,
 		})
 	}
@@ -338,8 +296,6 @@ func (r *GormNodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int) ([]domain.Node, error) {
 	var models []nodeModel
 	err := r.db.WithContext(ctx).
-		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
-		Order("latency_ms ASC").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -354,8 +310,6 @@ func (r *GormNodeRepository) ListPage(ctx context.Context, limit int, offset int
 			ID:      model.ID,
 			URL:     model.URL,
 			GroupID: derefString(model.GroupID),
-			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-			Status:  domain.NodeStatus(model.Status),
 			Country: model.Country,
 		})
 	}
@@ -368,8 +322,6 @@ func (r *GormNodeRepository) ListPageByGroup(ctx context.Context, groupID string
 	var models []nodeModel
 	err := r.db.WithContext(ctx).
 		Where("group_id = ?", groupID).
-		Order("CASE status WHEN 'healthy' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END ASC").
-		Order("latency_ms ASC").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -384,8 +336,6 @@ func (r *GormNodeRepository) ListPageByGroup(ctx context.Context, groupID string
 			ID:      model.ID,
 			URL:     model.URL,
 			GroupID: derefString(model.GroupID),
-			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-			Status:  domain.NodeStatus(model.Status),
 			Country: model.Country,
 		})
 	}
@@ -410,51 +360,10 @@ func (r *GormNodeRepository) ListByGroup(ctx context.Context, groupID string) ([
 			ID:      model.ID,
 			URL:     model.URL,
 			GroupID: derefString(model.GroupID),
-			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-			Status:  domain.NodeStatus(model.Status),
 			Country: model.Country,
 		})
 	}
 	return nodes, nil
-}
-
-// ListNonHealthyByGroup returns nodes in a group with status unknown or unhealthy.
-func (r *GormNodeRepository) ListNonHealthyByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
-	var models []nodeModel
-	err := r.db.WithContext(ctx).
-		Where("group_id = ? AND status IN ?", groupID, []string{
-			string(domain.NodeStatusUnknown),
-			string(domain.NodeStatusUnhealthy),
-		}).
-		Order("created_at DESC").
-		Find(&models).Error
-	if err != nil {
-		return nil, fmt.Errorf("listing non-healthy nodes by group: %w", err)
-	}
-
-	nodes := make([]domain.Node, 0, len(models))
-	for _, model := range models {
-		nodes = append(nodes, domain.Node{
-			ID:      model.ID,
-			URL:     model.URL,
-			GroupID: derefString(model.GroupID),
-			Latency: time.Duration(model.LatencyMS) * time.Millisecond,
-			Status:  domain.NodeStatus(model.Status),
-			Country: model.Country,
-		})
-	}
-	return nodes, nil
-}
-
-// DeleteUnavailableByGroup removes non-healthy nodes of a group and returns affected rows.
-func (r *GormNodeRepository) DeleteUnavailableByGroup(ctx context.Context, groupID string) (int64, error) {
-	result := r.db.WithContext(ctx).
-		Where("group_id = ? AND status <> ?", groupID, string(domain.NodeStatusHealthy)).
-		Delete(&nodeModel{})
-	if result.Error != nil {
-		return 0, fmt.Errorf("deleting unavailable nodes by group: %w", result.Error)
-	}
-	return result.RowsAffected, nil
 }
 
 // Update updates a node's URL or group.

@@ -28,9 +28,8 @@ type RealtimeHandler struct {
 	clientsMu sync.Mutex
 	clients   []*wsClient
 
-	syncMu       sync.Mutex
-	activeSyncs  map[string]*syncRun  // group_id -> running sync
-	activeProbes map[string]*probeRun // group_id -> running unavailable probe
+	syncMu      sync.Mutex
+	activeSyncs map[string]*syncRun // group_id -> running sync
 
 	publicRefreshMu      sync.Mutex
 	publicRefreshLastRun *time.Time
@@ -44,131 +43,21 @@ type RealtimeHandler struct {
 type syncRun struct {
 	cancel context.CancelFunc
 
-	mu                      sync.Mutex
-	running                 bool
-	total                   int
-	processed               int
-	addedCount              int
-	deletedUnavailableCount int64
-	syncedAt                string
-	error                   string
-	finishedAt              time.Time
-	nodes                   map[string]syncNodeState
-}
-
-type syncNodeState struct {
-	NodeID    string `json:"node_id"`
-	URL       string `json:"url"`
-	Status    string `json:"status"`
-	LatencyMS int64  `json:"latency_ms"`
-	Error     string `json:"error,omitempty"`
-}
-
-type probeRun struct {
-	cancel context.CancelFunc
-
 	mu         sync.Mutex
 	running    bool
 	total      int
 	processed  int
-	active     int
-	queued     int
-	ready      int
-	failed     int
+	addedCount int
+	syncedAt   string
 	error      string
-	statuses   []string
-	mode       string
-	probeURL   string
-	startedAt  time.Time
 	finishedAt time.Time
-	nodes      map[string]probeNodeState
+	nodes      map[string]syncNodeState
 }
 
-type probeNodeState struct {
-	NodeID     string `json:"node_id"`
-	URL        string `json:"url"`
-	Status     string `json:"status"`
-	LatencyMS  int64  `json:"latency_ms"`
-	NodeStatus string `json:"node_status,omitempty"`
-	Country    string `json:"country,omitempty"`
-	Error      string `json:"error,omitempty"`
-}
-
-// GroupProbeUnavailableState is the payload shape for probe_unavailable_state (WS) and GET .../probe-unavailable-state (REST).
-type GroupProbeUnavailableState struct {
-	Running    bool             `json:"running"`
-	Total      int              `json:"total"`
-	Processed  int              `json:"processed"`
-	Active     int              `json:"active"`
-	Completed  int              `json:"completed"`
-	RatePerSec float64          `json:"rate_per_sec"`
-	EtaSec     int64            `json:"eta_sec"`
-	Nodes      []probeNodeState `json:"nodes"`
-	Error      string           `json:"error,omitempty"`
-	Statuses   []string         `json:"statuses,omitempty"`
-	Mode       string           `json:"mode,omitempty"`
-	ProbeURL   string           `json:"probe_url,omitempty"`
-}
-
-func groupProbeStateToWSMap(groupID string, s GroupProbeUnavailableState) map[string]any {
-	return map[string]any{
-		"type":         "probe_unavailable_state",
-		"group_id":     groupID,
-		"running":      s.Running,
-		"total":        s.Total,
-		"processed":    s.Processed,
-		"active":       s.Active,
-		"completed":    s.Completed,
-		"nodes":        s.Nodes,
-		"error":        s.Error,
-		"statuses":     s.Statuses,
-		"mode":         s.Mode,
-		"probe_url":    s.ProbeURL,
-		"rate_per_sec": s.RatePerSec,
-		"eta_sec":      s.EtaSec,
-	}
-}
-
-func idleGroupProbeUnavailableState() GroupProbeUnavailableState {
-	return GroupProbeUnavailableState{
-		EtaSec: -1,
-		Nodes:  []probeNodeState{},
-	}
-}
-
-// ProbeUnavailableStateForGroup returns current bulk unavailable-probe progress for a group (for REST and WS replies).
-func (h *RealtimeHandler) ProbeUnavailableStateForGroup(groupID string) GroupProbeUnavailableState {
-	h.syncMu.Lock()
-	run, ok := h.activeProbes[groupID]
-	h.syncMu.Unlock()
-	if !ok {
-		return idleGroupProbeUnavailableState()
-	}
-	return h.groupProbeUnavailableStateFromRun(run)
-}
-
-func (h *RealtimeHandler) groupProbeUnavailableStateFromRun(run *probeRun) GroupProbeUnavailableState {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	nodes := make([]probeNodeState, 0, len(run.nodes))
-	for _, n := range run.nodes {
-		nodes = append(nodes, n)
-	}
-	rate, eta := probeRateAndETA(run.startedAt, run.total, run.ready+run.failed)
-	return GroupProbeUnavailableState{
-		Running:    run.running,
-		Total:      run.total,
-		Processed:  run.processed,
-		Active:     run.active,
-		Completed:  run.ready + run.failed,
-		RatePerSec: rate,
-		EtaSec:     eta,
-		Nodes:      nodes,
-		Error:      run.error,
-		Statuses:   append([]string(nil), run.statuses...),
-		Mode:       run.mode,
-		ProbeURL:   run.probeURL,
-	}
+type syncNodeState struct {
+	NodeID string `json:"node_id"`
+	URL    string `json:"url"`
+	Error  string `json:"error,omitempty"`
 }
 
 type wsClient struct {
@@ -191,7 +80,6 @@ func NewRealtimeHandler(
 		logger:                logger,
 		publicRefreshInterval: publicRefreshInterval,
 		activeSyncs:           make(map[string]*syncRun),
-		activeProbes:          make(map[string]*probeRun),
 		statePath:             strings.TrimSpace(statePath),
 	}
 	h.loadSnapshot()
@@ -292,7 +180,6 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 			GroupID  string   `json:"group_id"`
 			Statuses []string `json:"statuses"`
 			Mode     string   `json:"mode"`
-			ProbeURL string   `json:"probe_url"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "invalid json"})
@@ -318,8 +205,6 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			h.cancelGroupJobs(msg.GroupID)
-		case "probe_unavailable", "probe_unavailable_state":
-			_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "probe feature removed"})
 		case "public_refresh_state":
 			h.sendPublicRefreshState(client)
 		default:
@@ -331,13 +216,9 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 func (h *RealtimeHandler) cancelGroupJobs(groupID string) {
 	h.syncMu.Lock()
 	syncRun, hasSync := h.activeSyncs[groupID]
-	probeRun, hasProbe := h.activeProbes[groupID]
 	h.syncMu.Unlock()
 	if hasSync {
 		syncRun.cancel()
-	}
-	if hasProbe {
-		probeRun.cancel()
 	}
 }
 
@@ -379,11 +260,9 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	writeNode := func(ev public.SyncEvent) {
 		run.mu.Lock()
 		state := syncNodeState{
-			NodeID:    ev.NodeID,
-			URL:       ev.URL,
-			Status:    string(ev.Status),
-			LatencyMS: ev.LatencyMS,
-			Error:     ev.Error,
+			NodeID: ev.NodeID,
+			URL:    ev.URL,
+			Error:  ev.Error,
 		}
 		run.nodes[ev.NodeID] = state
 		if isSyncTerminal(string(ev.Status)) {
@@ -403,8 +282,6 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 			"group_id":    groupID,
 			"node_id":     ev.NodeID,
 			"url":         ev.URL,
-			"status":      string(ev.Status),
-			"latency_ms":  ev.LatencyMS,
 			"processed":   processed,
 			"total":       total,
 			"added_total": added,
@@ -466,7 +343,6 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	run.mu.Lock()
 	run.running = false
 	run.syncedAt = result.SyncedAt.Format(time.RFC3339)
-	run.deletedUnavailableCount = result.DeletedUnavailableCount
 	run.addedCount = result.AddedCount
 	run.finishedAt = time.Now().UTC()
 	processed := run.processed
@@ -476,200 +352,14 @@ func (h *RealtimeHandler) runGroupSync(client *wsClient, groupID string) {
 	h.persistSnapshotMaybe(true)
 
 	h.broadcastJSON(map[string]any{
-		"type":                      "sync_done",
-		"group_id":                  groupID,
-		"synced_at":                 result.SyncedAt.Format(time.RFC3339),
-		"deleted_unavailable_count": result.DeletedUnavailableCount,
-		"processed":                 processed,
-		"total":                     total,
-		"added_count":               added,
+		"type":        "sync_done",
+		"group_id":    groupID,
+		"synced_at":   result.SyncedAt.Format(time.RFC3339),
+		"processed":   processed,
+		"total":       total,
+		"added_count": added,
 	})
 	h.NotifyInvalidate(true, true)
-}
-
-func (h *RealtimeHandler) runGroupProbeUnavailable(client *wsClient, groupID string, statuses []domain.NodeStatus, mode domain.ProbeMode, probeURL string) {
-	ctx := context.Background()
-	if _, err := h.groups.FindByID(ctx, groupID); err != nil {
-		_ = client.writeJSON(client.rootCtx, map[string]any{"type": "probe_unavailable_error", "group_id": groupID, "error": "group not found"})
-		return
-	}
-
-	probeCtx, cancel := context.WithCancel(ctx)
-	probeCtx = domain.WithProbeMode(probeCtx, mode)
-	probeCtx = domain.WithProbeURL(probeCtx, probeURL)
-	defer cancel()
-
-	h.syncMu.Lock()
-	if run, exists := h.activeProbes[groupID]; exists && run.running {
-		h.syncMu.Unlock()
-		h.sendProbeUnavailableStateFromRun(client, groupID, run)
-		return
-	}
-	total, countErr := h.public.CountUnavailableByGroup(probeCtx, groupID, statuses)
-	if countErr != nil {
-		h.syncMu.Unlock()
-		_ = client.writeJSON(client.rootCtx, map[string]any{"type": "probe_unavailable_error", "group_id": groupID, "error": countErr.Error()})
-		return
-	}
-	run := &probeRun{
-		cancel:    cancel,
-		running:   true,
-		total:     total,
-		processed: 0,
-		active:    0,
-		queued:    0,
-		ready:     0,
-		failed:    0,
-		statuses:  probeStatusesToStrings(statuses),
-		mode:      string(mode),
-		probeURL:  strings.TrimSpace(probeURL),
-		startedAt: time.Now().UTC(),
-		nodes:     make(map[string]probeNodeState, total),
-	}
-	h.activeProbes[groupID] = run
-	h.syncMu.Unlock()
-	h.persistSnapshotMaybe(true)
-
-	h.broadcastJSON(map[string]any{
-		"type":         "probe_unavailable_started",
-		"group_id":     groupID,
-		"total":        total,
-		"processed":    0,
-		"active":       0,
-		"completed":    0,
-		"rate_per_sec": 0.0,
-		"eta_sec":      int64(-1),
-		"statuses":     run.statuses,
-		"mode":         run.mode,
-		"probe_url":    run.probeURL,
-	})
-
-	writeProbeNode := func(ev public.ProbeUnavailableEvent) {
-		run.mu.Lock()
-		prev, hadPrev := run.nodes[ev.NodeID]
-		state := probeNodeState{
-			NodeID:     ev.NodeID,
-			URL:        ev.URL,
-			Status:     string(ev.Status),
-			LatencyMS:  ev.LatencyMS,
-			NodeStatus: ev.NodeStatus,
-			Country:    ev.Country,
-			Error:      ev.Error,
-		}
-		run.nodes[ev.NodeID] = state
-		adjustProbeNodeCounters(run, hadPrev, prev.Status, state.Status)
-		if ev.Status == public.ProbeUnavailableNodeStatusReady || ev.Status == public.ProbeUnavailableNodeStatusError {
-			run.processed++
-		}
-		processed := run.processed
-		total := run.total
-		active := run.active
-		completed := run.ready + run.failed
-		ratePerSec, etaSec := probeRateAndETA(run.startedAt, total, completed)
-		run.mu.Unlock()
-		h.persistSnapshotMaybe(false)
-
-		m := map[string]any{
-			"type":         "probe_unavailable_node_status",
-			"group_id":     groupID,
-			"node_id":      ev.NodeID,
-			"url":          ev.URL,
-			"status":       string(ev.Status),
-			"latency_ms":   ev.LatencyMS,
-			"processed":    processed,
-			"total":        total,
-			"active":       active,
-			"completed":    completed,
-			"rate_per_sec": ratePerSec,
-			"eta_sec":      etaSec,
-		}
-		if ev.Error != "" {
-			m["error"] = ev.Error
-		}
-		if ev.NodeStatus != "" {
-			m["node_status"] = ev.NodeStatus
-		}
-		if ev.Country != "" {
-			m["country"] = ev.Country
-		}
-		h.broadcastJSON(m)
-	}
-
-	probed, err := h.public.ProbeUnavailableGroup(probeCtx, groupID, statuses, writeProbeNode)
-	if err != nil {
-		run.mu.Lock()
-		run.running = false
-		run.error = err.Error()
-		run.finishedAt = time.Now().UTC()
-		processed := run.processed
-		total := run.total
-		active := run.active
-		completed := run.ready + run.failed
-		ratePerSec, etaSec := probeRateAndETA(run.startedAt, total, completed)
-		run.mu.Unlock()
-		h.persistSnapshotMaybe(true)
-
-		if errors.Is(err, context.Canceled) {
-			h.broadcastJSON(map[string]any{
-				"type":         "probe_unavailable_cancelled",
-				"group_id":     groupID,
-				"processed":    processed,
-				"total":        total,
-				"active":       active,
-				"completed":    completed,
-				"rate_per_sec": ratePerSec,
-				"eta_sec":      etaSec,
-			})
-		} else {
-			h.broadcastJSON(map[string]any{
-				"type":         "probe_unavailable_error",
-				"group_id":     groupID,
-				"error":        err.Error(),
-				"processed":    processed,
-				"total":        total,
-				"active":       active,
-				"completed":    completed,
-				"rate_per_sec": ratePerSec,
-				"eta_sec":      etaSec,
-			})
-		}
-		h.NotifyInvalidate(true, true)
-		return
-	}
-
-	run.mu.Lock()
-	run.running = false
-	run.finishedAt = time.Now().UTC()
-	processed := run.processed
-	total = run.total
-	active := run.active
-	completed := run.ready + run.failed
-	ratePerSec, etaSec := probeRateAndETA(run.startedAt, total, completed)
-	run.mu.Unlock()
-	h.persistSnapshotMaybe(true)
-
-	h.broadcastJSON(map[string]any{
-		"type":         "probe_unavailable_done",
-		"group_id":     groupID,
-		"probed":       probed,
-		"processed":    processed,
-		"total":        total,
-		"active":       active,
-		"completed":    completed,
-		"rate_per_sec": ratePerSec,
-		"eta_sec":      etaSec,
-	})
-	h.NotifyInvalidate(true, true)
-}
-
-func (h *RealtimeHandler) sendProbeUnavailableState(client *wsClient, groupID string) {
-	st := h.ProbeUnavailableStateForGroup(groupID)
-	_ = client.writeJSON(client.rootCtx, groupProbeStateToWSMap(groupID, st))
-}
-
-func (h *RealtimeHandler) sendProbeUnavailableStateFromRun(client *wsClient, groupID string, run *probeRun) {
-	st := h.groupProbeUnavailableStateFromRun(run)
-	_ = client.writeJSON(client.rootCtx, groupProbeStateToWSMap(groupID, st))
 }
 
 func (h *RealtimeHandler) broadcastJSON(v any) {
@@ -714,16 +404,15 @@ func (h *RealtimeHandler) sendSyncGroupStateFromRun(client *wsClient, groupID st
 		nodes = append(nodes, n)
 	}
 	payload := map[string]any{
-		"type":                      "sync_group_state",
-		"group_id":                  groupID,
-		"running":                   run.running,
-		"processed":                 run.processed,
-		"total":                     run.total,
-		"nodes":                     nodes,
-		"error":                     run.error,
-		"synced_at":                 run.syncedAt,
-		"deleted_unavailable_count": run.deletedUnavailableCount,
-		"added_count":               run.addedCount,
+		"type":        "sync_group_state",
+		"group_id":    groupID,
+		"running":     run.running,
+		"processed":   run.processed,
+		"total":       run.total,
+		"nodes":       nodes,
+		"error":       run.error,
+		"synced_at":   run.syncedAt,
+		"added_count": run.addedCount,
 	}
 	run.mu.Unlock()
 	_ = client.writeJSON(client.rootCtx, payload)
@@ -796,33 +485,19 @@ func cloneTimePtr(value *time.Time) *time.Time {
 }
 
 type realtimeSnapshot struct {
-	Version int                         `json:"version"`
-	Syncs   map[string]syncRunSnapshot  `json:"syncs"`
-	Probes  map[string]probeRunSnapshot `json:"probes"`
+	Version int                        `json:"version"`
+	Syncs   map[string]syncRunSnapshot `json:"syncs"`
 }
 
 type syncRunSnapshot struct {
-	Running                 bool            `json:"running"`
-	Total                   int             `json:"total"`
-	Processed               int             `json:"processed"`
-	AddedCount              int             `json:"added_count"`
-	DeletedUnavailableCount int64           `json:"deleted_unavailable_count"`
-	SyncedAt                string          `json:"synced_at,omitempty"`
-	Error                   string          `json:"error,omitempty"`
-	FinishedAt              time.Time       `json:"finished_at,omitempty"`
-	Nodes                   []syncNodeState `json:"nodes"`
-}
-
-type probeRunSnapshot struct {
-	Running    bool             `json:"running"`
-	Total      int              `json:"total"`
-	Processed  int              `json:"processed"`
-	Error      string           `json:"error,omitempty"`
-	Statuses   []string         `json:"statuses,omitempty"`
-	Mode       string           `json:"mode,omitempty"`
-	ProbeURL   string           `json:"probe_url,omitempty"`
-	FinishedAt time.Time        `json:"finished_at,omitempty"`
-	Nodes      []probeNodeState `json:"nodes"`
+	Running    bool            `json:"running"`
+	Total      int             `json:"total"`
+	Processed  int             `json:"processed"`
+	AddedCount int             `json:"added_count"`
+	SyncedAt   string          `json:"synced_at,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	FinishedAt time.Time       `json:"finished_at,omitempty"`
+	Nodes      []syncNodeState `json:"nodes"`
 }
 
 func (h *RealtimeHandler) loadSnapshot() {
@@ -847,20 +522,16 @@ func (h *RealtimeHandler) loadSnapshot() {
 	if h.activeSyncs == nil {
 		h.activeSyncs = make(map[string]*syncRun)
 	}
-	if h.activeProbes == nil {
-		h.activeProbes = make(map[string]*probeRun)
-	}
 	for groupID, s := range snap.Syncs {
 		run := &syncRun{
-			running:                 s.Running,
-			total:                   s.Total,
-			processed:               s.Processed,
-			addedCount:              s.AddedCount,
-			deletedUnavailableCount: s.DeletedUnavailableCount,
-			syncedAt:                s.SyncedAt,
-			error:                   s.Error,
-			finishedAt:              s.FinishedAt,
-			nodes:                   make(map[string]syncNodeState, len(s.Nodes)),
+			running:    s.Running,
+			total:      s.Total,
+			processed:  s.Processed,
+			addedCount: s.AddedCount,
+			syncedAt:   s.SyncedAt,
+			error:      s.Error,
+			finishedAt: s.FinishedAt,
+			nodes:      make(map[string]syncNodeState, len(s.Nodes)),
 		}
 		if run.running {
 			run.running = false
@@ -873,39 +544,9 @@ func (h *RealtimeHandler) loadSnapshot() {
 		}
 		h.activeSyncs[groupID] = run
 	}
-	for groupID, p := range snap.Probes {
-		run := &probeRun{
-			running:    p.Running,
-			total:      p.Total,
-			processed:  p.Processed,
-			active:     0,
-			queued:     0,
-			ready:      0,
-			failed:     0,
-			error:      p.Error,
-			statuses:   append([]string(nil), p.Statuses...),
-			mode:       p.Mode,
-			probeURL:   p.ProbeURL,
-			startedAt:  time.Now().UTC(),
-			finishedAt: p.FinishedAt,
-			nodes:      make(map[string]probeNodeState, len(p.Nodes)),
-		}
-		if run.running {
-			run.running = false
-			if strings.TrimSpace(run.error) == "" {
-				run.error = "interrupted by server restart"
-			}
-		}
-		for _, n := range p.Nodes {
-			run.nodes[n.NodeID] = n
-			adjustProbeNodeCounters(run, false, "", n.Status)
-		}
-		h.activeProbes[groupID] = run
-	}
 	h.logger.Info("realtime snapshot restored",
 		slog.String("path", h.statePath),
 		slog.Int("sync_groups", len(snap.Syncs)),
-		slog.Int("probe_groups", len(snap.Probes)),
 	)
 }
 
@@ -926,7 +567,6 @@ func (h *RealtimeHandler) persistSnapshotMaybe(force bool) {
 	snap := realtimeSnapshot{
 		Version: 1,
 		Syncs:   make(map[string]syncRunSnapshot),
-		Probes:  make(map[string]probeRunSnapshot),
 	}
 
 	h.syncMu.Lock()
@@ -937,32 +577,12 @@ func (h *RealtimeHandler) persistSnapshotMaybe(force bool) {
 			nodes = append(nodes, n)
 		}
 		snap.Syncs[groupID] = syncRunSnapshot{
-			Running:                 run.running,
-			Total:                   run.total,
-			Processed:               run.processed,
-			AddedCount:              run.addedCount,
-			DeletedUnavailableCount: run.deletedUnavailableCount,
-			SyncedAt:                run.syncedAt,
-			Error:                   run.error,
-			FinishedAt:              run.finishedAt,
-			Nodes:                   nodes,
-		}
-		run.mu.Unlock()
-	}
-	for groupID, run := range h.activeProbes {
-		run.mu.Lock()
-		nodes := make([]probeNodeState, 0, len(run.nodes))
-		for _, n := range run.nodes {
-			nodes = append(nodes, n)
-		}
-		snap.Probes[groupID] = probeRunSnapshot{
 			Running:    run.running,
 			Total:      run.total,
 			Processed:  run.processed,
+			AddedCount: run.addedCount,
+			SyncedAt:   run.syncedAt,
 			Error:      run.error,
-			Statuses:   append([]string(nil), run.statuses...),
-			Mode:       run.mode,
-			ProbeURL:   run.probeURL,
 			FinishedAt: run.finishedAt,
 			Nodes:      nodes,
 		}
@@ -988,119 +608,4 @@ func (h *RealtimeHandler) persistSnapshotMaybe(force bool) {
 		_ = os.Remove(tmp)
 		h.logger.Warn("realtime snapshot rename failed", slog.String("path", h.statePath), slog.String("error", err.Error()))
 	}
-}
-
-func normalizeProbeStatuses(raw []string) []domain.NodeStatus {
-	if len(raw) == 0 {
-		return []domain.NodeStatus{
-			domain.NodeStatusUnknown,
-			domain.NodeStatusUnhealthy,
-			domain.NodeStatusHealthy,
-		}
-	}
-	out := make([]domain.NodeStatus, 0, len(raw))
-	seen := make(map[domain.NodeStatus]struct{}, len(raw))
-	for _, item := range raw {
-		switch domain.NodeStatus(strings.ToLower(strings.TrimSpace(item))) {
-		case domain.NodeStatusUnknown, domain.NodeStatusUnhealthy, domain.NodeStatusHealthy:
-			st := domain.NodeStatus(strings.ToLower(strings.TrimSpace(item)))
-			if _, ok := seen[st]; ok {
-				continue
-			}
-			seen[st] = struct{}{}
-			out = append(out, st)
-		}
-	}
-	if len(out) == 0 {
-		return []domain.NodeStatus{
-			domain.NodeStatusUnknown,
-			domain.NodeStatusUnhealthy,
-			domain.NodeStatusHealthy,
-		}
-	}
-	return out
-}
-
-func probeStatusesToStrings(statuses []domain.NodeStatus) []string {
-	out := make([]string, 0, len(statuses))
-	for _, st := range statuses {
-		out = append(out, string(st))
-	}
-	return out
-}
-
-func normalizeProbeMode(raw string) domain.ProbeMode {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(domain.ProbeModeFast):
-		return domain.ProbeModeFast
-	default:
-		return domain.ProbeModeNormal
-	}
-}
-
-func adjustProbeNodeCounters(run *probeRun, hadPrev bool, prevStatus string, nextStatus string) {
-	if hadPrev && prevStatus == nextStatus {
-		return
-	}
-	if hadPrev {
-		decrementProbeStatusCounter(run, prevStatus)
-	}
-	incrementProbeStatusCounter(run, nextStatus)
-}
-
-func incrementProbeStatusCounter(run *probeRun, status string) {
-	switch status {
-	case string(public.ProbeUnavailableNodeStatusQueued):
-		run.queued++
-	case string(public.ProbeUnavailableNodeStatusProbing):
-		run.active++
-	case string(public.ProbeUnavailableNodeStatusReady):
-		run.ready++
-	case string(public.ProbeUnavailableNodeStatusError):
-		run.failed++
-	}
-}
-
-func decrementProbeStatusCounter(run *probeRun, status string) {
-	switch status {
-	case string(public.ProbeUnavailableNodeStatusQueued):
-		if run.queued > 0 {
-			run.queued--
-		}
-	case string(public.ProbeUnavailableNodeStatusProbing):
-		if run.active > 0 {
-			run.active--
-		}
-	case string(public.ProbeUnavailableNodeStatusReady):
-		if run.ready > 0 {
-			run.ready--
-		}
-	case string(public.ProbeUnavailableNodeStatusError):
-		if run.failed > 0 {
-			run.failed--
-		}
-	}
-}
-
-func probeRateAndETA(startedAt time.Time, total int, completed int) (float64, int64) {
-	if startedAt.IsZero() || completed <= 0 {
-		return 0, -1
-	}
-	elapsed := time.Since(startedAt).Seconds()
-	if elapsed <= 0 {
-		return 0, -1
-	}
-	rate := float64(completed) / elapsed
-	if rate <= 0 {
-		return 0, -1
-	}
-	remaining := total - completed
-	if remaining <= 0 {
-		return rate, 0
-	}
-	eta := int64(float64(remaining) / rate)
-	if eta < 0 {
-		eta = 0
-	}
-	return rate, eta
 }

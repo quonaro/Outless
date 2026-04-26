@@ -166,10 +166,6 @@ func buildClients(tokens []domain.Token, nodes []domain.Node, logger *slog.Logge
 
 		// Create one client entry per accessible node with unique UUID
 		for _, node := range nodes {
-			if node.Status != domain.NodeStatusHealthy {
-				continue
-			}
-
 			if !allGroupsAllowed {
 				if _, ok := allowedGroups[node.GroupID]; !ok {
 					continue
@@ -284,13 +280,6 @@ func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]any, map[string
 	allSelectors := make([]string, 0, len(nodes))
 
 	for _, node := range nodes {
-		if node.Status != domain.NodeStatusHealthy {
-			if logger != nil {
-				logger.Debug(fmt.Sprintf("Skipping unhealthy node: id=%s status=%s", node.ID, node.Status))
-			}
-			continue
-		}
-
 		parsed, err := vless.ParseURL(node.URL)
 		if err != nil {
 			if logger != nil {
