@@ -18,7 +18,6 @@ import (
 	"outless/internal/adapters/postgres"
 	"outless/internal/adapters/xray"
 	"outless/internal/app/auth"
-	"outless/internal/app/monitor"
 	"outless/internal/app/public"
 	"outless/internal/app/router"
 	"outless/internal/app/subscription"
@@ -50,6 +49,8 @@ type Config struct {
 	RouterFingerprint     string
 	RouterAddress         string
 	RouterSyncInterval    time.Duration
+	XrayAPIAddress        string
+	XrayAPITimeout        time.Duration
 	AgentsWorkers         int
 	AgentsURL             string
 	MonitorGeoIPDBPath    string
@@ -81,7 +82,6 @@ func main() {
 	apiLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "api")
 	monitorLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "monitor")
 	routerLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "router")
-	agentLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "agent")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -108,7 +108,6 @@ func main() {
 	nodeRepo := postgres.NewGormNodeRepository(db, monitorLogger)
 	tokenRepo := postgres.NewGormTokenRepository(db, monitorLogger)
 	groupRepo := postgres.NewGormGroupRepository(db, monitorLogger)
-	probeJobRepo := postgres.NewGormProbeJobRepository(db, monitorLogger)
 	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, monitorLogger)
 	adminRepo := postgres.NewGormAdminRepository(db, apiLogger)
 
@@ -118,9 +117,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start embedded Xray edge
-	hubRuntime := xray.NewEmbeddedHubRuntime(routerLogger, "xray", "/var/lib/outless/xray-hub.json", yamlCfg.Logs.XrayFilePath, yamlCfg.Logs.Rotation)
-	hubManager := router.NewManager(tokenRepo, nodeRepo, hubRuntime, router.ManagerConfig{
+	// Sync router config for external Xray runtime (no embedded process management).
+	hubManager := router.NewManager(tokenRepo, nodeRepo, nil, router.ManagerConfig{
 		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{
@@ -133,28 +131,6 @@ func main() {
 		},
 	}, routerLogger)
 
-	// Start embedded probe pool
-	probePool := xray.NewProbeRuntimePool(agentLogger, "xray", 10085, "/tmp/outless-probe", yamlCfg.Logs.XrayFilePath, yamlCfg.Logs.Rotation)
-	if err := probePool.Start(ctx, cfg.AgentsWorkers); err != nil {
-		logger.Error("failed to start embedded probe pool", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer probePool.Stop()
-
-	probeShards := probePool.ShardConfigs()
-
-	// Initialize probe engine
-	probeEngine, err := xray.NewProbeEnginePool(agentLogger, cfg.AgentsURL, probeShards, xray.GeoIPConfig{
-		DBPath: cfg.MonitorGeoIPDBPath,
-		DBURL:  cfg.MonitorGeoIPDBURL,
-		Auto:   cfg.MonitorGeoIPAuto,
-		TTL:    cfg.MonitorGeoIPTTL,
-	}, 10*time.Second)
-	if err != nil {
-		logger.Error("failed to configure xray probe pool", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-
 	// Initialize services
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, groupRepo, subscription.HubConfig{
@@ -166,11 +142,7 @@ func main() {
 		Fingerprint:  cfg.RouterFingerprint,
 		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
-	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, probeEngine, monitorLogger)
-
-	// Initialize monitor service
-	monitorService := monitor.NewService(nodeRepo, probeEngine, monitorLogger, monitor.Config{Workers: cfg.MonitorWorkers})
-	jobRunner := monitor.NewJobRunner(probeJobRepo, nodeRepo, probeEngine, monitorLogger)
+	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, nil, monitorLogger)
 
 	// Initialize HTTP handlers
 	realtime := httpadapter.NewRealtimeHandler(
@@ -184,9 +156,8 @@ func main() {
 		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, apiLogger),
 		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, apiLogger),
 		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, apiLogger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, probeJobRepo, realtime, apiLogger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, probeJobRepo, realtime, apiLogger),
-		ProbeJobs:    httpadapter.NewProbeJobHandler(probeJobRepo, apiLogger),
+		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, realtime, apiLogger),
+		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, realtime, apiLogger),
 		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, apiLogger),
 		Settings:     httpadapter.NewSettingsHandler(*configPath, apiLogger),
 		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, apiLogger),
@@ -213,12 +184,6 @@ func main() {
 	g.Go(func() error {
 		apiLogger.Info("starting http api server", slog.String("address", cfg.HTTPAddress))
 		return server.Start()
-	})
-
-	// Checker worker
-	g.Go(func() error {
-		monitorLogger.Info("starting monitor worker")
-		return runMonitorWorker(gCtx, monitorService, jobRunner, cfg.MonitorPollInterval, cfg.MonitorCheckInterval, cfg.MonitorWorkers, monitorLogger)
 	})
 
 	// Public source worker
@@ -248,39 +213,6 @@ func main() {
 	}
 
 	logger.Info("unified process shutdown complete")
-}
-
-// runMonitorWorker runs the monitor service with periodic checks.
-func runMonitorWorker(
-	ctx context.Context,
-	service *monitor.Service,
-	jobRunner *monitor.JobRunner,
-	jobPollInterval, checkInterval time.Duration,
-	workers int,
-	logger *slog.Logger,
-) error {
-	jobTicker := time.NewTicker(jobPollInterval)
-	defer jobTicker.Stop()
-	fullCheckTicker := time.NewTicker(checkInterval)
-	defer fullCheckTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("monitor worker shutting down")
-			return nil
-		case <-jobTicker.C:
-			if err := jobRunner.RunPending(ctx, workers*2, workers); err != nil {
-				logger.Error("probe jobs run failed", slog.String("error", err.Error()))
-				return err
-			}
-		case <-fullCheckTicker.C:
-			if err := service.RunOnce(ctx); err != nil {
-				logger.Error("checker run failed", slog.String("error", err.Error()))
-				return err
-			}
-		}
-	}
 }
 
 // runPublicSourceWorker triggers ImportAll on startup and every interval.
@@ -363,6 +295,8 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 		RouterFingerprint:     yamlCfg.Router.Fingerprint,
 		RouterAddress:         yamlCfg.Router.Address,
 		RouterSyncInterval:    yamlCfg.Router.SyncInterval,
+		XrayAPIAddress:        yamlCfg.XrayAPI.Address,
+		XrayAPITimeout:        yamlCfg.XrayAPI.Timeout,
 		AgentsWorkers:         yamlCfg.Monitor.Agents.Workers,
 		AgentsURL:             yamlCfg.Monitor.Agents.URL,
 		MonitorGeoIPDBPath:    yamlCfg.Monitor.GeoIP.DBPath,

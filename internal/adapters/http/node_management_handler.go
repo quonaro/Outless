@@ -16,16 +16,14 @@ import (
 type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
-	jobRepo   domain.ProbeJobRepository
 	realtime  *RealtimeHandler
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, jobRepo domain.ProbeJobRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *RealtimeHandler, logger *slog.Logger) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
-		jobRepo:   jobRepo,
 		realtime:  realtime,
 		logger:    logger,
 	}
@@ -81,24 +79,6 @@ type GetNodeOutput struct {
 	Body NodeItem `json:"node"`
 }
 
-type ProbeNodeInput struct {
-	ID   string `path:"id" required:"true"`
-	Body struct {
-		Mode     string `json:"mode,omitempty"`
-		ProbeURL string `json:"probe_url,omitempty"`
-	}
-}
-
-type ProbeNodeOutput struct {
-	Status int `json:"-" status:"202"`
-	Body   struct {
-		JobID       string `json:"job_id"`
-		NodeID      string `json:"node_id"`
-		Status      string `json:"status"`
-		RequestedBy string `json:"requested_by"`
-	}
-}
-
 type NodeItem struct {
 	ID      string `json:"id"`
 	URL     string `json:"url"`
@@ -113,7 +93,6 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/nodes", h.ListNodes)
 	huma.Get(api, "/v1/nodes/{id}", h.GetNode)
 	huma.Patch(api, "/v1/nodes/{id}", h.UpdateNode)
-	huma.Post(api, "/v1/nodes/{id}/probe", h.ProbeNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
 }
 
@@ -311,53 +290,7 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	return nil, nil
 }
 
-func (h *NodeManagementHandler) ProbeNode(ctx context.Context, input *ProbeNodeInput) (*ProbeNodeOutput, error) {
-	node, err := h.nodeRepo.FindByID(ctx, input.ID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			return nil, huma.Error404NotFound("node not found")
-		}
-		h.logger.Error("failed to find node for probe", slog.String("id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to find node")
-	}
-
-	mode := parseProbeMode(input.Body.Mode)
-	requestedBy := requestedByFromContext(ctx)
-	job, err := h.jobRepo.EnqueueNode(ctx, domain.ProbeJobCreate{
-		NodeID:      node.ID,
-		GroupID:     node.GroupID,
-		RequestedBy: requestedBy,
-		Mode:        mode,
-		ProbeURL:    input.Body.ProbeURL,
-	})
-	if err != nil {
-		h.logger.Error("failed to enqueue probe job", slog.String("node_id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to enqueue probe")
-	}
-
-	out := &ProbeNodeOutput{Status: 202}
-	out.Body.JobID = job.ID
-	out.Body.NodeID = node.ID
-	out.Body.Status = string(job.Status)
-	out.Body.RequestedBy = requestedBy
-	return out, nil
-}
-
 func generateNodeID(url string) string {
 	hash := sha256.Sum256([]byte(url))
 	return "node_" + hex.EncodeToString(hash[:8])
-}
-
-func parseProbeMode(raw string) domain.ProbeMode {
-	if strings.EqualFold(strings.TrimSpace(raw), string(domain.ProbeModeFast)) {
-		return domain.ProbeModeFast
-	}
-	return domain.ProbeModeNormal
-}
-
-func requestedByFromContext(ctx context.Context) string {
-	if claims := GetClaims(ctx); claims != nil {
-		return strings.TrimSpace(claims.Username)
-	}
-	return ""
 }

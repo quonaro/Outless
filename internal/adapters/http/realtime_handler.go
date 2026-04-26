@@ -318,20 +318,8 @@ func (h *RealtimeHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			h.cancelGroupJobs(msg.GroupID)
-		case "probe_unavailable":
-			if msg.GroupID == "" {
-				_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "group_id is required"})
-				continue
-			}
-			statuses := normalizeProbeStatuses(msg.Statuses)
-			mode := normalizeProbeMode(msg.Mode)
-			go h.runGroupProbeUnavailable(client, msg.GroupID, statuses, mode, msg.ProbeURL)
-		case "probe_unavailable_state":
-			if msg.GroupID == "" {
-				_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "group_id is required"})
-				continue
-			}
-			h.sendProbeUnavailableState(client, msg.GroupID)
+		case "probe_unavailable", "probe_unavailable_state":
+			_ = client.writeJSON(r.Context(), map[string]string{"type": "error", "error": "probe feature removed"})
 		case "public_refresh_state":
 			h.sendPublicRefreshState(client)
 		default:

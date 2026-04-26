@@ -14,6 +14,7 @@ type Config struct {
 	API      APIConfig      `yaml:"api"`
 	Monitor  MonitorConfig  `yaml:"monitor"`
 	Router   RouterConfig   `yaml:"router"`
+	XrayAPI  XrayAPIConfig  `yaml:"xray_api"`
 	Logs     LogsConfig     `yaml:"logs"`
 }
 
@@ -77,6 +78,12 @@ type RouterConfig struct {
 	Address      string        `yaml:"address" json:"Address"`
 	SyncInterval time.Duration `yaml:"sync_interval" json:"SyncInterval"`
 	NameTemplate string        `yaml:"name_template" json:"NameTemplate"`
+}
+
+// XrayAPIConfig holds external Xray gRPC API connection settings.
+type XrayAPIConfig struct {
+	Address string        `yaml:"address" json:"address"`
+	Timeout time.Duration `yaml:"timeout" json:"timeout"`
 }
 
 // RotationConfig holds log rotation configuration.
@@ -143,6 +150,10 @@ func DefaultConfig() Config {
 			SyncInterval: 30 * time.Second,
 			NameTemplate: "{{vless.country_flag}} {{vless.country}} | {{vless.group}} | {{vless.ping}}ms",
 		},
+		XrayAPI: XrayAPIConfig{
+			Address: "127.0.0.1:10085",
+			Timeout: 5 * time.Second,
+		},
 		Logs: LogsConfig{
 			Level:        "info",
 			Colored:      true,
@@ -170,6 +181,9 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Router.Domain) == "" {
 		return fmt.Errorf("router domain cannot be empty")
+	}
+	if strings.TrimSpace(c.XrayAPI.Address) == "" {
+		return fmt.Errorf("xray_api address cannot be empty")
 	}
 	return nil
 }

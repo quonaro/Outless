@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 10
 
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: outless-xray
+    restart: unless-stopped
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+      - /var/log/outless:/var/log/outless
+    command: [ "run", "-config", "/etc/xray/config.json" ]
+    ports:
+      - "443:443"
+
   outless:
     container_name: outless
     build:
@@ -26,9 +37,9 @@ services:
     restart: unless-stopped
     depends_on:
       - database
+      - xray
     ports:
       - "41220:41220"
-      - "443:443"
     volumes:
       - ./outless.yaml:/app/outless.yaml
       - /var/log/outless:/var/log/outless
