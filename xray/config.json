@@ -1,6 +1,8 @@
 {
   "log": {
-    "loglevel": "warning"
+    "loglevel": "debug",
+    "accesslog": "/dev/stdout",
+    "errorlog": "/dev/stderr"
   },
   "api": {
     "tag": "api",
@@ -31,7 +33,10 @@
       },
       "sniffing": {
         "enabled": true,
-        "destOverride": ["http", "tls"]
+        "destOverride": [
+          "http",
+          "tls"
+        ]
       }
     }
   ],

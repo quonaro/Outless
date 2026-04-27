@@ -204,12 +204,6 @@ func main() {
 		return server.Start()
 	})
 
-	// Public source worker
-	g.Go(func() error {
-		monitorLogger.Info("starting public source worker")
-		return runPublicSourceWorker(gCtx, publicService, cfg.PublicRefreshInterval, realtime, monitorLogger)
-	})
-
 	// Graceful shutdown
 	g.Go(func() error {
 		<-gCtx.Done()
@@ -235,56 +229,6 @@ func main() {
 	}
 
 	logger.Info("unified process shutdown complete")
-}
-
-// runPublicSourceWorker triggers ImportAll on startup and every interval.
-func runPublicSourceWorker(
-	ctx context.Context,
-	service *service.PublicService,
-	interval time.Duration,
-	realtime *httpadapter.RealtimeHandler,
-	logger *slog.Logger,
-) error {
-	if interval <= 0 {
-		logger.Info("public source worker disabled")
-		realtime.UpdatePublicRefreshSchedule(nil, nil)
-		<-ctx.Done()
-		return nil
-	}
-
-	logger.Info("public source worker started", slog.Duration("interval", interval))
-
-	nextRunAt := time.Now().UTC().Add(interval)
-
-	runOnce := func() {
-		runStartedAt := time.Now().UTC()
-		nextRunAt = runStartedAt.Add(interval)
-		realtime.UpdatePublicRefreshSchedule(&runStartedAt, &nextRunAt)
-		if err := service.ImportAll(ctx); err != nil {
-			logger.Warn("public source import failed", slog.String("error", err.Error()))
-		}
-	}
-
-	realtime.UpdatePublicRefreshSchedule(nil, &nextRunAt)
-	runOnce()
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	stateTicker := time.NewTicker(1 * time.Minute)
-	defer stateTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("public source worker stopped")
-			return nil
-		case <-ticker.C:
-			runOnce()
-		case <-stateTicker.C:
-			realtime.UpdatePublicRefreshSchedule(nil, &nextRunAt)
-		}
-	}
 }
 
 func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error) {

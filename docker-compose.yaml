@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
-      - /var/log/outless:/var/log/outless
+      - ./logs:/var/log/xray/
     command: [ "run", "-config", "/etc/xray/config.json" ]
     ports:
       - "443:443"
