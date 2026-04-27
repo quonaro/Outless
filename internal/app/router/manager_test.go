@@ -72,9 +72,6 @@ func (s *nodeRepoStub) IterateNodes(context.Context) iter.Seq2[domain.Node, erro
 func (s *nodeRepoStub) ListVLESSURLs(context.Context, string, bool, *int) ([]string, error) {
 	return nil, nil
 }
-func (s *nodeRepoStub) UpdateProbeResult(context.Context, domain.ProbeResult) error {
-	return nil
-}
 func (s *nodeRepoStub) Create(context.Context, domain.Node) error { return nil }
 func (s *nodeRepoStub) CreateIfAbsent(context.Context, domain.Node) (bool, error) {
 	return false, nil
@@ -94,14 +91,8 @@ func (s *nodeRepoStub) ListPageByGroup(context.Context, string, int, int) ([]dom
 	return nil, nil
 }
 func (s *nodeRepoStub) ListByGroup(context.Context, string) ([]domain.Node, error) { return nil, nil }
-func (s *nodeRepoStub) ListNonHealthyByGroup(context.Context, string) ([]domain.Node, error) {
-	return nil, nil
-}
-func (s *nodeRepoStub) DeleteUnavailableByGroup(context.Context, string) (int64, error) {
-	return 0, nil
-}
-func (s *nodeRepoStub) Update(context.Context, domain.Node) error { return nil }
-func (s *nodeRepoStub) Delete(context.Context, string) error      { return nil }
+func (s *nodeRepoStub) Update(context.Context, domain.Node) error                  { return nil }
+func (s *nodeRepoStub) Delete(context.Context, string) error                       { return nil }
 
 func TestManagerSync_ReloadsViaRuntimeController(t *testing.T) {
 	t.Parallel()
@@ -117,7 +108,6 @@ func TestManagerSync_ReloadsViaRuntimeController(t *testing.T) {
 			{
 				ID:      "n1",
 				GroupID: "g1",
-				Status:  domain.NodeStatusHealthy,
 				URL:     "vless://11111111-1111-1111-1111-111111111111@node.example.com:443?type=tcp&security=tls&sni=www.google.com",
 			},
 		},

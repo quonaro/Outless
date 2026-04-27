@@ -132,8 +132,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize runtime controller based on configuration.
+	var runtime router.RuntimeController
+	if cfg.XrayAPIAddress != "" {
+		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.XrayAPIAddress, "vless-in")
+	}
+
 	// Sync router config for external Xray runtime (no embedded process management).
-	hubManager := router.NewManager(tokenRepo, nodeRepo, nil, router.ManagerConfig{
+	hubManager := router.NewManager(tokenRepo, nodeRepo, runtime, router.ManagerConfig{
 		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{

@@ -25,14 +25,12 @@ func TestBuildClients(t *testing.T) {
 			ID:      "node-1",
 			URL:     "vless://uuid1@example.com:443",
 			GroupID: "group-1",
-			Status:  domain.NodeStatusHealthy,
 			Country: "US",
 		},
 		{
 			ID:      "node-2",
 			URL:     "vless://uuid2@example.com:443",
 			GroupID: "group-1",
-			Status:  domain.NodeStatusHealthy,
 			Country: "DE",
 		},
 	}

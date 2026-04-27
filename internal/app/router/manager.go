@@ -66,9 +66,8 @@ func NewManager(tokenRepo domain.TokenRepository, nodeRepo domain.NodeRepository
 	}
 }
 
-// Run executes initial sync, starts the Xray process and keeps the config
-// refreshed until ctx is cancelled. It blocks until either Xray exits with an
-// error or the context terminates.
+// Run executes initial sync, connects to external Xray via gRPC API and keeps
+// the config refreshed until ctx is cancelled. It blocks until context terminates.
 func (m *Manager) Run(ctx context.Context) error {
 	if err := m.Sync(ctx); err != nil {
 		return fmt.Errorf("initial hub sync: %w", err)

@@ -10,7 +10,7 @@ require (
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/xtls/xray-core v1.251208.0
 	golang.org/x/crypto v0.49.0
-	golang.org/x/net v0.52.0
+	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.80.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
