@@ -14,18 +14,15 @@ import (
 	"syscall"
 	"time"
 
-	geoipadapter "outless/internal/adapters/geoip"
-	httpadapter "outless/internal/adapters/http"
-	"outless/internal/adapters/postgres"
-	"outless/internal/adapters/xray"
-	"outless/internal/app/auth"
-	"outless/internal/app/public"
-	"outless/internal/app/router"
-	"outless/internal/app/subscription"
+	geoipadapter "outless/internal/adapter/geoip"
+	httpadapter "outless/internal/adapter/http"
+	"outless/internal/adapter/repository"
+	"outless/internal/adapter/xray"
 	"outless/internal/domain"
 	"outless/internal/migrations"
-	"outless/pkg/config"
-	"outless/pkg/logging"
+	"outless/internal/service"
+	"outless/shared/config"
+	"outless/shared/logging"
 
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/sync/errgroup"
@@ -87,7 +84,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	db, err := postgres.NewGormDB(cfg.DatabaseURL)
+	db, err := repository.NewDB(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect postgres orm", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -106,11 +103,11 @@ func main() {
 	}
 
 	// Initialize repositories
-	nodeRepo := postgres.NewGormNodeRepository(db, monitorLogger)
-	tokenRepo := postgres.NewGormTokenRepository(db, monitorLogger)
-	groupRepo := postgres.NewGormGroupRepository(db, monitorLogger)
-	publicSourceRepo := postgres.NewGormPublicSourceRepository(db, monitorLogger)
-	adminRepo := postgres.NewGormAdminRepository(db, apiLogger)
+	nodeRepo := repository.NewNodeRepository(db, monitorLogger)
+	tokenRepo := repository.NewTokenRepository(db, monitorLogger)
+	groupRepo := repository.NewGroupRepository(db, monitorLogger)
+	publicSourceRepo := repository.NewPublicSourceRepository(db, monitorLogger)
+	adminRepo := repository.NewAdminRepository(db, apiLogger)
 
 	// Initialize GeoIP resolver for country detection
 	var geoipResolver domain.GeoIPResolver
@@ -133,13 +130,13 @@ func main() {
 	}
 
 	// Initialize runtime controller based on configuration.
-	var runtime router.RuntimeController
+	var runtime service.RuntimeController
 	if cfg.XrayAPIAddress != "" {
 		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.XrayAPIAddress, "vless-in")
 	}
 
 	// Sync router config for external Xray runtime (no embedded process management).
-	hubManager := router.NewManager(tokenRepo, nodeRepo, runtime, router.ManagerConfig{
+	hubManager := service.NewRouterManager(tokenRepo, nodeRepo, runtime, service.ManagerConfig{
 		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{
@@ -153,8 +150,8 @@ func main() {
 	}, routerLogger)
 
 	// Initialize services
-	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
-	subscriptionService := subscription.NewService(nodeRepo, tokenRepo, groupRepo, subscription.HubConfig{
+	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
+	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, service.HubConfig{
 		Host:         cfg.RouterDomain,
 		Port:         cfg.RouterPort,
 		SNI:          cfg.RouterSNI,
@@ -163,7 +160,7 @@ func main() {
 		Fingerprint:  cfg.RouterFingerprint,
 		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
-	publicService := public.NewService(nodeRepo, publicSourceRepo, groupRepo, geoipResolver, monitorLogger)
+	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, geoipResolver, monitorLogger)
 
 	// Initialize HTTP handlers
 	realtime := httpadapter.NewRealtimeHandler(
@@ -243,7 +240,7 @@ func main() {
 // runPublicSourceWorker triggers ImportAll on startup and every interval.
 func runPublicSourceWorker(
 	ctx context.Context,
-	service *public.Service,
+	service *service.PublicService,
 	interval time.Duration,
 	realtime *httpadapter.RealtimeHandler,
 	logger *slog.Logger,
