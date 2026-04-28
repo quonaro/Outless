@@ -164,7 +164,7 @@ func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain
 				Flow:       parsed.Flow,
 				FP:         parsed.FP,
 			}
-			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, 0, token.Owner)
+			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, token.Owner)
 			remark = template.RenderTemplate(s.hub.NameTemplate, templateData)
 		} else {
 			groupLabel := resolveGroupLabel(groupNames, node.GroupID)

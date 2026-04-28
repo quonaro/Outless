@@ -148,7 +148,7 @@ func DefaultConfig() Config {
 			Fingerprint:  "chrome",
 			Address:      ":443",
 			SyncInterval: 30 * time.Second,
-			NameTemplate: "{{vless.country_flag}} {{vless.country}} | {{vless.group}} | {{vless.ping}}ms",
+			NameTemplate: "{{vless.country_flag}} {{vless.country}} | {{vless.group}}",
 		},
 		XrayAPI: XrayAPIConfig{
 			Address: "127.0.0.1:10085",

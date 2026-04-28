@@ -2,7 +2,6 @@ package template
 
 import (
 	"testing"
-	"time"
 )
 
 func TestRenderTemplate(t *testing.T) {
@@ -54,12 +53,6 @@ func TestRenderTemplate(t *testing.T) {
 			expected: "My Node",
 		},
 		{
-			name:     "ping variable",
-			tmpl:     "{{vless.ping}}ms",
-			data:     TemplateData{VLESS: VLESSData{Ping: "150"}},
-			expected: "150ms",
-		},
-		{
 			name:     "user variable",
 			tmpl:     "User: {{vless.user}}",
 			data:     TemplateData{VLESS: VLESSData{User: "user@example.com"}},
@@ -101,7 +94,7 @@ func TestBuildTemplateData(t *testing.T) {
 		FP:         "chrome",
 	}
 
-	result := BuildTemplateData(vlessData, "Poland", "PL", "premium", 150*time.Millisecond, "user@example.com")
+	result := BuildTemplateData(vlessData, "Poland", "PL", "premium", "user@example.com")
 
 	if result.VLESS.Name != "Poland Node" {
 		t.Errorf("VLESS.Name = %q, want %q", result.VLESS.Name, "Poland Node")
@@ -111,9 +104,6 @@ func TestBuildTemplateData(t *testing.T) {
 	}
 	if result.VLESS.CountryShort != "PL" {
 		t.Errorf("VLESS.CountryShort = %q, want %q", result.VLESS.CountryShort, "PL")
-	}
-	if result.VLESS.Ping != "150" {
-		t.Errorf("VLESS.Ping = %q, want %q", result.VLESS.Ping, "150")
 	}
 	if result.VLESS.Group != "premium" {
 		t.Errorf("VLESS.Group = %q, want %q", result.VLESS.Group, "premium")

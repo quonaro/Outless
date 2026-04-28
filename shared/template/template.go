@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // VLESSData holds parsed VLESS URL data and node metadata.
@@ -20,7 +19,6 @@ type VLESSData struct {
 	Country      string
 	CountryShort string
 	CountryFlag  string
-	Ping         string
 	Group        string
 	User         string
 }
@@ -31,11 +29,10 @@ type TemplateData struct {
 }
 
 // BuildTemplateData creates TemplateData from VLESS data, Node, and Token.
-func BuildTemplateData(vless VLESSData, nodeCountry, nodeCountryShort, nodeGroupID string, nodeLatency time.Duration, tokenOwner string) TemplateData {
+func BuildTemplateData(vless VLESSData, nodeCountry, nodeCountryShort, nodeGroupID string, tokenOwner string) TemplateData {
 	vless.Country = nodeCountry
 	vless.CountryShort = strings.ToUpper(nodeCountryShort)
 	vless.CountryFlag = countryFlagEmoji(nodeCountryShort)
-	vless.Ping = strconv.FormatInt(nodeLatency.Milliseconds(), 10)
 	vless.Group = nodeGroupID
 	vless.User = tokenOwner
 
@@ -120,8 +117,6 @@ func getFieldValue(key string, data TemplateData) string {
 			return data.VLESS.CountryShort
 		case "country_flag":
 			return data.VLESS.CountryFlag
-		case "ping":
-			return data.VLESS.Ping
 		case "group":
 			return data.VLESS.Group
 		case "user":
