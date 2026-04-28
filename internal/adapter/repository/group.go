@@ -13,18 +13,14 @@ import (
 )
 
 type groupModel struct {
-	ID                    string     `gorm:"column:id;primaryKey"`
-	Name                  string     `gorm:"column:name"`
-	SourceURL             *string    `gorm:"column:source_url"`
-	TotalNodes            int64      `gorm:"column:total_nodes"`
-	HealthyNodes          int64      `gorm:"column:healthy_nodes"`
-	UnhealthyNodes        int64      `gorm:"column:unhealthy_nodes"`
-	UnknownNodes          int64      `gorm:"column:unknown_nodes"`
-	AutoDeleteUnavailable bool       `gorm:"column:auto_delete_unavailable"`
-	RandomEnabled         bool       `gorm:"column:random_enabled"`
-	RandomLimit           *int64     `gorm:"column:random_limit"`
-	LastSyncedAt          *time.Time `gorm:"column:last_synced_at"`
-	CreatedAt             time.Time  `gorm:"column:created_at"`
+	ID            string     `gorm:"column:id;primaryKey"`
+	Name          string     `gorm:"column:name"`
+	SourceURL     *string    `gorm:"column:source_url"`
+	TotalNodes    int64      `gorm:"column:total_nodes"`
+	RandomEnabled bool       `gorm:"column:random_enabled"`
+	RandomLimit   *int64     `gorm:"column:random_limit"`
+	LastSyncedAt  *time.Time `gorm:"column:last_synced_at"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
 }
 
 func (groupModel) TableName() string {
@@ -51,6 +47,11 @@ func (r *GroupRepository) Create(ctx context.Context, group domain.Group) error 
 		RandomLimit:   nullableGroupInt(group.RandomLimit),
 		LastSyncedAt:  group.LastSyncedAt,
 		CreatedAt:     group.CreatedAt,
+	}
+
+	// Default RandomEnabled to true if RandomLimit is set
+	if !model.RandomEnabled && model.RandomLimit != nil {
+		model.RandomEnabled = true
 	}
 
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
@@ -118,16 +119,23 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 }
 
 func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error {
+	updates := map[string]any{
+		"name":           group.Name,
+		"source_url":     nullableGroupString(group.SourceURL),
+		"random_enabled": group.RandomEnabled,
+		"random_limit":   nullableGroupInt(group.RandomLimit),
+		"last_synced_at": group.LastSyncedAt,
+	}
+
+	// Default RandomEnabled to true if RandomLimit is set
+	if !group.RandomEnabled && group.RandomLimit != nil {
+		updates["random_enabled"] = true
+	}
+
 	result := r.db.WithContext(ctx).
 		Model(&groupModel{}).
 		Where("id = ?", group.ID).
-		Updates(map[string]any{
-			"name":           group.Name,
-			"source_url":     nullableGroupString(group.SourceURL),
-			"random_enabled": group.RandomEnabled,
-			"random_limit":   nullableGroupInt(group.RandomLimit),
-			"last_synced_at": group.LastSyncedAt,
-		})
+		Updates(updates)
 
 	if result.Error != nil {
 		return fmt.Errorf("updating group: %w", result.Error)

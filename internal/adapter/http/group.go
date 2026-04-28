@@ -30,24 +30,22 @@ func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain
 
 type CreateGroupInput struct {
 	Body struct {
-		Name                  string `json:"name" required:"true" maxLength:"100"`
-		SourceURL             string `json:"source_url"`
-		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
-		RandomEnabled         bool   `json:"random_enabled" default:"false"`
-		RandomLimit           *int   `json:"random_limit"`
+		Name          string `json:"name" required:"true" maxLength:"100"`
+		SourceURL     string `json:"source_url"`
+		RandomEnabled bool   `json:"random_enabled"`
+		RandomLimit   *int   `json:"random_limit"`
 	}
 }
 
 type CreateGroupOutput struct {
 	Body struct {
-		ID                    string     `json:"id"`
-		Name                  string     `json:"name"`
-		SourceURL             string     `json:"source_url"`
-		AutoDeleteUnavailable bool       `json:"auto_delete_unavailable"`
-		RandomEnabled         bool       `json:"random_enabled"`
-		RandomLimit           *int       `json:"random_limit"`
-		LastSyncedAt          *time.Time `json:"last_synced_at"`
-		CreatedAt             time.Time  `json:"created_at"`
+		ID            string     `json:"id"`
+		Name          string     `json:"name"`
+		SourceURL     string     `json:"source_url"`
+		RandomEnabled bool       `json:"random_enabled"`
+		RandomLimit   *int       `json:"random_limit"`
+		LastSyncedAt  *time.Time `json:"last_synced_at"`
+		CreatedAt     time.Time  `json:"created_at"`
 	}
 }
 
@@ -58,11 +56,10 @@ type ListGroupsOutput struct {
 type UpdateGroupInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		Name                  string `json:"name" required:"true" maxLength:"100"`
-		SourceURL             string `json:"source_url"`
-		AutoDeleteUnavailable bool   `json:"auto_delete_unavailable" default:"false"`
-		RandomEnabled         bool   `json:"random_enabled" default:"false"`
-		RandomLimit           *int   `json:"random_limit"`
+		Name          string `json:"name" required:"true" maxLength:"100"`
+		SourceURL     string `json:"source_url"`
+		RandomEnabled bool   `json:"random_enabled"`
+		RandomLimit   *int   `json:"random_limit"`
 	}
 }
 
@@ -81,18 +78,14 @@ type DeleteUnavailableNodesOutput struct {
 }
 
 type GroupItem struct {
-	ID                    string     `json:"id"`
-	Name                  string     `json:"name"`
-	SourceURL             string     `json:"source_url"`
-	TotalNodes            int        `json:"total_nodes"`
-	HealthyNodes          int        `json:"healthy_nodes"`
-	UnhealthyNodes        int        `json:"unhealthy_nodes"`
-	UnknownNodes          int        `json:"unknown_nodes"`
-	AutoDeleteUnavailable bool       `json:"auto_delete_unavailable"`
-	RandomEnabled         bool       `json:"random_enabled"`
-	RandomLimit           *int       `json:"random_limit"`
-	LastSyncedAt          *time.Time `json:"last_synced_at"`
-	CreatedAt             time.Time  `json:"created_at"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	SourceURL     string     `json:"source_url"`
+	TotalNodes    int        `json:"total_nodes"`
+	RandomEnabled bool       `json:"random_enabled"`
+	RandomLimit   *int       `json:"random_limit"`
+	LastSyncedAt  *time.Time `json:"last_synced_at"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 func (h *GroupManagementHandler) Register(api huma.API) {
@@ -121,6 +114,11 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 		RandomEnabled: input.Body.RandomEnabled,
 		RandomLimit:   input.Body.RandomLimit,
 		CreatedAt:     time.Now().UTC(),
+	}
+
+	// Default RandomEnabled to false if not specified
+	if !input.Body.RandomEnabled && input.Body.RandomLimit != nil {
+		group.RandomEnabled = true
 	}
 
 	if err := h.groupRepo.Create(ctx, group); err != nil {
@@ -190,6 +188,11 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
 	group.RandomEnabled = input.Body.RandomEnabled
 	group.RandomLimit = input.Body.RandomLimit
+
+	// Default RandomEnabled to true if RandomLimit is set
+	if !group.RandomEnabled && group.RandomLimit != nil {
+		group.RandomEnabled = true
+	}
 	if err := h.groupRepo.Update(ctx, group); err != nil {
 		h.logger.Error("failed to update group", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update group")

@@ -44,7 +44,7 @@ services:
     ports:
       - "41220:41220"
     volumes:
-      - ./outless.yaml:/outless.yaml:ro
+      - ./outless.yaml:/app/outless.yaml:ro
       - geoip_data:/app/tmp
     networks:
       - outless_network
