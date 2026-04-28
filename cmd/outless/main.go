@@ -168,6 +168,7 @@ func main() {
 		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, geoipResolver, monitorLogger)
+	cleanupService := service.NewCleanupService(tokenRepo, logger)
 
 	// Initialize HTTP handlers
 	realtime := httpadapter.NewRealtimeHandler(
@@ -209,6 +210,16 @@ func main() {
 	g.Go(func() error {
 		apiLogger.Info("starting http api server", slog.String("address", cfg.HTTPAddress))
 		return server.Start()
+	})
+
+	// Cleanup service for expired tokens
+	g.Go(func() error {
+		if err := cleanupService.Start(gCtx); err != nil {
+			logger.Error("failed to start cleanup service", slog.String("error", err.Error()))
+			return err
+		}
+		<-gCtx.Done()
+		return cleanupService.Stop()
 	})
 
 	// Graceful shutdown

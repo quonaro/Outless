@@ -39,6 +39,9 @@ type TokenRepository interface {
 	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
 	Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error
+	// CleanupExpired removes tokens that expired before the given cutoff time.
+	// Returns the number of deleted tokens.
+	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // AdminRepository provides persistence operations for admin users.

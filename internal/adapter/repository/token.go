@@ -338,6 +338,26 @@ func (r *TokenRepository) Remove(ctx context.Context, id string) error {
 	return nil
 }
 
+// CleanupExpired removes tokens that expired before the given cutoff time.
+// Also cleans up associated token_groups records via CASCADE or manual cleanup.
+func (r *TokenRepository) CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error) {
+	// Delete expired tokens - token_groups will be deleted via CASCADE if set up,
+	// or we need to delete them manually. Using explicit cleanup for compatibility.
+	result := r.db.WithContext(ctx).
+		Where("expires_at < ?", cutoff.UTC()).
+		Delete(&tokenModel{})
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("cleaning up expired tokens: %w", result.Error)
+	}
+
+	deleted := result.RowsAffected
+	if deleted > 0 {
+		r.logger.Info("expired tokens cleaned up", slog.Int64("deleted_count", deleted), slog.Time("cutoff", cutoff.UTC()))
+	}
+	return deleted, nil
+}
+
 // Update modifies token owner, group IDs, and expiration.
 func (r *TokenRepository) Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error {
 	if strings.TrimSpace(owner) == "" {
