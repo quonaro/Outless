@@ -184,10 +184,11 @@ func (r *GRPCRuntimeController) sync(ctx context.Context) error {
 	// Add outbounds for all nodes
 	for _, node := range nodes {
 		if err := r.addNodeOutbound(ctx, node); err != nil {
-			r.logger.Warn("failed to add outbound for node",
-				slog.String("node_id", node.ID),
-				slog.String("error", err.Error()),
-			)
+			if isAlreadyExistsError(err) {
+				r.logger.Debug("outbound already exists", slog.String("node_id", node.ID))
+			} else {
+				r.logger.Warn("failed to add outbound for node", slog.String("node_id", node.ID), slog.String("error", err.Error()))
+			}
 		}
 	}
 
@@ -252,10 +253,11 @@ func (r *GRPCRuntimeController) RemoveUser(email string) error {
 		}),
 	})
 	if err != nil {
-		r.logger.Warn("failed to remove user from inbound",
-			slog.String("email", email),
-			slog.String("error", err.Error()),
-		)
+		if isNotFoundError(err) {
+			r.logger.Debug("user already removed from inbound", slog.String("email", email))
+		} else {
+			r.logger.Warn("failed to remove user from inbound", slog.String("email", email), slog.String("error", err.Error()))
+		}
 		return fmt.Errorf("remove user: %w", err)
 	}
 
@@ -276,12 +278,10 @@ func (r *GRPCRuntimeController) RemoveRulesForUser(email string) error {
 	if err != nil {
 		// Rule might not exist, which is fine
 		if !isNotFoundError(err) {
-			r.logger.Warn("failed to remove routing rule",
-				slog.String("rule_tag", ruleTag),
-				slog.String("error", err.Error()),
-			)
+			r.logger.Warn("failed to remove routing rule", slog.String("rule_tag", ruleTag), slog.String("error", err.Error()))
 			return fmt.Errorf("remove rule: %w", err)
 		}
+		r.logger.Debug("routing rule already removed", slog.String("rule_tag", ruleTag))
 	}
 
 	r.logger.Debug("removed routing rule for user", slog.String("email", email), slog.String("rule_tag", ruleTag))
