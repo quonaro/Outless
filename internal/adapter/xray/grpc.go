@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/proxy/vless"
+	vlessInbound "github.com/xtls/xray-core/proxy/vless/inbound"
 	vlessOutbound "github.com/xtls/xray-core/proxy/vless/outbound"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/reality"
@@ -38,6 +40,14 @@ type GRPCRuntimeController struct {
 	grpcTarget string
 	inboundTag string
 
+	// Reality inbound settings
+	inboundListen string
+	inboundPort   int
+	inboundSNI    string
+	privateKey    string
+	shortID       string
+	destination   string
+
 	mu   sync.Mutex
 	conn *grpc.ClientConn
 	hs   proxymanCommand.HandlerServiceClient
@@ -51,6 +61,7 @@ func NewGRPCRuntimeController(
 	nodeRepo domain.NodeRepository,
 	adminURL string,
 	inboundTag string,
+	hubConfig HubInboundConfig,
 ) *GRPCRuntimeController {
 	if inboundTag == "" {
 		inboundTag = "vless-in"
@@ -60,12 +71,28 @@ func NewGRPCRuntimeController(
 		logger.Warn("invalid xray admin_url for gRPC", slog.String("admin_url", adminURL), slog.String("error", err.Error()))
 		target = ""
 	}
+
+	listen := hubConfig.Listen
+	if listen == "" {
+		listen = "0.0.0.0"
+	}
+	port := hubConfig.Port
+	if port == 0 {
+		port = 443
+	}
+
 	return &GRPCRuntimeController{
-		logger:     logger,
-		tokenRepo:  tokenRepo,
-		nodeRepo:   nodeRepo,
-		grpcTarget: target,
-		inboundTag: inboundTag,
+		logger:        logger,
+		tokenRepo:     tokenRepo,
+		nodeRepo:      nodeRepo,
+		grpcTarget:    target,
+		inboundTag:    inboundTag,
+		inboundListen: listen,
+		inboundPort:   port,
+		inboundSNI:    hubConfig.SNI,
+		privateKey:    hubConfig.PrivateKey,
+		shortID:       hubConfig.ShortID,
+		destination:   hubConfig.Destination,
 	}
 }
 
@@ -77,15 +104,11 @@ func (r *GRPCRuntimeController) ensureConn(ctx context.Context) error {
 		return nil
 	}
 
-	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, r.grpcTarget,
+	conn, err := grpc.NewClient(r.grpcTarget,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
-		return fmt.Errorf("grpc dial %s: %w", r.grpcTarget, err)
+		return fmt.Errorf("grpc new client %s: %w", r.grpcTarget, err)
 	}
 
 	r.conn = conn
@@ -96,8 +119,19 @@ func (r *GRPCRuntimeController) ensureConn(ctx context.Context) error {
 	return nil
 }
 
-// Start is a no-op for external Xray - it's already running.
+// Start ensures the inbound exists in external Xray via gRPC API.
 func (r *GRPCRuntimeController) Start(_ string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := r.ensureConn(ctx); err != nil {
+		return fmt.Errorf("ensuring gRPC connection: %w", err)
+	}
+
+	if err := r.ensureInbound(ctx); err != nil {
+		return fmt.Errorf("ensuring inbound: %w", err)
+	}
+
 	r.logger.Info("grpc runtime controller started (external xray)")
 	return nil
 }
@@ -398,6 +432,150 @@ func (r *GRPCRuntimeController) addRoutingRule(ctx context.Context, client Clien
 		slog.String("outbound", targetTag),
 	)
 	return nil
+}
+
+// ensureInbound creates the VLESS Reality inbound if it doesn't exist.
+func (r *GRPCRuntimeController) ensureInbound(ctx context.Context) error {
+	if r.inboundSNI == "" {
+		return fmt.Errorf("inbound SNI is required for Reality inbound")
+	}
+	if r.privateKey == "" {
+		return fmt.Errorf("private key is required for Reality inbound")
+	}
+
+	dest := normalizeRealityDest(r.destination, r.inboundSNI)
+	privateKeyBytes := decodeRealityPrivateKey(r.privateKey)
+
+	// Validate dest format (should be host:port)
+	if dest == "" || !strings.Contains(dest, ":") {
+		r.logger.Error("invalid Reality dest format",
+			slog.String("raw_dest", r.destination),
+			slog.String("normalized_dest", dest),
+			slog.String("sni", r.inboundSNI),
+		)
+		return fmt.Errorf("invalid dest format: %q (must be host:port)", dest)
+	}
+
+	r.logger.Error("Reality inbound parameters",
+		slog.String("tag", r.inboundTag),
+		slog.String("listen", r.inboundListen),
+		slog.Int("port", r.inboundPort),
+		slog.String("sni", r.inboundSNI),
+		slog.String("dest", dest),
+		slog.String("raw_dest", r.destination),
+		slog.Int("private_key_len", len(privateKeyBytes)),
+	)
+
+	// Remove existing inbound to ensure clean recreation with correct config
+	_, removeErr := r.hs.RemoveInbound(ctx, &proxymanCommand.RemoveInboundRequest{
+		Tag: r.inboundTag,
+	})
+	if removeErr == nil {
+		r.logger.Debug("removed existing inbound", slog.String("tag", r.inboundTag))
+	}
+
+	port := xnet.Port(r.inboundPort)
+
+	_, err := r.hs.AddInbound(ctx, &proxymanCommand.AddInboundRequest{
+		Inbound: &core.InboundHandlerConfig{
+			Tag: r.inboundTag,
+			ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
+				Listen: xnet.NewIPOrDomain(xnet.ParseAddress(r.inboundListen)),
+				PortList: &xnet.PortList{Range: []*xnet.PortRange{
+					{From: uint32(port), To: uint32(port)},
+				}},
+				StreamSettings: &internet.StreamConfig{
+					ProtocolName: "tcp",
+					SecuritySettings: []*serial.TypedMessage{
+						serial.ToTypedMessage(&reality.Config{
+							Show:        false,
+							Dest:        dest,
+							Type:        "tcp",
+							Xver:        0,
+							ServerNames: []string{r.inboundSNI},
+							PrivateKey:  privateKeyBytes,
+							ShortIds:    shortIDBytes(r.shortID),
+							Fingerprint: "chrome",
+						}),
+					},
+					SecurityType: serial.GetMessageType(&reality.Config{}),
+				},
+			}),
+			ProxySettings: serial.ToTypedMessage(&vlessInbound.Config{
+				Clients:    []*protocol.User{}, // Empty initially, users added separately
+				Decryption: "none",
+			}),
+		},
+	})
+
+	if err != nil {
+		if isAlreadyExistsError(err) {
+			r.logger.Debug("inbound already exists", slog.String("tag", r.inboundTag))
+			return nil
+		}
+		r.logger.Error("failed to add inbound", slog.String("tag", r.inboundTag), slog.String("error", err.Error()))
+		return fmt.Errorf("add inbound: %w", err)
+	}
+
+	r.logger.Info("created inbound", slog.String("tag", r.inboundTag), slog.Int("port", r.inboundPort))
+	return nil
+}
+
+// shortIDBytes converts a hex shortID string to [][]byte for Reality inbound config.
+func shortIDBytes(sid string) [][]byte {
+	if sid == "" {
+		return [][]byte{{}}
+	}
+	b, err := hex.DecodeString(sid)
+	if err != nil || len(b) == 0 {
+		return [][]byte{[]byte(sid)}
+	}
+	return [][]byte{b}
+}
+
+func normalizeRealityDest(dest, fallbackSNI string) string {
+	d := strings.TrimSpace(dest)
+	if d == "" {
+		d = strings.TrimSpace(fallbackSNI)
+	}
+
+	if strings.HasPrefix(d, "http://") || strings.HasPrefix(d, "https://") {
+		if u, err := url.Parse(d); err == nil {
+			d = u.Host
+		}
+	}
+
+	if strings.HasPrefix(d, "tcp://") || strings.HasPrefix(d, "udp://") {
+		if u, err := url.Parse(d); err == nil {
+			d = u.Host
+		}
+	}
+
+	d = strings.TrimPrefix(d, "tcp:")
+	d = strings.TrimPrefix(d, "udp:")
+	d = strings.TrimPrefix(d, "//")
+
+	if d != "" && !strings.Contains(d, ":") {
+		d += ":443"
+	}
+
+	return d
+}
+
+func decodeRealityPrivateKey(raw string) []byte {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return nil
+	}
+
+	if b, err := base64.RawURLEncoding.DecodeString(v); err == nil {
+		return b
+	}
+	if b, err := base64.StdEncoding.DecodeString(v); err == nil {
+		return b
+	}
+
+	return []byte(v)
 }
 
 func makeOutboundTag(nodeID string) string {

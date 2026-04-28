@@ -79,6 +79,11 @@ func (m *RouterManager) Run(ctx context.Context) error {
 	m.runtimeActive = true
 	m.logger.Info("xray runtime started", slog.String("controller", m.runtime.Description()))
 
+	if err := m.runtime.Reload(m.cfg.ConfigPath); err != nil {
+		return fmt.Errorf("initial runtime reload (%s): %w", m.runtime.Description(), err)
+	}
+	m.logger.Info("xray runtime initial reload completed", slog.String("controller", m.runtime.Description()))
+
 	ticker := time.NewTicker(m.cfg.SyncInterval)
 	defer ticker.Stop()
 

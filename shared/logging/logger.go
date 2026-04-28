@@ -131,11 +131,14 @@ func (h *minimalHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *minimalHandler) Handle(ctx context.Context, r slog.Record) error {
-	// Extract worker from attrs
+	// Extract worker from attrs and build attrs string
 	var worker string
+	var attrs []string
 	r.Attrs(func(a slog.Attr) bool {
 		if a.Key == "worker" {
 			worker = a.Value.String()
+		} else if a.Key != slog.TimeKey && a.Key != slog.LevelKey && a.Key != slog.MessageKey {
+			attrs = append(attrs, fmt.Sprintf("%s=%v", a.Key, a.Value.Any()))
 		}
 		return true
 	})
@@ -192,12 +195,18 @@ func (h *minimalHandler) Handle(ctx context.Context, r slog.Record) error {
 		}
 	}
 
+	// Build attrs suffix
+	var attrsSuffix string
+	if len(attrs) > 0 {
+		attrsSuffix = " | " + strings.Join(attrs, " | ")
+	}
+
 	// Build output with proper spacing
 	var output string
 	if moduleOutput != "" {
-		output = fmt.Sprintf("%s %s%s: %s\n", levelOutput, moduleOutput, workerSuffix, r.Message)
+		output = fmt.Sprintf("%s %s%s: %s%s\n", levelOutput, moduleOutput, workerSuffix, r.Message, attrsSuffix)
 	} else {
-		output = fmt.Sprintf("%s%s: %s\n", levelOutput, workerSuffix, r.Message)
+		output = fmt.Sprintf("%s%s: %s%s\n", levelOutput, workerSuffix, r.Message, attrsSuffix)
 	}
 
 	// Write output

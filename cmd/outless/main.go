@@ -132,7 +132,15 @@ func main() {
 	// Initialize runtime controller based on configuration.
 	var runtime service.RuntimeController
 	if cfg.XrayAPIAddress != "" {
-		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.XrayAPIAddress, "vless-in")
+		hubConfig := xray.HubInboundConfig{
+			Listen:      listenHost(cfg.RouterAddress),
+			Port:        cfg.RouterPort,
+			SNI:         cfg.RouterSNI,
+			PrivateKey:  cfg.RouterPrivateKey,
+			ShortID:     cfg.RouterShortID,
+			Destination: cfg.RouterSNI + ":443",
+		}
+		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.XrayAPIAddress, "vless-in", hubConfig)
 	}
 
 	// Sync router config for external Xray runtime (no embedded process management).

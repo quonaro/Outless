@@ -16,6 +16,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - outless_network
 
   xray:
     image: ghcr.io/xtls/xray-core:latest
@@ -23,10 +25,12 @@ services:
     restart: unless-stopped
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
-      - ./logs:/var/log/xray/
     command: [ "run", "-config", "/etc/xray/config.json" ]
     ports:
       - "443:443"
+      - "10085:10085"
+    networks:
+      - outless_network
 
   outless:
     container_name: outless
@@ -44,9 +48,15 @@ services:
       - ./outless.yaml:/app/outless.yaml
       - /var/log/outless:/var/log/outless
       - geoip_data:/app/tmp
+    networks:
+      - outless_network
 
 volumes:
   postgres_data:
     name: outless-db
   geoip_data:
     name: outless-geoip
+
+networks:
+  outless_network:
+    name: outless_network
