@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"outless/internal/domain"
@@ -260,6 +261,26 @@ func toDomainToken(model tokenModel, groupIDs []string) domain.Token {
 		ExpiresAt:  model.ExpiresAt,
 		CreatedAt:  model.CreatedAt,
 	}
+}
+
+// FindByID retrieves a token by its ID.
+func (r *TokenRepository) FindByID(ctx context.Context, id string) (domain.Token, error) {
+	var model tokenModel
+	err := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.Token{}, fmt.Errorf("token not found: %w", domain.ErrNodeNotFound)
+		}
+		return domain.Token{}, fmt.Errorf("finding token: %w", err)
+	}
+
+	groupIDsMap, err := r.loadGroupIDsByTokenIDs(ctx, []string{model.ID})
+	if err != nil {
+		return domain.Token{}, err
+	}
+	return toDomainToken(model, groupIDsMap[model.ID]), nil
 }
 
 // Deactivates a token by ID.

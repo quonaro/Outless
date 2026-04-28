@@ -28,6 +28,12 @@ type RuntimeController interface {
 	Reload(configPath string) error
 	Stop()
 	Description() string
+	// RemoveUser removes a client from the inbound by email
+	RemoveUser(email string) error
+	// RemoveRulesForUser removes all routing rules for a specific user email
+	RemoveRulesForUser(email string) error
+	// ForceSync immediately syncs Xray config with current DB state
+	ForceSync() error
 }
 
 // RouterManager keeps edge Xray config in sync with DB and delegates runtime lifecycle.
@@ -213,7 +219,10 @@ func writeAtomic(path string, data []byte) error {
 
 type noopRuntimeController struct{}
 
-func (noopRuntimeController) Start(string) error  { return nil }
-func (noopRuntimeController) Reload(string) error { return nil }
-func (noopRuntimeController) Stop()               {}
-func (noopRuntimeController) Description() string { return "noop" }
+func (noopRuntimeController) Start(string) error              { return nil }
+func (noopRuntimeController) Reload(string) error             { return nil }
+func (noopRuntimeController) Stop()                           {}
+func (noopRuntimeController) Description() string             { return "noop" }
+func (noopRuntimeController) RemoveUser(string) error         { return nil }
+func (noopRuntimeController) RemoveRulesForUser(string) error { return nil }
+func (noopRuntimeController) ForceSync() error                { return nil }

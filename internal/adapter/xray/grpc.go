@@ -219,6 +219,54 @@ func (r *GRPCRuntimeController) Description() string {
 	return "grpc-xray-api"
 }
 
+// RemoveUser removes a client from the inbound by email.
+func (r *GRPCRuntimeController) RemoveUser(email string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := r.hs.AlterInbound(ctx, &proxymanCommand.AlterInboundRequest{
+		Tag: r.inboundTag,
+		Operation: serial.ToTypedMessage(&proxymanCommand.RemoveUserOperation{
+			Email: email,
+		}),
+	})
+	if err != nil {
+		r.logger.Warn("failed to remove user from inbound",
+			slog.String("email", email),
+			slog.String("error", err.Error()),
+		)
+		return fmt.Errorf("remove user: %w", err)
+	}
+
+	r.logger.Debug("removed user from inbound", slog.String("email", email))
+	return nil
+}
+
+// RemoveRulesForUser removes all routing rules for a specific user email.
+func (r *GRPCRuntimeController) RemoveRulesForUser(email string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Remove rule by ruleTag (ruleTag format is "rule-{email}")
+	ruleTag := "rule-" + email
+	_, err := r.rs.RemoveRule(ctx, &routerCommand.RemoveRuleRequest{
+		RuleTag: ruleTag,
+	})
+	if err != nil {
+		// Rule might not exist, which is fine
+		if !isNotFoundError(err) {
+			r.logger.Warn("failed to remove routing rule",
+				slog.String("rule_tag", ruleTag),
+				slog.String("error", err.Error()),
+			)
+			return fmt.Errorf("remove rule: %w", err)
+		}
+	}
+
+	r.logger.Debug("removed routing rule for user", slog.String("email", email), slog.String("rule_tag", ruleTag))
+	return nil
+}
+
 // ClientInfo holds client information for routing.
 type ClientInfo struct {
 	UUID    string
@@ -456,7 +504,7 @@ func (r *GRPCRuntimeController) ensureInbound(ctx context.Context) error {
 		return fmt.Errorf("invalid dest format: %q (must be host:port)", dest)
 	}
 
-	r.logger.Error("Reality inbound parameters",
+	r.logger.Info("Reality inbound parameters",
 		slog.String("tag", r.inboundTag),
 		slog.String("listen", r.inboundListen),
 		slog.Int("port", r.inboundPort),
@@ -588,6 +636,14 @@ func isAlreadyExistsError(err error) bool {
 	}
 	errStr := err.Error()
 	return containsAny(errStr, "already exists", "duplicate", "exists")
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return containsAny(errStr, "not found", "doesn't exist", "does not exist", "not exist")
 }
 
 func containsAny(s string, substrs ...string) bool {

@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -12,16 +13,26 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
+// RuntimeController interface for token lifecycle management
+type RuntimeController interface {
+	RemoveUser(email string) error
+	RemoveRulesForUser(email string) error
+}
+
 type TokenManagementHandler struct {
 	tokenRepo domain.TokenRepository
 	groupRepo domain.GroupRepository
+	nodeRepo  domain.NodeRepository
+	runtime   RuntimeController
 	logger    *slog.Logger
 }
 
-func NewTokenManagementHandler(tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, logger *slog.Logger) *TokenManagementHandler {
+func NewTokenManagementHandler(tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, runtime RuntimeController, logger *slog.Logger) *TokenManagementHandler {
 	return &TokenManagementHandler{
 		tokenRepo: tokenRepo,
 		groupRepo: groupRepo,
+		nodeRepo:  nodeRepo,
+		runtime:   runtime,
 		logger:    logger,
 	}
 }
@@ -164,11 +175,48 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 }
 
 func (h *TokenManagementHandler) DeactivateToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+	// Get token details for Xray cleanup
+	token, err := h.tokenRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		h.logger.Error("failed to find token for deactivation", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error404NotFound("token not found")
+	}
+
+	// Get nodes to generate all client emails
+	nodes, err := h.nodeRepo.List(ctx)
+	if err != nil {
+		h.logger.Error("failed to list nodes for deactivation", slog.String("error", err.Error()))
+		// Continue with deactivation even if nodes can't be listed
+	}
+
+	// Remove routing rules AND users for all clients of this token
+	// Base client (token only)
+	baseEmail := fmt.Sprintf("token-%s@outless", token.ID)
+	if err := h.runtime.RemoveRulesForUser(baseEmail); err != nil {
+		h.logger.Warn("failed to remove rules for base client", slog.String("email", baseEmail), slog.String("error", err.Error()))
+	}
+	if err := h.runtime.RemoveUser(baseEmail); err != nil {
+		h.logger.Warn("failed to remove base user from inbound", slog.String("email", baseEmail), slog.String("error", err.Error()))
+	}
+
+	// Client per node
+	for _, node := range nodes {
+		nodeEmail := fmt.Sprintf("token-%s-node-%s@outless", token.ID, node.ID)
+		if err := h.runtime.RemoveRulesForUser(nodeEmail); err != nil {
+			h.logger.Warn("failed to remove rules for node client", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+		}
+		if err := h.runtime.RemoveUser(nodeEmail); err != nil {
+			h.logger.Warn("failed to remove node user from inbound", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+		}
+	}
+
+	// Deactivate in database
 	if err := h.tokenRepo.Deactivate(ctx, input.ID); err != nil {
 		h.logger.Error("failed to deactivate token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to deactivate token")
 	}
 
+	h.logger.Info("token deactivated, rules removed from Xray", slog.String("id", input.ID))
 	return nil, nil
 }
 
@@ -182,11 +230,47 @@ func (h *TokenManagementHandler) ActivateToken(ctx context.Context, input *Delet
 }
 
 func (h *TokenManagementHandler) RemoveToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+	// Get token details before removal for Xray cleanup
+	token, err := h.tokenRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		h.logger.Error("failed to find token for removal", slog.String("id", input.ID), slog.String("error", err.Error()))
+		// Continue with removal even if token details can't be fetched
+	} else {
+		// Get nodes to generate all client emails
+		nodes, err := h.nodeRepo.List(ctx)
+		if err != nil {
+			h.logger.Error("failed to list nodes for removal", slog.String("error", err.Error()))
+		}
+
+		// Remove routing rules and users for all clients of this token
+		// Base client (token only)
+		baseEmail := fmt.Sprintf("token-%s@outless", token.ID)
+		if err := h.runtime.RemoveRulesForUser(baseEmail); err != nil {
+			h.logger.Warn("failed to remove rules for base client", slog.String("email", baseEmail), slog.String("error", err.Error()))
+		}
+		if err := h.runtime.RemoveUser(baseEmail); err != nil {
+			h.logger.Warn("failed to remove base user from inbound", slog.String("email", baseEmail), slog.String("error", err.Error()))
+		}
+
+		// Client per node
+		for _, node := range nodes {
+			nodeEmail := fmt.Sprintf("token-%s-node-%s@outless", token.ID, node.ID)
+			if err := h.runtime.RemoveRulesForUser(nodeEmail); err != nil {
+				h.logger.Warn("failed to remove rules for node client", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+			}
+			if err := h.runtime.RemoveUser(nodeEmail); err != nil {
+				h.logger.Warn("failed to remove node user from inbound", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+			}
+		}
+	}
+
+	// Remove from database
 	if err := h.tokenRepo.Remove(ctx, input.ID); err != nil {
 		h.logger.Error("failed to remove token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to remove token")
 	}
 
+	h.logger.Info("token removed, users and rules removed from Xray", slog.String("id", input.ID))
 	return nil, nil
 }
 
