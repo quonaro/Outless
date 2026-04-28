@@ -2,6 +2,7 @@
 app:
   shutdown_gracetime: "10s"
   http_port: 41220
+  disable_docs: false  # set to true in production to disable /docs and /openapi.json
   logs:
     level: "info"
     colored: true

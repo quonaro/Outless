@@ -26,6 +26,7 @@ type Config struct {
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
+	DisableDocs       bool
 }
 
 // Handlers groups all HTTP handlers the server wires up.
@@ -44,7 +45,13 @@ type Handlers struct {
 // NewServer builds HTTP server with injected handlers.
 func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, realtime *RealtimeHandler, handlers Handlers) *Server {
 	mux := http.NewServeMux()
-	humaAPI := humago.New(mux, huma.DefaultConfig("Outless API", "0.1.0"))
+	humaCfg := huma.DefaultConfig("Outless API", "0.1.0")
+	if cfg.DisableDocs {
+		humaCfg.OpenAPIPath = ""
+		humaCfg.DocsPath = ""
+		humaCfg.SchemasPath = ""
+	}
+	humaAPI := humago.New(mux, humaCfg)
 	handlers.Subscription.Register(humaAPI)
 	handlers.Auth.Register(humaAPI)
 	handlers.Token.Register(humaAPI)

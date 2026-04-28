@@ -48,10 +48,6 @@ func isPublicPath(path string) bool {
 	if path == "/v1/settings" {
 		return true
 	}
-	// OpenAPI schema and docs that huma exposes by default.
-	if path == "/openapi.json" || path == "/openapi.yaml" || path == "/docs" || strings.HasPrefix(path, "/docs/") || path == "/schemas" {
-		return true
-	}
 	return false
 }
 

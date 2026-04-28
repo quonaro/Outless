@@ -20,6 +20,7 @@ type AppConfig struct {
 	ShutdownGracetime time.Duration `yaml:"shutdown_gracetime"`
 	HTTPPort          int           `yaml:"http_port"`
 	Logs              LogsConfig    `yaml:"logs"`
+	DisableDocs       bool          `yaml:"disable_docs"`
 }
 
 // AuthConfig holds authentication settings.

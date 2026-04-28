@@ -53,6 +53,7 @@ type Config struct {
 	GeoIPDBURL               string
 	GeoIPAuto                bool
 	GeoIPTTL                 time.Duration
+	DisableDocs              bool
 }
 
 func main() {
@@ -195,6 +196,7 @@ func main() {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
+		DisableDocs:       cfg.DisableDocs,
 	}, apiLogger, jwtService, realtime, handlers)
 
 	// Start all services in errgroup
@@ -284,6 +286,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 		GeoIPDBURL:               yamlCfg.GeoIP.DBURL,
 		GeoIPAuto:                yamlCfg.GeoIP.Auto,
 		GeoIPTTL:                 yamlCfg.GeoIP.Expiry,
+		DisableDocs:              yamlCfg.App.DisableDocs,
 	}
 
 	return cfg, yamlCfg, nil
