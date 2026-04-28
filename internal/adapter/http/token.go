@@ -17,6 +17,7 @@ import (
 type RuntimeController interface {
 	RemoveUser(email string) error
 	RemoveRulesForUser(email string) error
+	ForceSync() error
 }
 
 type TokenManagementHandler struct {
@@ -226,6 +227,13 @@ func (h *TokenManagementHandler) ActivateToken(ctx context.Context, input *Delet
 		return nil, huma.Error500InternalServerError("failed to activate token")
 	}
 
+	// Force sync to add users back to Xray immediately
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after token activation", slog.String("error", err.Error()))
+		// Don't fail activation if sync fails - periodic sync will catch up
+	}
+
+	h.logger.Info("token activated and synced to Xray", slog.String("id", input.ID))
 	return nil, nil
 }
 

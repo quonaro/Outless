@@ -157,6 +157,11 @@ func (r *GRPCRuntimeController) Reload(_ string) error {
 		return fmt.Errorf("ensuring gRPC connection: %w", err)
 	}
 
+	return r.sync(ctx)
+}
+
+// sync performs the actual synchronization to Xray.
+func (r *GRPCRuntimeController) sync(ctx context.Context) error {
 	now := time.Now().UTC()
 
 	tokens, err := r.tokenRepo.ListActive(ctx, now)
@@ -217,6 +222,22 @@ func (r *GRPCRuntimeController) Reload(_ string) error {
 // Description returns controller description.
 func (r *GRPCRuntimeController) Description() string {
 	return "grpc-xray-api"
+}
+
+// ForceSync immediately syncs Xray config with current DB state.
+func (r *GRPCRuntimeController) ForceSync() error {
+	return r.forceSync()
+}
+
+func (r *GRPCRuntimeController) forceSync() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := r.ensureConn(ctx); err != nil {
+		return fmt.Errorf("ensuring gRPC connection: %w", err)
+	}
+
+	return r.sync(ctx)
 }
 
 // RemoveUser removes a client from the inbound by email.
