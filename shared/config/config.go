@@ -18,6 +18,7 @@ type Config struct {
 // AppConfig holds application-wide settings.
 type AppConfig struct {
 	ShutdownGracetime time.Duration `yaml:"shutdown_gracetime"`
+	HTTPPort          int           `yaml:"http_port"`
 	Logs              LogsConfig    `yaml:"logs"`
 }
 
@@ -94,6 +95,7 @@ func DefaultConfig() Config {
 	return Config{
 		App: AppConfig{
 			ShutdownGracetime: 10 * time.Second,
+			HTTPPort:          41220,
 			Logs: LogsConfig{
 				Level:   "info",
 				Colored: true,

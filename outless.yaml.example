@@ -1,6 +1,7 @@
 # Application settings
 app:
   shutdown_gracetime: "10s"
+  http_port: 41220
   logs:
     level: "info"
     colored: true

@@ -24,7 +24,7 @@ services:
     container_name: outless-xray
     restart: unless-stopped
     volumes:
-      - ./xray/config.json:/etc/xray/config.json:ro
+      - ./xray.config.json:/etc/xray/config.json:ro
     command: [ "run", "-config", "/etc/xray/config.json" ]
     ports:
       - "443:443"
@@ -34,10 +34,7 @@ services:
 
   outless:
     container_name: outless
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: outless
+    image: quonaro/outless:backend
     restart: unless-stopped
     depends_on:
       - database
@@ -47,6 +44,19 @@ services:
     volumes:
       - ./outless.yaml:/outless.yaml:ro
       - geoip_data:/app/tmp
+    networks:
+      - outless_network
+
+  frontend:
+    container_name: outless-frontend
+    image: quonaro/outless:frontend
+    restart: unless-stopped
+    depends_on:
+      - outless
+    ports:
+      - "41221:3000"
+    environment:
+      - API_BASE_URL=http://outless:41220
     networks:
       - outless_network
 

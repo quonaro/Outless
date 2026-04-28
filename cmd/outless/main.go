@@ -263,7 +263,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 
 	cfg := Config{
 		DatabaseURL:              yamlCfg.Database.URL,
-		HTTPAddress:              ":41220",
+		HTTPAddress:              fmt.Sprintf(":%d", yamlCfg.App.HTTPPort),
 		JWTSecret:                yamlCfg.Auth.JWT.Secret,
 		JWTExpiry:                yamlCfg.Auth.JWT.Expiry,
 		ShutdownGracetime:        yamlCfg.App.ShutdownGracetime,
