@@ -85,33 +85,13 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 		})
 	}
 
-	// Determine handlers based on access/error config
-	var handlers []slog.Handler
-
-	// Access handler
-	accessHandler := getOutputHandler(cfg.Access, level, logType, cfg.Colored, moduleName)
-	if accessHandler != nil {
-		handlers = append(handlers, accessHandler)
-	}
-
-	// Error handler (only for error level and above)
-	if cfg.Error != "none" && cfg.Error != "" {
-		errorHandler := getOutputHandler(cfg.Error, slog.LevelError, logType, cfg.Colored, moduleName)
-		if errorHandler != nil {
-			handlers = append(handlers, &errorLevelFilter{handler: errorHandler})
-		}
-	}
-
-	// Fallback to console if no handlers configured
-	if len(handlers) == 0 {
-		handlers = append(handlers, consoleHandler)
-	}
-
+	// Determine output handler
 	var finalHandler slog.Handler
-	if len(handlers) == 1 {
-		finalHandler = handlers[0]
+	output := getOutputHandler(cfg.Output, level, logType, cfg.Colored, moduleName)
+	if output != nil {
+		finalHandler = output
 	} else {
-		finalHandler = &multiHandler{handlers: handlers}
+		finalHandler = consoleHandler
 	}
 
 	return slog.New(finalHandler).With(
@@ -165,27 +145,6 @@ func getOutputHandler(output string, level slog.Level, logType string, colored b
 			ReplaceAttr: replaceBuiltInAttrs,
 		})
 	}
-}
-
-// errorLevelFilter wraps a handler and only passes error level and above records
-type errorLevelFilter struct {
-	handler slog.Handler
-}
-
-func (f *errorLevelFilter) Enabled(ctx context.Context, level slog.Level) bool {
-	return level >= slog.LevelError && f.handler.Enabled(ctx, level)
-}
-
-func (f *errorLevelFilter) Handle(ctx context.Context, r slog.Record) error {
-	return f.handler.Handle(ctx, r)
-}
-
-func (f *errorLevelFilter) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &errorLevelFilter{handler: f.handler.WithAttrs(attrs)}
-}
-
-func (f *errorLevelFilter) WithGroup(name string) slog.Handler {
-	return &errorLevelFilter{handler: f.handler.WithGroup(name)}
 }
 
 // minimalHandler implements a minimal log format: [LEVEL] time module: message
@@ -313,49 +272,6 @@ func createFileHandler(filePath string, level slog.Level, rotation config.Rotati
 		Level:       level,
 		ReplaceAttr: replaceBuiltInAttrs,
 	}), nil
-}
-
-// multiHandler writes log records to multiple handlers.
-type multiHandler struct {
-	handlers []slog.Handler
-}
-
-func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
-	var errs []error
-	for _, handler := range h.handlers {
-		if err := handler.Handle(ctx, r); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
-}
-
-func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	for _, handler := range h.handlers {
-		if handler.Enabled(ctx, level) {
-			return true
-		}
-	}
-	return false
-}
-
-func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	handlers := make([]slog.Handler, len(h.handlers))
-	for i, handler := range h.handlers {
-		handlers[i] = handler.WithAttrs(attrs)
-	}
-	return &multiHandler{handlers: handlers}
-}
-
-func (h *multiHandler) WithGroup(name string) slog.Handler {
-	handlers := make([]slog.Handler, len(h.handlers))
-	for i, handler := range h.handlers {
-		handlers[i] = handler.WithGroup(name)
-	}
-	return &multiHandler{handlers: handlers}
 }
 
 func parseLevel(raw string) slog.Level {

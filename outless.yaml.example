@@ -7,8 +7,7 @@ app:
     level: "info"
     colored: true
     type: "pretty"
-    access: "stdout"  # stdout, stderr, none, or file path
-    error: "stderr"   # stdout, stderr, none, or file path
+    output: "stdout"  # stdout, stderr, none, or file path
 
 # Authentication
 auth:

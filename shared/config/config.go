@@ -85,8 +85,7 @@ type LogsConfig struct {
 	Level   string `yaml:"level"`
 	Colored bool   `yaml:"colored"`
 	Type    string `yaml:"type"`
-	Access  string `yaml:"access"` // stdout, stderr, none, or file path
-	Error   string `yaml:"error"`  // stdout, stderr, none, or file path
+	Output  string `yaml:"output"` // stdout, stderr, none, or file path
 }
 
 // DefaultConfig returns default configuration.
@@ -99,8 +98,7 @@ func DefaultConfig() Config {
 				Level:   "info",
 				Colored: true,
 				Type:    "pretty",
-				Access:  "stdout",
-				Error:   "stderr",
+				Output:  "stdout",
 			},
 		},
 		Auth: AuthConfig{

@@ -49,8 +49,7 @@ type SafeLogsConfig struct {
 	Level   string `json:"level"`
 	Colored bool   `json:"colored"`
 	Type    string `json:"type"`
-	Access  string `json:"access"`
-	Error   string `json:"error"`
+	Output  string `json:"output"`
 }
 
 // SafeGeoIPConfig exposes GeoIP settings with expiry as string.
@@ -125,8 +124,7 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 			Level:   cfg.App.Logs.Level,
 			Colored: cfg.App.Logs.Colored,
 			Type:    cfg.App.Logs.Type,
-			Access:  cfg.App.Logs.Access,
-			Error:   cfg.App.Logs.Error,
+			Output:  cfg.App.Logs.Output,
 		},
 	}
 	out.Body.Auth = SafeAuthConfig{
@@ -174,8 +172,7 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		Level:   input.Body.App.Logs.Level,
 		Colored: input.Body.App.Logs.Colored,
 		Type:    input.Body.App.Logs.Type,
-		Access:  input.Body.App.Logs.Access,
-		Error:   input.Body.App.Logs.Error,
+		Output:  input.Body.App.Logs.Output,
 	}
 	cfg.Auth.Admin.Login = input.Body.Auth.Admin.Login
 
