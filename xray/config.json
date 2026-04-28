@@ -1,4 +1,9 @@
 {
+  "log": {
+    "loglevel": "info",
+    "accesslog": "/dev/stdout",
+    "errorlog": "/dev/stdout"
+  },
   "api": {
     "tag": "api",
     "services": [
@@ -10,10 +15,31 @@
   },
   "inbounds": [
     {
-      "tag": "api",
+      "tag": "api-in",
       "listen": "0.0.0.0",
       "port": 10085,
-      "protocol": "dokodemo-door"
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      }
     }
-  ]
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api-in"
+        ],
+        "outboundTag": "api"
+      }
+    ]
+  }
 }
