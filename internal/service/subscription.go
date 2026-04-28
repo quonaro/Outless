@@ -175,7 +175,7 @@ func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain
 		// Generate unique UUID for this token+node combination
 		uuid := generateUUIDFromTokenNode(token.ID, node.ID)
 
-		s.logger.Info(fmt.Sprintf("Generated VLESS URL: token=%s node=%s group=%s uuid=%s", token.ID, node.ID, node.GroupID, uuid))
+		s.logger.Debug(fmt.Sprintf("Generated VLESS URL: token=%s node=%s group=%s uuid=%s", token.ID, node.ID, node.GroupID, uuid))
 
 		urls = append(urls, s.formatVLESSURL(uuid, remark))
 	}

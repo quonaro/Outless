@@ -12,7 +12,7 @@ type Config struct {
 	JWT      JWTConfig      `yaml:"jwt"`
 	Admin    AdminConfig    `yaml:"admin"`
 	API      APIConfig      `yaml:"api"`
-	Monitor  MonitorConfig  `yaml:"monitor"`
+	GeoIP    GeoIPConfig    `yaml:"geoip"`
 	Router   RouterConfig   `yaml:"router"`
 	XrayAPI  XrayAPIConfig  `yaml:"xray_api"`
 	Logs     LogsConfig     `yaml:"logs"`
@@ -37,19 +37,9 @@ type AdminConfig struct {
 
 // APIConfig holds API server configuration.
 type APIConfig struct {
-	Shutdown time.Duration `yaml:"shutdown_timeout"`
+	Shutdown time.Duration `yaml:"shutdown"`
 	JWT      JWTConfig     `yaml:"jwt"`
 	Admin    AdminConfig   `yaml:"admin"`
-}
-
-// MonitorConfig holds monitor (node availability checker) configuration.
-type MonitorConfig struct {
-	Workers         int           `yaml:"workers"`
-	RefreshInterval time.Duration `yaml:"refresh_interval"`
-	PollInterval    time.Duration `yaml:"poll_interval"`
-	CheckInterval   time.Duration `yaml:"check_interval"`
-	GeoIP           GeoIPConfig   `yaml:"geoip"`
-	Agents          AgentsConfig  `yaml:"agents"`
 }
 
 // GeoIPConfig controls local MMDB country lookup and optional auto-update.
@@ -58,12 +48,6 @@ type GeoIPConfig struct {
 	DBURL  string        `yaml:"db_url" json:"db_url"`
 	Auto   bool          `yaml:"auto" json:"auto"`
 	TTL    time.Duration `yaml:"ttl" json:"ttl"`
-}
-
-// AgentsConfig holds probe agents configuration.
-type AgentsConfig struct {
-	Workers int    `yaml:"workers" json:"workers"`
-	URL     string `yaml:"url" json:"url"`
 }
 
 // RouterConfig holds Router (Xray edge) configuration.
@@ -82,8 +66,7 @@ type RouterConfig struct {
 
 // XrayAPIConfig holds external Xray gRPC API connection settings.
 type XrayAPIConfig struct {
-	Address string        `yaml:"address" json:"address"`
-	Timeout time.Duration `yaml:"timeout" json:"timeout"`
+	Address string `yaml:"address" json:"address"`
 }
 
 // RotationConfig holds log rotation configuration.
@@ -96,13 +79,11 @@ type RotationConfig struct {
 
 // LogsConfig holds logging configuration.
 type LogsConfig struct {
-	Level        string         `yaml:"level"`
-	Colored      bool           `yaml:"colored"`
-	Type         string         `yaml:"type"`
-	FilePath     string         `yaml:"file_path"`
-	FilePattern  string         `yaml:"file_pattern"`
-	XrayFilePath string         `yaml:"xray_file_path"`
-	Rotation     RotationConfig `yaml:"rotation"`
+	Level       string         `yaml:"level"`
+	Colored     bool           `yaml:"colored"`
+	Type        string         `yaml:"type"`
+	FilePattern string         `yaml:"file_pattern"`
+	Rotation    RotationConfig `yaml:"rotation"`
 }
 
 // DefaultConfig returns default configuration.
@@ -122,21 +103,11 @@ func DefaultConfig() Config {
 		API: APIConfig{
 			Shutdown: 10 * time.Second,
 		},
-		Monitor: MonitorConfig{
-			Workers:         16,
-			RefreshInterval: 10 * time.Minute,
-			PollInterval:    5 * time.Second,
-			CheckInterval:   10 * time.Minute,
-			GeoIP: GeoIPConfig{
-				DBPath: "",
-				DBURL:  "",
-				Auto:   false,
-				TTL:    24 * time.Hour,
-			},
-			Agents: AgentsConfig{
-				Workers: 2,
-				URL:     "https://www.google.com/generate_204",
-			},
+		GeoIP: GeoIPConfig{
+			DBPath: "",
+			DBURL:  "",
+			Auto:   false,
+			TTL:    24 * time.Hour,
 		},
 		Router: RouterConfig{
 			Domain:       "",
@@ -152,15 +123,12 @@ func DefaultConfig() Config {
 		},
 		XrayAPI: XrayAPIConfig{
 			Address: "127.0.0.1:10085",
-			Timeout: 5 * time.Second,
 		},
 		Logs: LogsConfig{
-			Level:        "info",
-			Colored:      true,
-			Type:         "pretty",
-			FilePath:     "/var/log/outless/outless.log",
-			FilePattern:  "/var/log/outless/{module}.json",
-			XrayFilePath: "/var/log/outless/xray.json",
+			Level:       "info",
+			Colored:     true,
+			Type:        "pretty",
+			FilePattern: "/var/log/outless/{module}.json",
 			Rotation: RotationConfig{
 				MaxSizeMB:  100,
 				MaxBackups: 10,

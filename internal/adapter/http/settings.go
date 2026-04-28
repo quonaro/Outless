@@ -50,22 +50,12 @@ type SafeRouterConfig struct {
 	SyncInterval string `json:"SyncInterval"`
 }
 
-// SafeMonitorConfig exposes monitor settings without secrets.
-type SafeMonitorConfig struct {
-	Workers         int                 `json:"workers"`
-	RefreshInterval string              `json:"refresh_interval"`
-	PollInterval    string              `json:"poll_interval"`
-	CheckInterval   string              `json:"check_interval"`
-	GeoIP           SafeGeoIPConfig     `json:"geoip"`
-	Agents          config.AgentsConfig `json:"agents"`
-}
-
 // SettingsOutput is returned by GET /v1/settings.
 type SettingsOutput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
 		API      SafeAPIConfig         `json:"api"`
-		Monitor  SafeMonitorConfig     `json:"monitor"`
+		GeoIP    SafeGeoIPConfig       `json:"geoip"`
 		Router   SafeRouterConfig      `json:"router"`
 	}
 }
@@ -75,7 +65,7 @@ type UpdateSettingsInput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
 		API      SafeAPIConfig         `json:"api"`
-		Monitor  SafeMonitorConfig     `json:"monitor"`
+		GeoIP    SafeGeoIPConfig       `json:"geoip"`
 		Router   SafeRouterConfig      `json:"router"`
 	}
 }
@@ -101,18 +91,11 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 	out.Body.API = SafeAPIConfig{
 		Shutdown: cfg.API.Shutdown.String(),
 	}
-	out.Body.Monitor = SafeMonitorConfig{
-		Workers:         cfg.Monitor.Workers,
-		RefreshInterval: cfg.Monitor.RefreshInterval.String(),
-		PollInterval:    cfg.Monitor.PollInterval.String(),
-		CheckInterval:   cfg.Monitor.CheckInterval.String(),
-		GeoIP: SafeGeoIPConfig{
-			DBPath: cfg.Monitor.GeoIP.DBPath,
-			DBURL:  cfg.Monitor.GeoIP.DBURL,
-			Auto:   cfg.Monitor.GeoIP.Auto,
-			TTL:    cfg.Monitor.GeoIP.TTL.String(),
-		},
-		Agents: cfg.Monitor.Agents,
+	out.Body.GeoIP = SafeGeoIPConfig{
+		DBPath: cfg.GeoIP.DBPath,
+		DBURL:  cfg.GeoIP.DBURL,
+		Auto:   cfg.GeoIP.Auto,
+		TTL:    cfg.GeoIP.TTL.String(),
 	}
 	out.Body.Router = SafeRouterConfig{
 		Domain:       cfg.Router.Domain,
@@ -143,23 +126,12 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		cfg.API.Shutdown = d
 	}
 
-	cfg.Monitor.Workers = input.Body.Monitor.Workers
-	if d := config.ParseDuration(input.Body.Monitor.RefreshInterval, cfg.Monitor.RefreshInterval); d > 0 {
-		cfg.Monitor.RefreshInterval = d
+	cfg.GeoIP = config.GeoIPConfig{
+		DBPath: input.Body.GeoIP.DBPath,
+		DBURL:  input.Body.GeoIP.DBURL,
+		Auto:   input.Body.GeoIP.Auto,
+		TTL:    config.ParseDuration(input.Body.GeoIP.TTL, cfg.GeoIP.TTL),
 	}
-	if d := config.ParseDuration(input.Body.Monitor.PollInterval, cfg.Monitor.PollInterval); d > 0 {
-		cfg.Monitor.PollInterval = d
-	}
-	if d := config.ParseDuration(input.Body.Monitor.CheckInterval, cfg.Monitor.CheckInterval); d > 0 {
-		cfg.Monitor.CheckInterval = d
-	}
-	cfg.Monitor.GeoIP = config.GeoIPConfig{
-		DBPath: input.Body.Monitor.GeoIP.DBPath,
-		DBURL:  input.Body.Monitor.GeoIP.DBURL,
-		Auto:   input.Body.Monitor.GeoIP.Auto,
-		TTL:    config.ParseDuration(input.Body.Monitor.GeoIP.TTL, cfg.Monitor.GeoIP.TTL),
-	}
-	cfg.Monitor.Agents = input.Body.Monitor.Agents
 
 	cfg.Router = config.RouterConfig{
 		Domain:       input.Body.Router.Domain,

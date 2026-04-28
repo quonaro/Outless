@@ -85,14 +85,14 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 		})
 	}
 
-	// Determine file path: prefer FilePattern with module substitution, fallback to FilePath
+	// Determine file path: prefer FilePattern with module substitution, fallback to default
 	var filePath string
 	if cfg.FilePattern != "" && strings.Contains(cfg.FilePattern, "{module}") {
 		filePath = strings.ReplaceAll(cfg.FilePattern, "{module}", moduleName)
 	} else if cfg.FilePattern != "" {
 		filePath = cfg.FilePattern
 	} else {
-		filePath = cfg.FilePath
+		filePath = "/var/log/outless/" + moduleName + ".json"
 	}
 
 	// Create file handler if file path is specified

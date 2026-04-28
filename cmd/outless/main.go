@@ -31,34 +31,27 @@ import (
 
 // Config bundles runtime settings for unified process.
 type Config struct {
-	DatabaseURL           string
-	HTTPAddress           string
-	JWTSecret             string
-	JWTExpiry             time.Duration
-	ShutdownTimeout       time.Duration
-	AdminLogin            string
-	AdminPassword         string
-	PublicRefreshInterval time.Duration
-	RouterPort            int
-	RouterDomain          string
-	RouterSNI             string
-	RouterPrivateKey      string
-	RouterPublicKey       string
-	RouterShortID         string
-	RouterFingerprint     string
-	RouterAddress         string
-	RouterSyncInterval    time.Duration
-	XrayAPIAddress        string
-	XrayAPITimeout        time.Duration
-	AgentsWorkers         int
-	AgentsURL             string
-	MonitorGeoIPDBPath    string
-	MonitorGeoIPDBURL     string
-	MonitorGeoIPAuto      bool
-	MonitorGeoIPTTL       time.Duration
-	MonitorWorkers        int
-	MonitorPollInterval   time.Duration
-	MonitorCheckInterval  time.Duration
+	DatabaseURL        string
+	HTTPAddress        string
+	JWTSecret          string
+	JWTExpiry          time.Duration
+	ShutdownTimeout    time.Duration
+	AdminLogin         string
+	AdminPassword      string
+	RouterPort         int
+	RouterDomain       string
+	RouterSNI          string
+	RouterPrivateKey   string
+	RouterPublicKey    string
+	RouterShortID      string
+	RouterFingerprint  string
+	RouterAddress      string
+	RouterSyncInterval time.Duration
+	XrayAPIAddress     string
+	GeoIPDBPath        string
+	GeoIPDBURL         string
+	GeoIPAuto          bool
+	GeoIPTTL           time.Duration
 }
 
 func main() {
@@ -111,16 +104,16 @@ func main() {
 	adminRepo := repository.NewAdminRepository(db, apiLogger)
 
 	// Download GeoIP database if not present
-	if cfg.MonitorGeoIPDBPath != "" {
-		if err := geoip.DownloadGeoIP(cfg.MonitorGeoIPDBPath, logger); err != nil {
+	if cfg.GeoIPDBPath != "" {
+		if err := geoip.DownloadGeoIP(cfg.GeoIPDBPath, logger); err != nil {
 			logger.Warn("failed to download GeoIP database", slog.String("error", err.Error()))
 		}
 	}
 
 	// Initialize GeoIP resolver for country detection
 	var geoipResolver domain.GeoIPResolver
-	if cfg.MonitorGeoIPDBPath != "" {
-		resolver, err := geoipadapter.NewMaxMindAdapter(cfg.MonitorGeoIPDBPath, monitorLogger)
+	if cfg.GeoIPDBPath != "" {
+		resolver, err := geoipadapter.NewMaxMindAdapter(cfg.GeoIPDBPath, monitorLogger)
 		if err != nil {
 			logger.Warn("failed to initialize geoip resolver, country detection disabled", slog.String("error", err.Error()))
 			geoipResolver = geoipadapter.NewNullGeoIPResolver()
@@ -182,7 +175,7 @@ func main() {
 	realtime := httpadapter.NewRealtimeHandler(
 		publicService,
 		groupRepo,
-		cfg.PublicRefreshInterval,
+		5*time.Minute,
 		filepath.Join(os.TempDir(), "outless", "realtime-state.json"),
 		apiLogger,
 	)
@@ -260,38 +253,27 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 	}
 
 	cfg := Config{
-		DatabaseURL:           yamlCfg.Database.URL,
-		HTTPAddress:           ":41220",
-		JWTSecret:             yamlCfg.JWT.Secret,
-		JWTExpiry:             yamlCfg.JWT.Expiry,
-		ShutdownTimeout:       yamlCfg.API.Shutdown,
-		AdminLogin:            yamlCfg.Admin.Login,
-		AdminPassword:         yamlCfg.Admin.Password,
-		PublicRefreshInterval: yamlCfg.Monitor.RefreshInterval,
-		RouterPort:            yamlCfg.Router.Port,
-		RouterDomain:          yamlCfg.Router.Domain,
-		RouterSNI:             yamlCfg.Router.SNI,
-		RouterPrivateKey:      yamlCfg.Router.PrivateKey,
-		RouterPublicKey:       yamlCfg.Router.PublicKey,
-		RouterShortID:         yamlCfg.Router.ShortID,
-		RouterFingerprint:     yamlCfg.Router.Fingerprint,
-		RouterAddress:         yamlCfg.Router.Address,
-		RouterSyncInterval:    yamlCfg.Router.SyncInterval,
-		XrayAPIAddress:        yamlCfg.XrayAPI.Address,
-		XrayAPITimeout:        yamlCfg.XrayAPI.Timeout,
-		AgentsWorkers:         yamlCfg.Monitor.Agents.Workers,
-		AgentsURL:             yamlCfg.Monitor.Agents.URL,
-		MonitorGeoIPDBPath:    yamlCfg.Monitor.GeoIP.DBPath,
-		MonitorGeoIPDBURL:     yamlCfg.Monitor.GeoIP.DBURL,
-		MonitorGeoIPAuto:      yamlCfg.Monitor.GeoIP.Auto,
-		MonitorGeoIPTTL:       yamlCfg.Monitor.GeoIP.TTL,
-		MonitorWorkers:        yamlCfg.Monitor.Workers,
-		MonitorPollInterval:   yamlCfg.Monitor.PollInterval,
-		MonitorCheckInterval:  yamlCfg.Monitor.CheckInterval,
-	}
-
-	if cfg.AgentsWorkers <= 0 {
-		cfg.AgentsWorkers = 1
+		DatabaseURL:        yamlCfg.Database.URL,
+		HTTPAddress:        ":41220",
+		JWTSecret:          yamlCfg.JWT.Secret,
+		JWTExpiry:          yamlCfg.JWT.Expiry,
+		ShutdownTimeout:    yamlCfg.API.Shutdown,
+		AdminLogin:         yamlCfg.Admin.Login,
+		AdminPassword:      yamlCfg.Admin.Password,
+		RouterPort:         yamlCfg.Router.Port,
+		RouterDomain:       yamlCfg.Router.Domain,
+		RouterSNI:          yamlCfg.Router.SNI,
+		RouterPrivateKey:   yamlCfg.Router.PrivateKey,
+		RouterPublicKey:    yamlCfg.Router.PublicKey,
+		RouterShortID:      yamlCfg.Router.ShortID,
+		RouterFingerprint:  yamlCfg.Router.Fingerprint,
+		RouterAddress:      yamlCfg.Router.Address,
+		RouterSyncInterval: yamlCfg.Router.SyncInterval,
+		XrayAPIAddress:     yamlCfg.XrayAPI.Address,
+		GeoIPDBPath:        yamlCfg.GeoIP.DBPath,
+		GeoIPDBURL:         yamlCfg.GeoIP.DBURL,
+		GeoIPAuto:          yamlCfg.GeoIP.Auto,
+		GeoIPTTL:           yamlCfg.GeoIP.TTL,
 	}
 
 	return cfg, yamlCfg, nil

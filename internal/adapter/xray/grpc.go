@@ -23,6 +23,8 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/proxy/blackhole"
+	"github.com/xtls/xray-core/proxy/freedom"
 	"github.com/xtls/xray-core/proxy/vless"
 	vlessInbound "github.com/xtls/xray-core/proxy/vless/inbound"
 	vlessOutbound "github.com/xtls/xray-core/proxy/vless/outbound"
@@ -126,6 +128,10 @@ func (r *GRPCRuntimeController) Start(_ string) error {
 
 	if err := r.ensureConn(ctx); err != nil {
 		return fmt.Errorf("ensuring gRPC connection: %w", err)
+	}
+
+	if err := r.ensureBaseOutbounds(ctx); err != nil {
+		return fmt.Errorf("ensuring base outbounds: %w", err)
 	}
 
 	if err := r.ensureInbound(ctx); err != nil {
@@ -658,7 +664,7 @@ func isAlreadyExistsError(err error) bool {
 		return false
 	}
 	errStr := err.Error()
-	return containsAny(errStr, "already exists", "duplicate", "exists")
+	return containsAny(errStr, "already exists", "duplicate", "exists", "existing tag found")
 }
 
 func isNotFoundError(err error) bool {
@@ -689,6 +695,35 @@ func containsAt(s, substr string, start int) bool {
 		}
 	}
 	return false
+}
+
+// ensureBaseOutbounds creates direct and block outbounds if they don't exist.
+func (r *GRPCRuntimeController) ensureBaseOutbounds(ctx context.Context) error {
+	// Add direct outbound
+	_, err := r.hs.AddOutbound(ctx, &proxymanCommand.AddOutboundRequest{
+		Outbound: &core.OutboundHandlerConfig{
+			Tag:           "direct",
+			ProxySettings: serial.ToTypedMessage(&freedom.Config{}),
+		},
+	})
+	if err != nil && !isAlreadyExistsError(err) {
+		return fmt.Errorf("add direct outbound: %w", err)
+	}
+	r.logger.Debug("ensured direct outbound")
+
+	// Add block outbound
+	_, err = r.hs.AddOutbound(ctx, &proxymanCommand.AddOutboundRequest{
+		Outbound: &core.OutboundHandlerConfig{
+			Tag:           "block",
+			ProxySettings: serial.ToTypedMessage(&blackhole.Config{}),
+		},
+	})
+	if err != nil && !isAlreadyExistsError(err) {
+		return fmt.Errorf("add block outbound: %w", err)
+	}
+	r.logger.Debug("ensured block outbound")
+
+	return nil
 }
 
 // parseGRPCTarget normalizes admin URL into gRPC target.

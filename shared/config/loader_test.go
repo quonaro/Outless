@@ -24,19 +24,11 @@ admin:
   password: "pass"
 api:
   shutdown: "10s"
-monitor:
-  workers: 8
-  refresh_interval: "10m"
-  poll_interval: "5s"
-  check_interval: "10m"
-  geoip:
-    db_path: "/tmp/geo.mmdb"
-    db_url: "https://example.com/geo.mmdb"
-    auto: true
-    ttl: "12h"
-  agents:
-    workers: 2
-    url: "https://probe.example.com/generate_204"
+geoip:
+  db_path: "/tmp/geo.mmdb"
+  db_url: "https://example.com/geo.mmdb"
+  auto: true
+  ttl: "12h"
 router:
   port: 443
   sni: "www.google.com"
@@ -63,14 +55,8 @@ router:
 	if got := cfg.JWT.Secret; got != "test-secret" {
 		t.Fatalf("unexpected jwt secret: %q", got)
 	}
-	if got := cfg.Monitor.Workers; got != 8 {
-		t.Fatalf("unexpected monitor workers: %d", got)
-	}
-	if got := cfg.Monitor.GeoIP.TTL; got != 12*time.Hour {
+	if got := cfg.GeoIP.TTL; got != 12*time.Hour {
 		t.Fatalf("unexpected geoip ttl: %s", got)
-	}
-	if got := cfg.Monitor.Agents.Workers; got != 2 {
-		t.Fatalf("unexpected agents workers: %d", got)
 	}
 	if got := cfg.Router.Port; got != 443 {
 		t.Fatalf("unexpected router port: %d", got)
