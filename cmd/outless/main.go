@@ -137,6 +137,7 @@ func main() {
 	if cfg.RouterAPI != "" {
 		hubConfig := xray.HubInboundConfig{
 			Listen:      listenHost(cfg.RouterInboundAddress),
+			Port:        cfg.RouterInboundPort,
 			Destination: cfg.RouterInboundSNI,
 			SNI:         cfg.RouterInboundSNI,
 			ShortID:     cfg.RouterInboundShortID,
