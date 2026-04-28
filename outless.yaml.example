@@ -36,7 +36,6 @@ router:
   # Inbound configuration (REALITY settings)
   inbound:
     port: 443
-    address: ":443"
     sni: "www.google.com"
     public_key: ""
     private_key: ""

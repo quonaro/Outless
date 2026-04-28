@@ -63,7 +63,7 @@ type RouterConfig struct {
 // RouterInboundConfig holds Xray inbound (REALITY) configuration.
 type RouterInboundConfig struct {
 	Port        int    `yaml:"port" json:"Port"`
-	Address     string `yaml:"address" json:"Address"`
+	Address     string `yaml:"address,omitempty" json:"Address,omitempty"`
 	SNI         string `yaml:"sni" json:"SNI"`
 	PublicKey   string `yaml:"public_key" json:"PublicKey"`
 	PrivateKey  string `yaml:"private_key" json:"PrivateKey"`

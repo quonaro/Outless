@@ -73,7 +73,6 @@ type SafeRouterConfig struct {
 // SafeRouterInboundConfig exposes router inbound settings.
 type SafeRouterInboundConfig struct {
 	Port        int    `json:"Port"`
-	Address     string `json:"Address"`
 	SNI         string `json:"SNI"`
 	PublicKey   string `json:"PublicKey"`
 	ShortID     string `json:"ShortID"`
@@ -145,7 +144,6 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 		URLHost: cfg.Router.URLHost,
 		Inbound: SafeRouterInboundConfig{
 			Port:        cfg.Router.Inbound.Port,
-			Address:     cfg.Router.Inbound.Address,
 			SNI:         cfg.Router.Inbound.SNI,
 			PublicKey:   cfg.Router.Inbound.PublicKey,
 			ShortID:     cfg.Router.Inbound.ShortID,
@@ -192,7 +190,7 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		URLHost: input.Body.Router.URLHost,
 		Inbound: config.RouterInboundConfig{
 			Port:        input.Body.Router.Inbound.Port,
-			Address:     input.Body.Router.Inbound.Address,
+			Address:     "", // Use default 0.0.0.0 in Xray adapter
 			SNI:         input.Body.Router.Inbound.SNI,
 			PublicKey:   input.Body.Router.Inbound.PublicKey,
 			PrivateKey:  cfg.Router.Inbound.PrivateKey,
