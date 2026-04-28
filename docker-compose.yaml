@@ -34,7 +34,9 @@ services:
 
   outless:
     container_name: outless
-    image: quonaro/outless:backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - database
@@ -44,19 +46,6 @@ services:
     volumes:
       - ./outless.yaml:/outless.yaml:ro
       - geoip_data:/app/tmp
-    networks:
-      - outless_network
-
-  frontend:
-    container_name: outless-frontend
-    image: quonaro/outless:frontend
-    restart: unless-stopped
-    depends_on:
-      - outless
-    ports:
-      - "41221:3000"
-    environment:
-      - API_BASE_URL=http://outless:41220
     networks:
       - outless_network
 
