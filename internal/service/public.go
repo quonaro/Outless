@@ -180,7 +180,7 @@ func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal f
 		for i, rawURL := range chunk {
 			country := s.resolveCountry(ctx, rawURL)
 			nodes[i] = domain.Node{
-				ID:      s.generateNodeID(rawURL),
+				ID:      s.generateNodeID(rawURL, groupID),
 				URL:     rawURL,
 				GroupID: groupID,
 				Country: country,
@@ -190,7 +190,7 @@ func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal f
 		if onEvent != nil {
 			for _, rawURL := range chunk {
 				onEvent(SyncEvent{
-					NodeID: s.generateNodeID(rawURL),
+					NodeID: s.generateNodeID(rawURL, groupID),
 					URL:    rawURL,
 					Status: SyncNodeStatusImporting,
 				})
@@ -204,7 +204,7 @@ func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal f
 				return SyncResult{}, err
 			}
 			for _, rawURL := range chunk {
-				nodeID := s.generateNodeID(rawURL)
+				nodeID := s.generateNodeID(rawURL, groupID)
 				if onEvent != nil {
 					onEvent(SyncEvent{
 						NodeID:     nodeID,
@@ -224,7 +224,7 @@ func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal f
 		}
 
 		for _, rawURL := range chunk {
-			nodeID := s.generateNodeID(rawURL)
+			nodeID := s.generateNodeID(rawURL, groupID)
 			if _, ok := inserted[nodeID]; ok {
 				addedTotal++
 			}
@@ -357,7 +357,7 @@ func (s *PublicService) importURLs(ctx context.Context, urls []string, groupID s
 		if err := ctx.Err(); err != nil {
 			return created, err
 		}
-		nodeID := s.generateNodeID(url)
+		nodeID := s.generateNodeID(url, groupID)
 		country := s.resolveCountry(ctx, url)
 
 		node := domain.Node{
@@ -383,9 +383,9 @@ func (s *PublicService) importURLs(ctx context.Context, urls []string, groupID s
 	return created, nil
 }
 
-// generateNodeID creates a deterministic short ID from URL via SHA-256.
-func (s *PublicService) generateNodeID(url string) string {
-	hash := sha256.Sum256([]byte(url))
+// generateNodeID creates a deterministic short ID from URL and groupID via SHA-256.
+func (s *PublicService) generateNodeID(url, groupID string) string {
+	hash := sha256.Sum256([]byte(url + "|" + groupID))
 	return "node_" + hex.EncodeToString(hash[:8])
 }
 

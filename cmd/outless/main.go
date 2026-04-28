@@ -19,6 +19,7 @@ import (
 	"outless/internal/adapter/repository"
 	"outless/internal/adapter/xray"
 	"outless/internal/domain"
+	"outless/internal/geoip"
 	"outless/internal/migrations"
 	"outless/internal/service"
 	"outless/shared/config"
@@ -108,6 +109,13 @@ func main() {
 	groupRepo := repository.NewGroupRepository(db, monitorLogger)
 	publicSourceRepo := repository.NewPublicSourceRepository(db, monitorLogger)
 	adminRepo := repository.NewAdminRepository(db, apiLogger)
+
+	// Download GeoIP database if not present
+	if cfg.MonitorGeoIPDBPath != "" {
+		if err := geoip.DownloadGeoIP(cfg.MonitorGeoIPDBPath, logger); err != nil {
+			logger.Warn("failed to download GeoIP database", slog.String("error", err.Error()))
+		}
+	}
 
 	// Initialize GeoIP resolver for country detection
 	var geoipResolver domain.GeoIPResolver

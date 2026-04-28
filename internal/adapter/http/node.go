@@ -101,18 +101,20 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		return nil, huma.Error400BadRequest("url is required")
 	}
 
-	if input.Body.GroupID != "" {
-		if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-			if errors.Is(err, domain.ErrNodeNotFound) {
-				h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-				return nil, huma.Error400BadRequest("group not found")
-			}
-			h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("failed to validate group")
-		}
+	if input.Body.GroupID == "" {
+		return nil, huma.Error400BadRequest("group_id is required")
 	}
 
-	nodeID := generateNodeID(input.Body.URL)
+	if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
+		if errors.Is(err, domain.ErrNodeNotFound) {
+			h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
+			return nil, huma.Error400BadRequest("group not found")
+		}
+		h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to validate group")
+	}
+
+	nodeID := generateNodeID(input.Body.URL, input.Body.GroupID)
 
 	// Resolve country from IP address using GeoIP
 	country := ""
@@ -299,7 +301,7 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	return nil, nil
 }
 
-func generateNodeID(url string) string {
-	hash := sha256.Sum256([]byte(url))
+func generateNodeID(url, groupID string) string {
+	hash := sha256.Sum256([]byte(url + "|" + groupID))
 	return "node_" + hex.EncodeToString(hash[:8])
 }
