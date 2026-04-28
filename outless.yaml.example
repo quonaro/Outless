@@ -19,15 +19,14 @@ auth:
     expiry: "24h"
 
 # Database
-database:
-  url: "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
+database: "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
 
 # GeoIP
 geoip:
   db_path: "/tmp/GeoLite2-Country.mmdb"
   db_url: "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
   auto: false
-  ttl: "24h"
+  expiry: "24h"
 
 # Router (Xray edge)
 router:

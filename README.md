@@ -2,6 +2,8 @@
 
 Outless is a **VLESS node management system** with tokenized access control. It manages groups of exit nodes and provides subscription URLs for end users.
 
+**Frontend Repository:** [github.com/quonaro/OutlessUI](https://github.com/quonaro/OutlessUI)
+
 **Key architecture decision:** Outless does not embed Xray. Instead, it controls an external Xray instance via gRPC API. This separates concerns: Outless manages business logic (groups, tokens, subscriptions), Xray handles the network layer.
 
 ## What Outless Does
@@ -22,9 +24,10 @@ User → Outless API → Xray gRPC API → External Xray Instance
 
 **Components:**
 - Go 1.26.2+ backend (Clean Architecture / Hexagonal)
+- Nuxt 4 + shadcn-vue frontend ([OutlessUI](https://github.com/quonaro/OutlessUI))
 - PostgreSQL for persistence
 - External Xray (via gRPC API, not embedded)
-- Docker Compose for deployment
+- Docker Compose for deployment (includes Frontend + Backend)
 
 **Default Ports:**
 - Backend API: `41220`
@@ -45,9 +48,13 @@ mkdir outless && cd outless
 
 # Download compose file
 curl -O https://raw.githubusercontent.com/quonaro/outless/main/backend/docker-compose.yaml
+```
 
-# Create Xray config
-cat > xray.config.json << 'EOF'
+### 2. Create Xray Config
+
+Create `xray.config.json` for the external Xray instance:
+
+```json
 {
   "api": {
     "tag": "api",
@@ -62,18 +69,37 @@ cat > xray.config.json << 'EOF'
   }],
   "routing": { "domainStrategy": "AsIs", "rules": [] }
 }
-EOF
+```
 
-# Create Outless config
-cat > outless.yaml << 'EOF'
+### 3. Create Outless Config
+
+Create `outless.yaml` for Docker Compose deployment. See [`outless.yaml.example`](./outless.yaml.example) for full configuration reference.
+
+```yaml
 app:
+  shutdown_gracetime: "10s"
   http_port: 41220
-  logs: { level: info, type: pretty }
+  logs:
+    level: info
+    type: pretty
+    access: stdout
+    error: stderr
+
 auth:
-  admin: { login: admin, password: CHANGE_ME }
-  jwt: { secret: CHANGE_ME_RANDOM_STRING, expiry: 24h }
-database:
-  url: "postgres://outless:outless@database:5432/outless?sslmode=disable"
+  admin:
+    login: admin
+    password: CHANGE_ME
+  jwt:
+    secret: CHANGE_ME_RANDOM_STRING_MIN_32_CHARS
+    expiry: 24h
+
+database: "postgres://outless:outless@database:5432/outless?sslmode=disable"
+
+geoip:
+  db_path: "/tmp/GeoLite2-Country.mmdb"
+  auto: false
+  expiry: 24h
+
 router:
   url_host: "your-domain.com"
   inbound:
@@ -83,12 +109,13 @@ router:
     public_key: "YOUR_PUBLIC_KEY"
     private_key: "YOUR_PRIVATE_KEY"
     short_id: "YOUR_SHORT_ID"
+    fingerprint: "chrome"
   api: "xray:10085"
   sync_interval: "30s"
-EOF
+  name_template: "{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
 ```
 
-### 2. Generate REALITY Keys
+### 4. Generate REALITY Keys
 
 ```bash
 docker run --rm ghcr.io/xtls/xray-core x25519
@@ -96,7 +123,7 @@ docker run --rm ghcr.io/xtls/xray-core x25519
 
 Update `outless.yaml` with the generated keys.
 
-### 3. Start Services
+### 5. Start Services
 
 ```bash
 docker compose up -d
@@ -110,7 +137,7 @@ docker compose up -d
 | Outless Backend | 41220 | quonaro/outless:backend |
 | Outless Frontend | 41221 | quonaro/outless:frontend |
 
-### 4. Verify
+### 6. Verify
 
 ```bash
 # Check Xray API
@@ -158,6 +185,20 @@ curl -X POST http://localhost:41220/api/auth/login \
 | `admin.password` | Yes | - | Admin password (change in production!) |
 | `jwt.secret` | Yes | - | JWT signing secret (random string) |
 | `jwt.expiry` | Yes | `24h` | Token lifetime |
+
+#### Database
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `database` | Yes | - | PostgreSQL connection DSN string |
+
+#### GeoIP (`geoip`)
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `db_path` | No | `/tmp/GeoLite2-Country.mmdb` | GeoIP database file path |
+| `auto` | No | `false` | Auto-download GeoIP database |
+| `expiry` | No | `24h` | GeoIP cache expiry |
 
 #### Router (`router`)
 

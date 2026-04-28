@@ -262,7 +262,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 	}
 
 	cfg := Config{
-		DatabaseURL:              yamlCfg.Database.URL,
+		DatabaseURL:              string(yamlCfg.Database),
 		HTTPAddress:              fmt.Sprintf(":%d", yamlCfg.App.HTTPPort),
 		JWTSecret:                yamlCfg.Auth.JWT.Secret,
 		JWTExpiry:                yamlCfg.Auth.JWT.Expiry,
@@ -283,7 +283,7 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 		GeoIPDBPath:              yamlCfg.GeoIP.DBPath,
 		GeoIPDBURL:               yamlCfg.GeoIP.DBURL,
 		GeoIPAuto:                yamlCfg.GeoIP.Auto,
-		GeoIPTTL:                 yamlCfg.GeoIP.TTL,
+		GeoIPTTL:                 yamlCfg.GeoIP.Expiry,
 	}
 
 	return cfg, yamlCfg, nil

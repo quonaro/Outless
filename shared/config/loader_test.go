@@ -29,13 +29,12 @@ auth:
   jwt:
     secret: "test-secret"
     expiry: "24h"
-database:
-  url: "postgres://example"
+database: "postgres://example"
 geoip:
   db_path: "/tmp/geo.mmdb"
   db_url: "https://example.com/geo.mmdb"
   auto: true
-  ttl: "12h"
+  expiry: "12h"
 router:
   url_host: "localhost"
   inbound:
@@ -60,13 +59,13 @@ router:
 		t.Fatalf("load config: %v", err)
 	}
 
-	if got := cfg.Database.URL; got != "postgres://example" {
+	if got := cfg.Database; got != "postgres://example" {
 		t.Fatalf("unexpected database url: %q", got)
 	}
 	if got := cfg.Auth.JWT.Secret; got != "test-secret" {
 		t.Fatalf("unexpected jwt secret: %q", got)
 	}
-	if got := cfg.GeoIP.TTL; got != 12*time.Hour {
+	if got := cfg.GeoIP.Expiry; got != 12*time.Hour {
 		t.Fatalf("unexpected geoip ttl: %s", got)
 	}
 	if got := cfg.Router.Inbound.Port; got != 443 {

@@ -53,12 +53,12 @@ type SafeLogsConfig struct {
 	Error   string `json:"error"`
 }
 
-// SafeGeoIPConfig exposes GeoIP settings with TTL as string.
+// SafeGeoIPConfig exposes GeoIP settings with expiry as string.
 type SafeGeoIPConfig struct {
 	DBPath string `json:"db_path"`
 	DBURL  string `json:"db_url"`
 	Auto   bool   `json:"auto"`
-	TTL    string `json:"ttl"`
+	Expiry string `json:"expiry"`
 }
 
 // SafeRouterConfig exposes router settings without secrets.
@@ -83,22 +83,22 @@ type SafeRouterInboundConfig struct {
 // SettingsOutput is returned by GET /v1/settings.
 type SettingsOutput struct {
 	Body struct {
-		Database config.DatabaseConfig `json:"database"`
-		App      SafeAppConfig         `json:"app"`
-		Auth     SafeAuthConfig        `json:"auth"`
-		GeoIP    SafeGeoIPConfig       `json:"geoip"`
-		Router   SafeRouterConfig      `json:"router"`
+		Database config.Database  `json:"database"`
+		App      SafeAppConfig    `json:"app"`
+		Auth     SafeAuthConfig   `json:"auth"`
+		GeoIP    SafeGeoIPConfig  `json:"geoip"`
+		Router   SafeRouterConfig `json:"router"`
 	}
 }
 
 // UpdateSettingsInput is accepted by PUT /v1/settings.
 type UpdateSettingsInput struct {
 	Body struct {
-		Database config.DatabaseConfig `json:"database"`
-		App      SafeAppConfig         `json:"app"`
-		Auth     SafeAuthConfig        `json:"auth"`
-		GeoIP    SafeGeoIPConfig       `json:"geoip"`
-		Router   SafeRouterConfig      `json:"router"`
+		Database config.Database  `json:"database"`
+		App      SafeAppConfig    `json:"app"`
+		Auth     SafeAuthConfig   `json:"auth"`
+		GeoIP    SafeGeoIPConfig  `json:"geoip"`
+		Router   SafeRouterConfig `json:"router"`
 	}
 }
 
@@ -139,7 +139,7 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 		DBPath: cfg.GeoIP.DBPath,
 		DBURL:  cfg.GeoIP.DBURL,
 		Auto:   cfg.GeoIP.Auto,
-		TTL:    cfg.GeoIP.TTL.String(),
+		Expiry: cfg.GeoIP.Expiry.String(),
 	}
 	out.Body.Router = SafeRouterConfig{
 		URLHost: cfg.Router.URLHost,
@@ -185,7 +185,7 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 		DBPath: input.Body.GeoIP.DBPath,
 		DBURL:  input.Body.GeoIP.DBURL,
 		Auto:   input.Body.GeoIP.Auto,
-		TTL:    config.ParseDuration(input.Body.GeoIP.TTL, cfg.GeoIP.TTL),
+		Expiry: config.ParseDuration(input.Body.GeoIP.Expiry, cfg.GeoIP.Expiry),
 	}
 
 	cfg.Router = config.RouterConfig{

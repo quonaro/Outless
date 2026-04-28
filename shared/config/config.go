@@ -8,11 +8,11 @@ import (
 
 // Config holds unified configuration for all Outless services.
 type Config struct {
-	App      AppConfig      `yaml:"app"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Database DatabaseConfig `yaml:"database"`
-	GeoIP    GeoIPConfig    `yaml:"geoip"`
-	Router   RouterConfig   `yaml:"router"`
+	App      AppConfig    `yaml:"app"`
+	Auth     AuthConfig   `yaml:"auth"`
+	Database Database     `yaml:"database"`
+	GeoIP    GeoIPConfig  `yaml:"geoip"`
+	Router   RouterConfig `yaml:"router"`
 }
 
 // AppConfig holds application-wide settings.
@@ -28,10 +28,8 @@ type AuthConfig struct {
 	JWT   JWTConfig   `yaml:"jwt"`
 }
 
-// DatabaseConfig holds database connection settings.
-type DatabaseConfig struct {
-	URL string `yaml:"url" json:"url"`
-}
+// Database is the database connection DSN string.
+type Database string
 
 // JWTConfig holds JWT authentication settings.
 type JWTConfig struct {
@@ -50,7 +48,7 @@ type GeoIPConfig struct {
 	DBPath string        `yaml:"db_path" json:"db_path"`
 	DBURL  string        `yaml:"db_url" json:"db_url"`
 	Auto   bool          `yaml:"auto" json:"auto"`
-	TTL    time.Duration `yaml:"ttl" json:"ttl"`
+	Expiry time.Duration `yaml:"expiry" json:"expiry"`
 }
 
 // RouterConfig holds Router (Xray edge) configuration.
@@ -114,14 +112,12 @@ func DefaultConfig() Config {
 				Expiry: 24 * time.Hour,
 			},
 		},
-		Database: DatabaseConfig{
-			URL: "postgres://outless:outless@localhost:5432/outless?sslmode=disable",
-		},
+		Database: "postgres://outless:outless@localhost:5432/outless?sslmode=disable",
 		GeoIP: GeoIPConfig{
 			DBPath: "",
 			DBURL:  "",
 			Auto:   false,
-			TTL:    24 * time.Hour,
+			Expiry: 24 * time.Hour,
 		},
 		Router: RouterConfig{
 			URLHost: "",
