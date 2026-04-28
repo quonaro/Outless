@@ -195,20 +195,22 @@ func (r *GRPCRuntimeController) sync(ctx context.Context) error {
 	// Add all clients to inbound
 	for _, client := range clients {
 		if err := r.addClientToInbound(ctx, client); err != nil {
-			r.logger.Warn("failed to add client to inbound",
-				slog.String("email", client.Email),
-				slog.String("error", err.Error()),
-			)
+			if isAlreadyExistsError(err) {
+				r.logger.Debug("client already in inbound", slog.String("email", client.Email))
+			} else {
+				r.logger.Warn("failed to add client to inbound", slog.String("email", client.Email), slog.String("error", err.Error()))
+			}
 		}
 	}
 
 	// Add routing rules for each client
 	for _, client := range clients {
 		if err := r.addRoutingRule(ctx, client); err != nil {
-			r.logger.Warn("failed to add routing rule",
-				slog.String("email", client.Email),
-				slog.String("error", err.Error()),
-			)
+			if isAlreadyExistsError(err) {
+				r.logger.Debug("routing rule already exists", slog.String("email", client.Email))
+			} else {
+				r.logger.Warn("failed to add routing rule", slog.String("email", client.Email), slog.String("error", err.Error()))
+			}
 		}
 	}
 
