@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -20,6 +22,32 @@ type Loader struct {
 // NewLoader creates a new config loader.
 func NewLoader(logger *slog.Logger) *Loader {
 	return &Loader{logger: logger}
+}
+
+// envVarRegex matches ${VAR} and ${VAR:-default} patterns.
+var envVarRegex = regexp.MustCompile(`\$\{([^}]+)}`)
+
+// expandEnv replaces ${VAR} and ${VAR:-default} with environment variable values.
+func expandEnv(input string) string {
+	return envVarRegex.ReplaceAllStringFunc(input, func(match string) string {
+		content := match[2 : len(match)-1] // Remove ${ and }
+
+		// Check for default value syntax: ${VAR:-default}
+		if idx := strings.Index(content, ":-"); idx != -1 {
+			varName := content[:idx]
+			defaultValue := content[idx+2:]
+			if val := os.Getenv(varName); val != "" {
+				return val
+			}
+			return defaultValue
+		}
+
+		// Simple ${VAR} syntax
+		if val := os.Getenv(content); val != "" {
+			return val
+		}
+		return match // Return original if not found
+	})
 }
 
 // LoadOrCreate loads config from path, creating default if missing.
@@ -45,7 +73,10 @@ func (l *Loader) LoadOrCreate(path string, defaults any) error {
 		return fmt.Errorf("reading config file: %w", err)
 	}
 
-	if err := yaml.Unmarshal(data, defaults); err != nil {
+	// Expand environment variables before parsing
+	expanded := expandEnv(string(data))
+
+	if err := yaml.Unmarshal([]byte(expanded), defaults); err != nil {
 		return fmt.Errorf("parsing config YAML: %w", err)
 	}
 
