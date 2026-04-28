@@ -31,27 +31,28 @@ import (
 
 // Config bundles runtime settings for unified process.
 type Config struct {
-	DatabaseURL        string
-	HTTPAddress        string
-	JWTSecret          string
-	JWTExpiry          time.Duration
-	ShutdownTimeout    time.Duration
-	AdminLogin         string
-	AdminPassword      string
-	RouterPort         int
-	RouterDomain       string
-	RouterSNI          string
-	RouterPrivateKey   string
-	RouterPublicKey    string
-	RouterShortID      string
-	RouterFingerprint  string
-	RouterAddress      string
-	RouterSyncInterval time.Duration
-	XrayAPIAddress     string
-	GeoIPDBPath        string
-	GeoIPDBURL         string
-	GeoIPAuto          bool
-	GeoIPTTL           time.Duration
+	DatabaseURL              string
+	HTTPAddress              string
+	JWTSecret                string
+	JWTExpiry                time.Duration
+	ShutdownGracetime        time.Duration
+	AdminLogin               string
+	AdminPassword            string
+	RouterURLHost            string
+	RouterInboundPort        int
+	RouterInboundAddress     string
+	RouterInboundSNI         string
+	RouterInboundPrivateKey  string
+	RouterInboundPublicKey   string
+	RouterInboundShortID     string
+	RouterInboundFingerprint string
+	RouterAPI                string
+	RouterSyncInterval       time.Duration
+	RouterNameTemplate       string
+	GeoIPDBPath              string
+	GeoIPDBURL               string
+	GeoIPAuto                bool
+	GeoIPTTL                 time.Duration
 }
 
 func main() {
@@ -68,12 +69,12 @@ func main() {
 	}
 
 	// Re-create logger with config-based settings
-	logger = logging.NewFromConfig("outless", yamlCfg.Logs, "main")
+	logger = logging.NewFromConfig("outless", yamlCfg.App.Logs, "main")
 
 	// Create separate loggers for different modules
-	apiLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "api")
-	monitorLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "monitor")
-	routerLogger := logging.NewFromConfig("outless", yamlCfg.Logs, "router")
+	apiLogger := logging.NewFromConfig("outless", yamlCfg.App.Logs, "api")
+	monitorLogger := logging.NewFromConfig("outless", yamlCfg.App.Logs, "monitor")
+	routerLogger := logging.NewFromConfig("outless", yamlCfg.App.Logs, "router")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -132,41 +133,38 @@ func main() {
 
 	// Initialize runtime controller based on configuration.
 	var runtime service.RuntimeController
-	if cfg.XrayAPIAddress != "" {
+	if cfg.RouterAPI != "" {
 		hubConfig := xray.HubInboundConfig{
-			Listen:      listenHost(cfg.RouterAddress),
-			Port:        cfg.RouterPort,
-			SNI:         cfg.RouterSNI,
-			PrivateKey:  cfg.RouterPrivateKey,
-			ShortID:     cfg.RouterShortID,
-			Destination: cfg.RouterSNI + ":443",
+			Listen:      listenHost(cfg.RouterInboundAddress),
+			Destination: cfg.RouterInboundSNI,
+			SNI:         cfg.RouterInboundSNI,
+			ShortID:     cfg.RouterInboundShortID,
+			PrivateKey:  cfg.RouterInboundPrivateKey,
 		}
-		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.XrayAPIAddress, "vless-in", hubConfig)
+		runtime = xray.NewGRPCRuntimeController(routerLogger, tokenRepo, nodeRepo, cfg.RouterAPI, "vless-in", hubConfig)
 	}
 
 	// Sync router config for external Xray runtime (no embedded process management).
-	hubManager := service.NewRouterManager(tokenRepo, nodeRepo, runtime, service.ManagerConfig{
+	routerManager := service.NewRouterManager(tokenRepo, nodeRepo, runtime, service.ManagerConfig{
 		ConfigPath:   "/var/lib/outless/xray-hub.json",
 		SyncInterval: cfg.RouterSyncInterval,
 		Inbound: xray.HubInboundConfig{
-			Listen:      listenHost(cfg.RouterAddress),
-			Port:        cfg.RouterPort,
-			SNI:         cfg.RouterSNI,
-			PrivateKey:  cfg.RouterPrivateKey,
-			ShortID:     cfg.RouterShortID,
-			Destination: cfg.RouterSNI + ":443",
+			Destination: cfg.RouterInboundSNI,
+			SNI:         cfg.RouterInboundSNI,
+			ShortID:     cfg.RouterInboundShortID,
+			PrivateKey:  cfg.RouterInboundPrivateKey,
 		},
-	}, routerLogger)
+	}, monitorLogger)
 
 	// Initialize services
 	jwtService := service.NewJWTService(cfg.JWTSecret, cfg.JWTExpiry)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, service.HubConfig{
-		Host:         cfg.RouterDomain,
-		Port:         cfg.RouterPort,
-		SNI:          cfg.RouterSNI,
-		PublicKey:    cfg.RouterPublicKey,
-		ShortID:      cfg.RouterShortID,
-		Fingerprint:  cfg.RouterFingerprint,
+		Host:         cfg.RouterURLHost,
+		Port:         cfg.RouterInboundPort,
+		SNI:          cfg.RouterInboundSNI,
+		PublicKey:    cfg.RouterInboundPublicKey,
+		ShortID:      cfg.RouterInboundShortID,
+		Fingerprint:  cfg.RouterInboundFingerprint,
 		NameTemplate: yamlCfg.Router.NameTemplate,
 	}, apiLogger)
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, geoipResolver, monitorLogger)
@@ -204,7 +202,7 @@ func main() {
 	// Hub manager
 	g.Go(func() error {
 		routerLogger.Info("starting hub manager")
-		return hubManager.Run(gCtx)
+		return routerManager.Run(gCtx)
 	})
 
 	// HTTP API server
@@ -218,7 +216,7 @@ func main() {
 		<-gCtx.Done()
 		logger.Info("shutting down gracefully")
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGracetime)
 		defer cancel()
 
 		if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
@@ -253,27 +251,28 @@ func loadConfig(path string, logger *slog.Logger) (Config, config.Config, error)
 	}
 
 	cfg := Config{
-		DatabaseURL:        yamlCfg.Database.URL,
-		HTTPAddress:        ":41220",
-		JWTSecret:          yamlCfg.JWT.Secret,
-		JWTExpiry:          yamlCfg.JWT.Expiry,
-		ShutdownTimeout:    yamlCfg.API.Shutdown,
-		AdminLogin:         yamlCfg.Admin.Login,
-		AdminPassword:      yamlCfg.Admin.Password,
-		RouterPort:         yamlCfg.Router.Port,
-		RouterDomain:       yamlCfg.Router.Domain,
-		RouterSNI:          yamlCfg.Router.SNI,
-		RouterPrivateKey:   yamlCfg.Router.PrivateKey,
-		RouterPublicKey:    yamlCfg.Router.PublicKey,
-		RouterShortID:      yamlCfg.Router.ShortID,
-		RouterFingerprint:  yamlCfg.Router.Fingerprint,
-		RouterAddress:      yamlCfg.Router.Address,
-		RouterSyncInterval: yamlCfg.Router.SyncInterval,
-		XrayAPIAddress:     yamlCfg.XrayAPI.Address,
-		GeoIPDBPath:        yamlCfg.GeoIP.DBPath,
-		GeoIPDBURL:         yamlCfg.GeoIP.DBURL,
-		GeoIPAuto:          yamlCfg.GeoIP.Auto,
-		GeoIPTTL:           yamlCfg.GeoIP.TTL,
+		DatabaseURL:              yamlCfg.Database.URL,
+		HTTPAddress:              ":41220",
+		JWTSecret:                yamlCfg.Auth.JWT.Secret,
+		JWTExpiry:                yamlCfg.Auth.JWT.Expiry,
+		ShutdownGracetime:        yamlCfg.App.ShutdownGracetime,
+		AdminLogin:               yamlCfg.Auth.Admin.Login,
+		AdminPassword:            yamlCfg.Auth.Admin.Password,
+		RouterURLHost:            yamlCfg.Router.URLHost,
+		RouterInboundPort:        yamlCfg.Router.Inbound.Port,
+		RouterInboundAddress:     yamlCfg.Router.Inbound.Address,
+		RouterInboundSNI:         yamlCfg.Router.Inbound.SNI,
+		RouterInboundPrivateKey:  yamlCfg.Router.Inbound.PrivateKey,
+		RouterInboundPublicKey:   yamlCfg.Router.Inbound.PublicKey,
+		RouterInboundShortID:     yamlCfg.Router.Inbound.ShortID,
+		RouterInboundFingerprint: yamlCfg.Router.Inbound.Fingerprint,
+		RouterAPI:                yamlCfg.Router.API,
+		RouterSyncInterval:       yamlCfg.Router.SyncInterval,
+		RouterNameTemplate:       yamlCfg.Router.NameTemplate,
+		GeoIPDBPath:              yamlCfg.GeoIP.DBPath,
+		GeoIPDBURL:               yamlCfg.GeoIP.DBURL,
+		GeoIPAuto:                yamlCfg.GeoIP.Auto,
+		GeoIPTTL:                 yamlCfg.GeoIP.TTL,
 	}
 
 	return cfg, yamlCfg, nil

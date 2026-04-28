@@ -56,12 +56,12 @@ func (l *Loader) LoadOrCreate(path string, defaults any) error {
 func (l *Loader) createDefault(path string, config any) error {
 	// Auto-generate secrets for config
 	if cfg, ok := config.(*Config); ok {
-		if cfg.API.JWT.Secret == "CHANGE_ME_IN_PRODUCTION" {
+		if cfg.Auth.JWT.Secret == "CHANGE_ME_IN_PRODUCTION" {
 			secret, err := GenerateRandomSecret(32)
 			if err != nil {
 				return fmt.Errorf("generating JWT secret: %w", err)
 			}
-			cfg.API.JWT.Secret = secret
+			cfg.Auth.JWT.Secret = secret
 		}
 	}
 

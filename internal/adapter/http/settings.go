@@ -23,10 +23,34 @@ func NewSettingsHandler(configPath string, logger *slog.Logger) *SettingsHandler
 	}
 }
 
-// SafeAPIConfig exposes only non-sensitive API settings.
 // JWT secret and admin credentials are intentionally omitted.
 type SafeAPIConfig struct {
 	Shutdown string `json:"shutdown"`
+}
+
+// SafeAppConfig exposes app settings.
+type SafeAppConfig struct {
+	ShutdownGracetime string         `json:"shutdown_gracetime"`
+	Logs              SafeLogsConfig `json:"logs"`
+}
+
+// SafeAuthConfig exposes auth settings without secrets.
+type SafeAuthConfig struct {
+	Admin SafeAdminConfig `json:"admin"`
+}
+
+// SafeAdminConfig exposes admin settings without secrets.
+type SafeAdminConfig struct {
+	Login string `json:"login"`
+}
+
+// SafeLogsConfig exposes logs settings.
+type SafeLogsConfig struct {
+	Level   string `json:"level"`
+	Colored bool   `json:"colored"`
+	Type    string `json:"type"`
+	Access  string `json:"access"`
+	Error   string `json:"error"`
 }
 
 // SafeGeoIPConfig exposes GeoIP settings with TTL as string.
@@ -37,24 +61,31 @@ type SafeGeoIPConfig struct {
 	TTL    string `json:"ttl"`
 }
 
-// SafeRouterConfig exposes Router settings with duration fields as strings.
+// SafeRouterConfig exposes router settings without secrets.
 type SafeRouterConfig struct {
-	Domain       string `json:"Domain"`
-	Port         int    `json:"Port"`
-	SNI          string `json:"SNI"`
-	PublicKey    string `json:"PublicKey"`
-	PrivateKey   string `json:"PrivateKey"`
-	ShortID      string `json:"ShortID"`
-	Fingerprint  string `json:"Fingerprint"`
-	Address      string `json:"Address"`
-	SyncInterval string `json:"SyncInterval"`
+	URLHost      string                  `json:"URLHost"`
+	Inbound      SafeRouterInboundConfig `json:"Inbound"`
+	API          string                  `json:"API"`
+	SyncInterval string                  `json:"SyncInterval"`
+	NameTemplate string                  `json:"NameTemplate"`
+}
+
+// SafeRouterInboundConfig exposes router inbound settings.
+type SafeRouterInboundConfig struct {
+	Port        int    `json:"Port"`
+	Address     string `json:"Address"`
+	SNI         string `json:"SNI"`
+	PublicKey   string `json:"PublicKey"`
+	ShortID     string `json:"ShortID"`
+	Fingerprint string `json:"Fingerprint"`
 }
 
 // SettingsOutput is returned by GET /v1/settings.
 type SettingsOutput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      SafeAPIConfig         `json:"api"`
+		App      SafeAppConfig         `json:"app"`
+		Auth     SafeAuthConfig        `json:"auth"`
 		GeoIP    SafeGeoIPConfig       `json:"geoip"`
 		Router   SafeRouterConfig      `json:"router"`
 	}
@@ -64,7 +95,8 @@ type SettingsOutput struct {
 type UpdateSettingsInput struct {
 	Body struct {
 		Database config.DatabaseConfig `json:"database"`
-		API      SafeAPIConfig         `json:"api"`
+		App      SafeAppConfig         `json:"app"`
+		Auth     SafeAuthConfig        `json:"auth"`
 		GeoIP    SafeGeoIPConfig       `json:"geoip"`
 		Router   SafeRouterConfig      `json:"router"`
 	}
@@ -88,8 +120,20 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 
 	out := &SettingsOutput{}
 	out.Body.Database = cfg.Database
-	out.Body.API = SafeAPIConfig{
-		Shutdown: cfg.API.Shutdown.String(),
+	out.Body.App = SafeAppConfig{
+		ShutdownGracetime: cfg.App.ShutdownGracetime.String(),
+		Logs: SafeLogsConfig{
+			Level:   cfg.App.Logs.Level,
+			Colored: cfg.App.Logs.Colored,
+			Type:    cfg.App.Logs.Type,
+			Access:  cfg.App.Logs.Access,
+			Error:   cfg.App.Logs.Error,
+		},
+	}
+	out.Body.Auth = SafeAuthConfig{
+		Admin: SafeAdminConfig{
+			Login: cfg.Auth.Admin.Login,
+		},
 	}
 	out.Body.GeoIP = SafeGeoIPConfig{
 		DBPath: cfg.GeoIP.DBPath,
@@ -98,15 +142,18 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 		TTL:    cfg.GeoIP.TTL.String(),
 	}
 	out.Body.Router = SafeRouterConfig{
-		Domain:       cfg.Router.Domain,
-		Port:         cfg.Router.Port,
-		SNI:          cfg.Router.SNI,
-		PublicKey:    cfg.Router.PublicKey,
-		PrivateKey:   cfg.Router.PrivateKey,
-		ShortID:      cfg.Router.ShortID,
-		Fingerprint:  cfg.Router.Fingerprint,
-		Address:      cfg.Router.Address,
+		URLHost: cfg.Router.URLHost,
+		Inbound: SafeRouterInboundConfig{
+			Port:        cfg.Router.Inbound.Port,
+			Address:     cfg.Router.Inbound.Address,
+			SNI:         cfg.Router.Inbound.SNI,
+			PublicKey:   cfg.Router.Inbound.PublicKey,
+			ShortID:     cfg.Router.Inbound.ShortID,
+			Fingerprint: cfg.Router.Inbound.Fingerprint,
+		},
+		API:          cfg.Router.API,
 		SyncInterval: cfg.Router.SyncInterval.String(),
+		NameTemplate: cfg.Router.NameTemplate,
 	}
 
 	return out, nil
@@ -122,9 +169,17 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	}
 
 	cfg.Database = input.Body.Database
-	if d := config.ParseDuration(input.Body.API.Shutdown, cfg.API.Shutdown); d > 0 {
-		cfg.API.Shutdown = d
+	if d := config.ParseDuration(input.Body.App.ShutdownGracetime, cfg.App.ShutdownGracetime); d > 0 {
+		cfg.App.ShutdownGracetime = d
 	}
+	cfg.App.Logs = config.LogsConfig{
+		Level:   input.Body.App.Logs.Level,
+		Colored: input.Body.App.Logs.Colored,
+		Type:    input.Body.App.Logs.Type,
+		Access:  input.Body.App.Logs.Access,
+		Error:   input.Body.App.Logs.Error,
+	}
+	cfg.Auth.Admin.Login = input.Body.Auth.Admin.Login
 
 	cfg.GeoIP = config.GeoIPConfig{
 		DBPath: input.Body.GeoIP.DBPath,
@@ -134,15 +189,19 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	}
 
 	cfg.Router = config.RouterConfig{
-		Domain:       input.Body.Router.Domain,
-		Port:         input.Body.Router.Port,
-		SNI:          input.Body.Router.SNI,
-		PublicKey:    input.Body.Router.PublicKey,
-		PrivateKey:   input.Body.Router.PrivateKey,
-		ShortID:      input.Body.Router.ShortID,
-		Fingerprint:  input.Body.Router.Fingerprint,
-		Address:      input.Body.Router.Address,
+		URLHost: input.Body.Router.URLHost,
+		Inbound: config.RouterInboundConfig{
+			Port:        input.Body.Router.Inbound.Port,
+			Address:     input.Body.Router.Inbound.Address,
+			SNI:         input.Body.Router.Inbound.SNI,
+			PublicKey:   input.Body.Router.Inbound.PublicKey,
+			PrivateKey:  cfg.Router.Inbound.PrivateKey,
+			ShortID:     input.Body.Router.Inbound.ShortID,
+			Fingerprint: input.Body.Router.Inbound.Fingerprint,
+		},
+		API:          input.Body.Router.API,
 		SyncInterval: config.ParseDuration(input.Body.Router.SyncInterval, cfg.Router.SyncInterval),
+		NameTemplate: input.Body.Router.NameTemplate,
 	}
 
 	if err := loader.Save(h.configPath, &cfg); err != nil {

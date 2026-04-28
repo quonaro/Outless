@@ -85,37 +85,107 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 		})
 	}
 
-	// Determine file path: prefer FilePattern with module substitution, fallback to default
-	var filePath string
-	if cfg.FilePattern != "" && strings.Contains(cfg.FilePattern, "{module}") {
-		filePath = strings.ReplaceAll(cfg.FilePattern, "{module}", moduleName)
-	} else if cfg.FilePattern != "" {
-		filePath = cfg.FilePattern
-	} else {
-		filePath = "/var/log/outless/" + moduleName + ".json"
+	// Determine handlers based on access/error config
+	var handlers []slog.Handler
+
+	// Access handler
+	accessHandler := getOutputHandler(cfg.Access, level, logType, cfg.Colored, moduleName)
+	if accessHandler != nil {
+		handlers = append(handlers, accessHandler)
 	}
 
-	// Create file handler if file path is specified
-	var handler slog.Handler
-	if filePath != "" {
-		fileHandler, err := createFileHandler(filePath, level, cfg.Rotation)
-		if err != nil {
-			// If file handler fails, fall back to console only
-			handler = consoleHandler
-		} else {
-			handler = &multiHandler{
-				handlers: []slog.Handler{consoleHandler, fileHandler},
-			}
+	// Error handler (only for error level and above)
+	if cfg.Error != "none" && cfg.Error != "" {
+		errorHandler := getOutputHandler(cfg.Error, slog.LevelError, logType, cfg.Colored, moduleName)
+		if errorHandler != nil {
+			handlers = append(handlers, &errorLevelFilter{handler: errorHandler})
 		}
-	} else {
-		handler = consoleHandler
 	}
 
-	return slog.New(handler).With(
+	// Fallback to console if no handlers configured
+	if len(handlers) == 0 {
+		handlers = append(handlers, consoleHandler)
+	}
+
+	var finalHandler slog.Handler
+	if len(handlers) == 1 {
+		finalHandler = handlers[0]
+	} else {
+		finalHandler = &multiHandler{handlers: handlers}
+	}
+
+	return slog.New(finalHandler).With(
 		slog.String("service", name),
 		slog.String("module", moduleName),
 		slog.Int("pid", os.Getpid()),
 	)
+}
+
+// getOutputHandler creates a handler for the given output destination
+func getOutputHandler(output string, level slog.Level, logType string, colored bool, moduleName string) slog.Handler {
+	if output == "" || output == "none" {
+		return nil
+	}
+
+	var writer io.Writer
+	switch strings.ToLower(strings.TrimSpace(output)) {
+	case "stdout":
+		writer = os.Stdout
+	case "stderr":
+		writer = os.Stderr
+	default:
+		// File path
+		dir := filepath.Dir(output)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil
+		}
+		f, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil
+		}
+		writer = f
+	}
+
+	switch logType {
+	case "pretty":
+		return &minimalHandler{
+			w:       writer,
+			level:   level,
+			colored: colored,
+			module:  moduleName,
+		}
+	case "text", "console":
+		return slog.NewTextHandler(writer, &slog.HandlerOptions{
+			Level:       level,
+			ReplaceAttr: replaceBuiltInAttrs,
+		})
+	default:
+		return slog.NewJSONHandler(writer, &slog.HandlerOptions{
+			Level:       level,
+			ReplaceAttr: replaceBuiltInAttrs,
+		})
+	}
+}
+
+// errorLevelFilter wraps a handler and only passes error level and above records
+type errorLevelFilter struct {
+	handler slog.Handler
+}
+
+func (f *errorLevelFilter) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= slog.LevelError && f.handler.Enabled(ctx, level)
+}
+
+func (f *errorLevelFilter) Handle(ctx context.Context, r slog.Record) error {
+	return f.handler.Handle(ctx, r)
+}
+
+func (f *errorLevelFilter) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &errorLevelFilter{handler: f.handler.WithAttrs(attrs)}
+}
+
+func (f *errorLevelFilter) WithGroup(name string) slog.Handler {
+	return &errorLevelFilter{handler: f.handler.WithGroup(name)}
 }
 
 // minimalHandler implements a minimal log format: [LEVEL] time module: message

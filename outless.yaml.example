@@ -1,0 +1,51 @@
+# Application settings
+app:
+  shutdown_gracetime: "10s"
+  logs:
+    level: "info"
+    colored: true
+    type: "pretty"
+    access: "stdout"  # stdout, stderr, none, or file path
+    error: "stderr"   # stdout, stderr, none, or file path
+
+# Authentication
+auth:
+  admin:
+    login: "admin"
+    password: "admin"
+  jwt:
+    secret: "CHANGE_ME_IN_PRODUCTION"
+    expiry: "24h"
+
+# Database
+database:
+  url: "postgres://outless:outless@localhost:5432/outless?sslmode=disable"
+
+# GeoIP
+geoip:
+  db_path: "/tmp/GeoLite2-Country.mmdb"
+  db_url: "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"
+  auto: false
+  ttl: "24h"
+
+# Router (Xray edge)
+router:
+  # Domain for subscription URLs generation
+  url_host: "localhost"
+  
+  # Inbound configuration (REALITY settings)
+  inbound:
+    port: 443
+    address: ":443"
+    sni: "www.google.com"
+    public_key: ""
+    private_key: ""
+    short_id: ""
+    fingerprint: "chrome"
+  
+  # External Xray API address
+  api: "127.0.0.1:10085"
+  
+  # Sync settings (periodic DB -> Xray sync via gRPC)
+  sync_interval: "30s"
+  name_template: "{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
