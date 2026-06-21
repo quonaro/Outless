@@ -6,7 +6,6 @@ import { useGroupNodesInfinite } from '~/composables/nodes/useGroupNodesInfinite
 import UiButton from '~/components/ui/button/button.vue'
 import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import { countryBadgeLabel } from '~/utils/country'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -338,13 +337,8 @@ function handleDuplicateNode() {
                   <p class="text-xs text-muted-foreground">
                     {{ node.id }}
                   </p>
-                  <p class="mt-1 text-xs">
-                    <span
-                      class="ml-2 inline-flex items-center rounded-full border border-border/80 bg-muted/35 px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
-                    >
-                      {{ countryBadgeLabel(node.country) }}
-                    </span>
-                    <span v-if="props.syncNodeError(node.id)" class="ml-2 text-red-600">
+                  <p v-if="props.syncNodeError(node.id)" class="mt-1 text-xs">
+                    <span class="ml-2 text-red-600">
                       {{ props.syncNodeError(node.id) }}
                     </span>
                   </p>

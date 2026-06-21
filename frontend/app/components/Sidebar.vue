@@ -20,11 +20,24 @@ const navItems = [
     label: 'Dashboard',
     icon: LayoutDashboard,
     path: '/dashboard',
+    iconColor: 'text-emerald-500',
   },
-  { id: 'tokens', label: 'Tokens', icon: Key, path: '/tokens' },
-  { id: 'nodes', label: 'Nodes', icon: Globe, path: '/nodes' },
-  { id: 'inbounds', label: 'Inbounds', icon: Server, path: '/inbounds' },
-  { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+  { id: 'tokens', label: 'Tokens', icon: Key, path: '/tokens', iconColor: 'text-amber-500' },
+  { id: 'nodes', label: 'Nodes', icon: Globe, path: '/nodes', iconColor: 'text-sky-500' },
+  {
+    id: 'inbounds',
+    label: 'Inbounds',
+    icon: Server,
+    path: '/inbounds',
+    iconColor: 'text-violet-500',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: Settings,
+    path: '/settings',
+    iconColor: 'text-rose-500',
+  },
 ]
 
 const activeItem = computed(() => {
@@ -99,7 +112,10 @@ const handleCloseMobile = () => {
         >
           <component
             :is="item.icon"
-            class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+            :class="[
+              item.iconColor,
+              'h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3',
+            ]"
           />
           <span class="font-medium">{{ item.label }}</span>
         </button>
@@ -171,7 +187,10 @@ const handleCloseMobile = () => {
             <div class="flex items-center gap-3">
               <component
                 :is="item.icon"
-                class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+                :class="[
+                  item.iconColor,
+                  'h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3',
+                ]"
               />
               <span v-if="sidebar.isExpanded" class="font-medium">{{ item.label }}</span>
             </div>

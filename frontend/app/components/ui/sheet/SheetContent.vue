@@ -56,9 +56,9 @@ function onTouchEnd(event: TouchEvent) {
           'fixed z-50 flex flex-col gap-4 border bg-background p-6 shadow-lg',
           // Mobile bottom sheet
           'inset-x-0 bottom-0 h-auto w-full max-w-full rounded-t-xl border-t data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-bottom-full data-[state=closed]:slide-out-to-bottom-full data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 duration-300',
-          'max-h-[85dvh] overflow-y-auto',
+          'max-h-[85dvh] overflow-y-auto sm:max-h-none sm:overflow-visible',
           // Desktop centered dialog overrides
-          'sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border-border sm:border sm:duration-200 sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%] sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95',
+          'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border-border sm:border sm:duration-200 sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%] sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95',
           props.class
         )
       "

@@ -34,7 +34,7 @@ const formData = ref<ChangeAdminPassword>({
 
 const errors = ref<Record<string, string>>({})
 
-const mutation = useMutation({
+const { isPending, mutate } = useMutation({
   mutationFn: (data: ChangeAdminPassword) => changeAdminPassword(data),
   onSuccess: () => {
     emit('success')
@@ -67,7 +67,7 @@ function handleSubmit() {
 
   try {
     ChangeAdminPasswordSchema.parse(formData.value)
-    mutation.mutate(formData.value)
+    mutate(formData.value)
   } catch (err: unknown) {
     if (err instanceof ZodError) {
       err.errors.forEach((error) => {
@@ -166,8 +166,8 @@ function handleOpenChange(value: boolean) {
 
       <SheetFooter>
         <UiButton variant="outline" @click="emit('update:open', false)"> Cancel </UiButton>
-        <UiButton :disabled="mutation.isPending" @click="handleSubmit">
-          {{ mutation.isPending ? 'Changing...' : 'Change Password' }}
+        <UiButton :disabled="isPending" @click="handleSubmit">
+          {{ isPending ? 'Changing...' : 'Change Password' }}
         </UiButton>
       </SheetFooter>
     </SheetContent>

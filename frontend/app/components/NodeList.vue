@@ -191,11 +191,6 @@ function handleDelete(node: Node) {
       <CardContent class="p-0">
         <div class="flex items-start justify-between gap-4">
           <div class="max-w-[52%] min-w-0 space-y-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm font-medium">
-                {{ node.country || 'XX' }}
-              </span>
-            </div>
             <p class="truncate font-mono text-sm" :title="node.url">
               {{ node.url }}
             </p>

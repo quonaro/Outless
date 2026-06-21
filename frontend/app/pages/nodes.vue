@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
             id="node-search"
             v-model="search"
             name="node-search"
-            placeholder="Search by URL, ID, country, group..."
+            placeholder="Search by URL, ID, group..."
             class="w-full sm:max-w-md"
           />
         </div>
@@ -410,11 +410,6 @@ onBeforeUnmount(() => {
                   <p class="text-xs text-muted-foreground">
                     {{ node.id }} ·
                     {{ groupNameByID[node.group_id] ?? (node.group_id || 'No group') }}
-                    ·
-                    <span
-                      class="ml-1 inline-flex items-center rounded-full border border-border/80 bg-muted/40 px-2 py-0.5 tabular-nums"
-                      >{{ countryBadgeLabel(node.country) }}</span
-                    >
                   </p>
                 </div>
                 <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap">
