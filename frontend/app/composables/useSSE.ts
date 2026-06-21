@@ -29,13 +29,17 @@ function buildSSEURL(base: string): string {
   let u: URL
   if (base.startsWith('http://') || base.startsWith('https://')) {
     u = new URL(base)
-  }
-  else {
+  } else {
     const path = base.startsWith('/') ? base.slice(1) : base
-    u = new URL(path || 'api', typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1')
+    u = new URL(
+      path || 'api',
+      typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1'
+    )
   }
   const pathPrefix = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')
-  return `${u.protocol}//${u.host}${pathPrefix}/v1/events`
+  const url = `${u.protocol}//${u.host}${pathPrefix}/v1/events`
+  console.log('[SSE] buildSSEURL:', { base, url })
+  return url
 }
 
 function dispatch(msg: Record<string, unknown>) {
@@ -76,7 +80,10 @@ export function onSSEOpen(handler: () => void): () => void {
   return () => openHandlers.delete(handler)
 }
 
-export function subscribeGroupSyncChannel(groupId: string, cb: (msg: Record<string, unknown>) => void): () => void {
+export function subscribeGroupSyncChannel(
+  groupId: string,
+  cb: (msg: Record<string, unknown>) => void
+): () => void {
   if (!groupSyncSubs.has(groupId)) groupSyncSubs.set(groupId, new Set())
   const s = groupSyncSubs.get(groupId)!
   s.add(cb)
@@ -141,85 +148,102 @@ function handle401() {
 }
 
 export function connectSSE() {
+  console.log('[SSE] connectSSE called', {
+    hasWindow: typeof window !== 'undefined',
+    apiBase,
+    tokenExists: !!getToken(),
+    sseConnected: sseConnected.value,
+    sseConnecting: sseConnecting.value,
+  })
   if (typeof window === 'undefined') return
   const token = getToken()
   if (!token || !apiBase) {
+    console.log('[SSE] missing token or apiBase, aborting')
     disconnectSSE()
     return
   }
 
-  if (sseConnected.value || sseConnecting.value) return
+  if (sseConnected.value || sseConnecting.value) {
+    console.log('[SSE] already connected or connecting, skipping')
+    return
+  }
 
   disconnectSSE()
   sseConnecting.value = true
 
   const url = buildSSEURL(apiBase)
   abortController = new AbortController()
+  console.log('[SSE] starting fetch to', url)
 
   fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: abortController.signal,
-  }).then(async (res) => {
-    if (res.status === 401) {
-      handle401()
-      return
-    }
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
-    }
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+  })
+    .then(async (res) => {
+      console.log('[SSE] fetch response', res.status, res.ok)
+      if (res.status === 401) {
+        handle401()
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-    sseConnected.value = true
-    sseConnecting.value = false
-    if (!sseEverOpened.value) {
-      sseEverOpened.value = true
-    }
-    notifyOpen()
+      sseConnected.value = true
+      sseConnecting.value = false
+      if (!sseEverOpened.value) {
+        sseEverOpened.value = true
+      }
+      notifyOpen()
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      let currentData = ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed === '') {
-          if (currentData) {
-            try {
-              const msg = JSON.parse(currentData)
-              dispatch(msg)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        let currentData = ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed === '') {
+            if (currentData) {
+              try {
+                const msg = JSON.parse(currentData)
+                dispatch(msg)
+              } catch {
+                // ignore malformed
+              }
+              currentData = ''
             }
-            catch {
-              // ignore malformed
-            }
-            currentData = ''
+            continue
           }
-          continue
-        }
-        if (trimmed.startsWith('data: ')) {
-          currentData = trimmed.slice(6)
+          if (trimmed.startsWith('data: ')) {
+            currentData = trimmed.slice(6)
+          }
         }
       }
-    }
-  }).catch((err) => {
-    if (err.name === 'AbortError') return
-    sseConnected.value = false
-    sseConnecting.value = false
-    const t = getToken()
-    if (t && apiBase) {
-      reconnectTimer = setTimeout(() => connectSSE(), 3000)
-    }
-  }).finally(() => {
-    sseConnected.value = false
-    sseConnecting.value = false
-    if (getToken() && apiBase) {
-      reconnectTimer = setTimeout(() => connectSSE(), 3000)
-    }
-  })
+    })
+    .catch((err) => {
+      console.log('[SSE] fetch error', err.name, err.message)
+      if (err.name === 'AbortError') return
+      sseConnected.value = false
+      sseConnecting.value = false
+      const t = getToken()
+      if (t && apiBase) {
+        reconnectTimer = setTimeout(() => connectSSE(), 3000)
+      }
+    })
+    .finally(() => {
+      console.log('[SSE] fetch finally, connected=', sseConnected.value)
+      sseConnected.value = false
+      sseConnecting.value = false
+      if (getToken() && apiBase) {
+        reconnectTimer = setTimeout(() => connectSSE(), 3000)
+      }
+    })
 }
 
 export function ensureSSEConnected() {
