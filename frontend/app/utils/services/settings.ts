@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import { SettingsSchema, UpdateSettingsSchema, type Settings, type UpdateSettings } from '~/utils/schemas/settings'
+import { SettingsSchema, type Settings, type UpdateSettings } from '~/utils/schemas/settings'
 
 export async function fetchSettings(): Promise<Settings> {
   const { $api } = useNuxtApp()

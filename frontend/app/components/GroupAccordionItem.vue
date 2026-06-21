@@ -245,11 +245,11 @@ function handleDuplicateNode() {
               </UiButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem @click.prevent="openEditDialog" :disabled="props.editingGroup">
+              <DropdownMenuItem :disabled="props.editingGroup" @click.prevent="openEditDialog">
                 <Pencil class="mr-2 h-4 w-4" />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem class="text-destructive focus:text-destructive" @click.prevent="openDeleteDialog" :disabled="props.deletingGroup">
+              <DropdownMenuItem class="text-destructive focus:text-destructive" :disabled="props.deletingGroup" @click.prevent="openDeleteDialog">
                 <Trash2 class="mr-2 h-4 w-4" />
                 Delete group
               </DropdownMenuItem>
@@ -296,8 +296,8 @@ function handleDuplicateNode() {
                 <input
                   type="checkbox"
                   :checked="props.selectedIds.has(node.id)"
-                  @change="emit('toggleSelection', node.id)"
                   class="h-4 w-4 rounded border-gray-400 shrink-0"
+                  @change="emit('toggleSelection', node.id)"
                 >
                 <div class="min-w-0 flex-1">
                   <div class="group relative min-w-0">
@@ -330,7 +330,7 @@ function handleDuplicateNode() {
                       </UiButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click.prevent="openMoveNodeDialog(node)" :disabled="props.movingIds.has(node.id)">
+                      <DropdownMenuItem :disabled="props.movingIds.has(node.id)" @click.prevent="openMoveNodeDialog(node)">
                         <ArrowRight class="mr-2 h-3.5 w-3.5" />
                         Move
                       </DropdownMenuItem>
@@ -338,7 +338,7 @@ function handleDuplicateNode() {
                         <Copy class="mr-2 h-3.5 w-3.5" />
                         Copy
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="text-destructive focus:text-destructive" @click.prevent="emit('removeNode', node)" :disabled="props.deletingIds.has(node.id)">
+                      <DropdownMenuItem class="text-destructive focus:text-destructive" :disabled="props.deletingIds.has(node.id)" @click.prevent="emit('removeNode', node)">
                         <Trash2 class="mr-2 h-3.5 w-3.5" />
                         Delete
                       </DropdownMenuItem>
@@ -415,7 +415,7 @@ function handleDuplicateNode() {
       </div>
       <DialogFooter>
         <UiButton variant="outline" @click="editDialogOpen = false">Cancel</UiButton>
-        <UiButton @click="confirmEdit" :disabled="!canSaveEdit">
+        <UiButton :disabled="!canSaveEdit" @click="confirmEdit">
           {{ props.editingGroup ? 'Saving...' : 'Save' }}
         </UiButton>
       </DialogFooter>
@@ -433,7 +433,7 @@ function handleDuplicateNode() {
       </DialogHeader>
       <DialogFooter>
         <UiButton variant="outline" @click="deleteDialogOpen = false">Cancel</UiButton>
-        <UiButton variant="destructive" @click="confirmDelete" :disabled="props.deletingGroup">
+        <UiButton variant="destructive" :disabled="props.deletingGroup" @click="confirmDelete">
           Delete
         </UiButton>
       </DialogFooter>

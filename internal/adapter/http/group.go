@@ -21,7 +21,13 @@ type GroupManagementHandler struct {
 	logger              *slog.Logger
 }
 
-func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *SSEHandler, subscriptionService *service.SubscriptionService, logger *slog.Logger) *GroupManagementHandler {
+func NewGroupManagementHandler(
+	groupRepo domain.GroupRepository,
+	nodeRepo domain.NodeRepository,
+	realtime *SSEHandler,
+	subscriptionService *service.SubscriptionService,
+	logger *slog.Logger,
+) *GroupManagementHandler {
 	return &GroupManagementHandler{
 		groupRepo:           groupRepo,
 		nodeRepo:            nodeRepo,

@@ -18,7 +18,12 @@ type StatsHandler struct {
 }
 
 // NewStatsHandler constructs a stats handler.
-func NewStatsHandler(nodeRepo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, logger *slog.Logger) *StatsHandler {
+func NewStatsHandler(
+	nodeRepo domain.NodeRepository,
+	tokenRepo domain.TokenRepository,
+	groupRepo domain.GroupRepository,
+	logger *slog.Logger,
+) *StatsHandler {
 	return &StatsHandler{
 		nodeRepo:  nodeRepo,
 		tokenRepo: tokenRepo,

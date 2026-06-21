@@ -118,7 +118,7 @@ func (l *Loader) Save(path string, config any) error {
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return fmt.Errorf("renaming temp config: %w", err)
 	}
 

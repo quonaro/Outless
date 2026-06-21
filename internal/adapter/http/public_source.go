@@ -85,7 +85,10 @@ func (h *PublicSourceManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/public-sources/{id}/sync", h.SyncPublicSource)
 }
 
-func (h *PublicSourceManagementHandler) CreatePublicSource(ctx context.Context, input *CreatePublicSourceInput) (*CreatePublicSourceOutput, error) {
+func (h *PublicSourceManagementHandler) CreatePublicSource(
+	ctx context.Context,
+	input *CreatePublicSourceInput,
+) (*CreatePublicSourceOutput, error) {
 	if input.Body.URL == "" {
 		return nil, huma.Error400BadRequest("url is required")
 	}

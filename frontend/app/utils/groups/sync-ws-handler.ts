@@ -1,9 +1,9 @@
 import type { QueryClient } from '@tanstack/vue-query'
 import type { Ref, ShallowRef } from 'vue'
-import {
-  type GroupSyncDoneEvent,
-  type GroupSyncNodeEvent,
-  type GroupSyncStateEvent,
+import type {
+  GroupSyncDoneEvent,
+  GroupSyncNodeEvent,
+  GroupSyncStateEvent,
 } from '~/utils/services/group'
 import type { SyncNodeStatus } from '~/composables/groups/useGroupSync'
 

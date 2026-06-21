@@ -48,7 +48,14 @@ type cachedGroupNames struct {
 }
 
 // NewSubscriptionService constructs a subscription service.
-func NewSubscriptionService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, inboundRepo domain.InboundRepository, externalHost string, logger *slog.Logger) *SubscriptionService {
+func NewSubscriptionService(
+	repo domain.NodeRepository,
+	tokenRepo domain.TokenRepository,
+	groupRepo domain.GroupRepository,
+	inboundRepo domain.InboundRepository,
+	externalHost string,
+	logger *slog.Logger,
+) *SubscriptionService {
 	return &SubscriptionService{
 		repo:         repo,
 		tokenRepo:    tokenRepo,
@@ -186,7 +193,12 @@ func toHubConfig(inbound domain.Inbound) HubConfig {
 	}
 }
 
-func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain.Node, groupNames map[string]string, hub HubConfig) []string {
+func (s *SubscriptionService) buildHubURLs(
+	token domain.Token,
+	allNodes []domain.Node,
+	groupNames map[string]string,
+	hub HubConfig,
+) []string {
 	urls := make([]string, 0, len(allNodes))
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
 	for _, groupID := range token.GroupIDs {
@@ -246,7 +258,13 @@ func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain
 	return urls
 }
 
-func (s *SubscriptionService) buildHubURLsWithGroupSettings(token domain.Token, allNodes []domain.Node, groupNames map[string]string, groupSettings map[string]domain.Group, hub HubConfig) []string {
+func (s *SubscriptionService) buildHubURLsWithGroupSettings(
+	token domain.Token,
+	allNodes []domain.Node,
+	groupNames map[string]string,
+	groupSettings map[string]domain.Group,
+	hub HubConfig,
+) []string {
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
 	for _, groupID := range token.GroupIDs {
 		allowedGroups[groupID] = struct{}{}
@@ -443,6 +461,7 @@ func sanitizeRemarkPart(value string, fallback string) string {
 	return value
 }
 
+//nolint:unused
 func countryFlagEmoji(code string) string {
 	if len(code) != 2 {
 		return "🏳️"

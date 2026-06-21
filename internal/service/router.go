@@ -25,7 +25,7 @@ func NewRouterManager(runtime domain.RuntimeController, interval time.Duration, 
 	return &RouterManager{runtime: runtime, interval: interval, logger: logger}
 }
 
-// Run starts the runtime and keeps it synced until ctx is cancelled.
+// Run starts the runtime and keeps it synced until ctx is canceled.
 func (m *RouterManager) Run(ctx context.Context) error {
 	if err := m.runtime.Start(ctx); err != nil {
 		return fmt.Errorf("starting runtime (%s): %w", m.runtime.Description(), err)

@@ -29,7 +29,14 @@ type TokenManagementHandler struct {
 	logger      *slog.Logger
 }
 
-func NewTokenManagementHandler(tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, inboundRepo domain.InboundRepository, runtime RuntimeController, logger *slog.Logger) *TokenManagementHandler {
+func NewTokenManagementHandler(
+	tokenRepo domain.TokenRepository,
+	groupRepo domain.GroupRepository,
+	nodeRepo domain.NodeRepository,
+	inboundRepo domain.InboundRepository,
+	runtime RuntimeController,
+	logger *slog.Logger,
+) *TokenManagementHandler {
 	return &TokenManagementHandler{
 		tokenRepo:   tokenRepo,
 		groupRepo:   groupRepo,
@@ -195,7 +202,8 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 func (h *TokenManagementHandler) DeactivateToken(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
 	token, err := h.tokenRepo.FindByID(ctx, input.ID)
 	if err != nil {
-		h.logger.Error("failed to find token for deactivation", slog.String("id", input.ID), slog.String("error", err.Error()))
+		h.logger.Error("failed to find token for deactivation",
+			slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error404NotFound("token not found")
 	}
 
@@ -257,19 +265,23 @@ func (h *TokenManagementHandler) RemoveToken(ctx context.Context, input *DeleteT
 
 		baseEmail := fmt.Sprintf("token-%s@outless", token.ID)
 		if err := h.runtime.RemoveRulesForUser(baseEmail); err != nil {
-			h.logger.Warn("failed to remove rules for base client", slog.String("email", baseEmail), slog.String("error", err.Error()))
+			h.logger.Warn("failed to remove rules for base client",
+				slog.String("email", baseEmail), slog.String("error", err.Error()))
 		}
 		if err := h.runtime.RemoveUser(baseEmail); err != nil {
-			h.logger.Warn("failed to remove base user from inbound", slog.String("email", baseEmail), slog.String("error", err.Error()))
+			h.logger.Warn("failed to remove base user from inbound",
+				slog.String("email", baseEmail), slog.String("error", err.Error()))
 		}
 
 		for _, node := range nodes {
 			nodeEmail := fmt.Sprintf("token-%s-node-%s@outless", token.ID, node.ID)
 			if err := h.runtime.RemoveRulesForUser(nodeEmail); err != nil {
-				h.logger.Warn("failed to remove rules for node client", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+				h.logger.Warn("failed to remove rules for node client",
+					slog.String("email", nodeEmail), slog.String("error", err.Error()))
 			}
 			if err := h.runtime.RemoveUser(nodeEmail); err != nil {
-				h.logger.Warn("failed to remove node user from inbound", slog.String("email", nodeEmail), slog.String("error", err.Error()))
+				h.logger.Warn("failed to remove node user from inbound",
+					slog.String("email", nodeEmail), slog.String("error", err.Error()))
 			}
 		}
 	}
@@ -330,7 +342,8 @@ func (h *TokenManagementHandler) UpdateToken(ctx context.Context, input *UpdateT
 
 	if h.runtime != nil {
 		if err := h.runtime.ForceSync(); err != nil {
-			h.logger.Warn("failed to force sync after token update", slog.String("id", input.ID), slog.String("error", err.Error()))
+			h.logger.Warn("failed to force sync after token update",
+				slog.String("id", input.ID), slog.String("error", err.Error()))
 		}
 	}
 

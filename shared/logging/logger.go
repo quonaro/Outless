@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	envLogLevel  = "OUTLESS_LOG_LEVEL"
-	envLogFormat = "OUTLESS_LOG_FORMAT"
+	envLogLevel      = "OUTLESS_LOG_LEVEL"
+	envLogFormat     = "OUTLESS_LOG_FORMAT"
+	logFormatText    = "text"
+	logFormatConsole = "console"
 )
 
 // New creates a process logger with unified format across services.
@@ -110,7 +112,7 @@ func getOutputHandler(output string, level slog.Level, logType string, colored b
 	switch logType {
 	case "pretty":
 		return &minimalHandler{w: writer, level: level, colored: colored, module: moduleName}
-	case "text", "console":
+	case logFormatText, logFormatConsole:
 		return slog.NewTextHandler(writer, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})
 	default:
 		return slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})

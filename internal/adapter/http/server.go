@@ -98,7 +98,7 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 			if r.URL.Path != "/" {
 				if f, openErr := static.Open(r.URL.Path); openErr == nil {
 					stat, _ := f.Stat()
-					f.Close()
+					_ = f.Close()
 					if !stat.IsDir() {
 						fileServer.ServeHTTP(w, r)
 						return

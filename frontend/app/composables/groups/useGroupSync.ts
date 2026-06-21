@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/vue-query'
 import { ref, shallowRef } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  type GroupSyncNodeEvent,
-  type GroupSyncStateEvent,
-  type GroupSyncDoneEvent,
+import type {
+  GroupSyncNodeEvent,
+  GroupSyncStateEvent,
+  GroupSyncDoneEvent,
 } from '~/utils/services/group'
 import {
   ensureSSEConnected,

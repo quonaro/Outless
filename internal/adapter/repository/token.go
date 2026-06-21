@@ -58,7 +58,13 @@ func NewTokenRepository(db *gorm.DB, logger *slog.Logger) *TokenRepository {
 }
 
 // IssueToken creates a new token and returns token metadata including plain token.
-func (r *TokenRepository) IssueToken(ctx context.Context, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) (domain.Token, string, error) {
+func (r *TokenRepository) IssueToken(
+	ctx context.Context,
+	owner string,
+	groupIDs []string,
+	inboundIDs []string,
+	expiresAt time.Time,
+) (domain.Token, string, error) {
 	if strings.TrimSpace(owner) == "" {
 		return domain.Token{}, "", fmt.Errorf("owner is required")
 	}
@@ -120,7 +126,9 @@ func (r *TokenRepository) IssueToken(ctx context.Context, owner string, groupIDs
 		return domain.Token{}, "", txErr
 	}
 
-	r.logger.Info("subscription token issued", slog.String("token_id", model.ID), slog.String("owner", owner), slog.Int("group_count", len(groupIDs)), slog.Int("inbound_count", len(inboundIDs)))
+	r.logger.Info("subscription token issued",
+		slog.String("token_id", model.ID), slog.String("owner", owner),
+		slog.Int("group_count", len(groupIDs)), slog.Int("inbound_count", len(inboundIDs)))
 	return toDomainToken(model, uniqueNonEmpty(groupIDs), uniqueNonEmpty(inboundIDs)), plainToken, nil
 }
 
@@ -341,7 +349,14 @@ func (r *TokenRepository) CleanupExpired(ctx context.Context, cutoff time.Time) 
 }
 
 // Update modifies token owner, group IDs, inbound IDs, and expiration.
-func (r *TokenRepository) Update(ctx context.Context, id string, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) error {
+func (r *TokenRepository) Update(
+	ctx context.Context,
+	id string,
+	owner string,
+	groupIDs []string,
+	inboundIDs []string,
+	expiresAt time.Time,
+) error {
 	if strings.TrimSpace(owner) == "" {
 		return fmt.Errorf("owner is required")
 	}

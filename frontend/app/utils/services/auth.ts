@@ -1,5 +1,6 @@
-import { z } from 'zod'
-import { LoginCredentialsSchema, AuthResponseSchema } from '~/utils/schemas/auth'
+import type { z } from 'zod'
+import type { LoginCredentialsSchema} from '~/utils/schemas/auth';
+import { AuthResponseSchema } from '~/utils/schemas/auth'
 
 export type LoginCredentials = z.infer<typeof LoginCredentialsSchema>
 export type AuthResponse = z.infer<typeof AuthResponseSchema>

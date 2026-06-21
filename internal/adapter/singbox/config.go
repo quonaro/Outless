@@ -59,7 +59,13 @@ func sanitizeTag(raw string) string {
 // one user per token+node combination, one VLESS outbound per exit node, and
 // route rules that send each user to its specific outbound. Unmatched traffic
 // is blocked.
-func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubInboundConfig, singboxLogLevel string, logger *slog.Logger) (option.Options, error) {
+func GenerateOptions(
+	tokens []domain.Token,
+	nodes []domain.Node,
+	inbounds []HubInboundConfig,
+	singboxLogLevel string,
+	logger *slog.Logger,
+) (option.Options, error) {
 	users, rules, err := buildUsersAndRules(tokens, nodes, logger)
 	if err != nil {
 		return option.Options{}, err
@@ -141,7 +147,7 @@ func buildInbounds(inbounds []HubInboundConfig, users []option.VLESSUser, logger
 		if shortID == "" {
 			shortID = "0000000000000000"
 		}
-		var shortIDs option.Listable[string] = option.Listable[string]{shortID}
+		shortIDs := option.Listable[string]{shortID}
 
 		reality := &option.InboundRealityOptions{
 			Enabled:    true,

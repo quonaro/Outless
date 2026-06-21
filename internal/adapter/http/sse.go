@@ -170,7 +170,7 @@ func (h *SSEHandler) writeEvent(w http.ResponseWriter, flusher http.Flusher, pay
 			return
 		}
 	}
-	fmt.Fprintf(w, "data: %s\n\n", b)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 	flusher.Flush()
 }
 
@@ -183,7 +183,7 @@ func (h *SSEHandler) handleSyncGroup(w http.ResponseWriter, r *http.Request) {
 
 	go h.runGroupSync(groupID)
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
 func (h *SSEHandler) handleCancelSync(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +200,7 @@ func (h *SSEHandler) handleCancelSync(w http.ResponseWriter, r *http.Request) {
 		syncRun.cancel()
 	}
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "canceled"})
 }
 
 func (h *SSEHandler) handleSyncGroupState(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +214,7 @@ func (h *SSEHandler) handleSyncGroupState(w http.ResponseWriter, r *http.Request
 	run, ok := h.activeSyncs[groupID]
 	h.syncMu.Unlock()
 	if !ok {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type":      "sync_group_state",
 			"group_id":  groupID,
 			"running":   false,
@@ -244,7 +244,7 @@ func (h *SSEHandler) handleSyncGroupState(w http.ResponseWriter, r *http.Request
 		"added_count": run.addedCount,
 	}
 	run.mu.Unlock()
-	json.NewEncoder(w).Encode(payload)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 // --- Sync logic ---
@@ -269,6 +269,7 @@ type syncNodeState struct {
 	Error  string `json:"error,omitempty"`
 }
 
+//nolint:funlen
 func (h *SSEHandler) runGroupSync(groupID string) {
 	ctx := context.Background()
 	if _, err := h.groups.FindByID(ctx, groupID); err != nil {
@@ -282,7 +283,13 @@ func (h *SSEHandler) runGroupSync(groupID string) {
 	h.syncMu.Lock()
 	if run, exists := h.activeSyncs[groupID]; exists && run.running {
 		h.syncMu.Unlock()
-		h.broadcastJSON(map[string]any{"type": "sync_group_state", "group_id": groupID, "running": true, "processed": run.processed, "total": run.total})
+		h.broadcastJSON(map[string]any{
+			"type":      "sync_group_state",
+			"group_id":  groupID,
+			"running":   true,
+			"processed": run.processed,
+			"total":     run.total,
+		})
 		return
 	}
 	run := &syncRun{
@@ -367,7 +374,7 @@ func (h *SSEHandler) runGroupSync(groupID string) {
 
 		if errors.Is(err, context.Canceled) {
 			h.broadcastJSON(map[string]any{
-				"type":        "sync_cancelled",
+				"type":        "sync_canceled",
 				"group_id":    groupID,
 				"processed":   processed,
 				"total":       total,

@@ -20,7 +20,12 @@ type NodeManagementHandler struct {
 	logger    *slog.Logger
 }
 
-func NewNodeManagementHandler(nodeRepo domain.NodeRepository, groupRepo domain.GroupRepository, realtime *SSEHandler, logger *slog.Logger) *NodeManagementHandler {
+func NewNodeManagementHandler(
+	nodeRepo domain.NodeRepository,
+	groupRepo domain.GroupRepository,
+	realtime *SSEHandler,
+	logger *slog.Logger,
+) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
