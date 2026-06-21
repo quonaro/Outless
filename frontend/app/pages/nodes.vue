@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/* eslint-disable max-lines */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { Plus, Server } from 'lucide-vue-next'
@@ -7,8 +6,6 @@ import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
-import UiCard from '~/components/ui/card/card.vue'
-import CardContent from '~/components/ui/card/CardContent.vue'
 import Sheet from '~/components/ui/sheet/Sheet.vue'
 import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
@@ -21,8 +18,6 @@ import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
 import { createNode, deleteNode, updateNode } from '~/utils/services/node'
 import { createGroup } from '~/utils/services/group'
-import { ensureSSEConnected, subscribeSSE } from '~/composables/useSSE'
-import { countryBadgeLabel } from '~/utils/country'
 
 definePageMeta({ layout: 'default' })
 
@@ -31,16 +26,6 @@ useHead({
 })
 
 type ViewMode = 'grouped' | 'flat'
-
-interface PublicRefreshStateMessage {
-  type: 'public_refresh_state'
-  enabled?: boolean
-  interval_ms?: number
-  server_time?: string
-  last_refresh_at?: string
-  next_refresh_at?: string
-  next_refresh_in_ms?: number
-}
 
 const queryClient = useQueryClient()
 const viewMode = ref<ViewMode>('grouped')
@@ -62,9 +47,6 @@ const showInitialNodesShell = computed(
 const loadMoreAnchor = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 let stopLoadMoreAnchorWatch: (() => void) | null = null
-let countdownIntervalID: ReturnType<typeof setInterval> | null = null
-let stopRealtimeSubscription: (() => void) | null = null
-const nowMS = ref(Date.now())
 
 /** Nodes loaded via global infinite scroll (flat list / partial cache). */
 const infiniteNodesFlat = computed<Node[]>(
@@ -127,52 +109,6 @@ const deleteNodeMutation = useMutation({
 })
 
 const copiedNodeIDs = ref<Set<string>>(new Set())
-
-const sourceGroups = computed(() =>
-  (groups.value ?? []).filter((group) => Boolean(group.source_url?.trim()))
-)
-
-const sourceGroupCount = computed(() => sourceGroups.value.length)
-
-const neverSyncedGroupCount = computed(
-  () => sourceGroups.value.filter((group) => !group.last_synced_at).length
-)
-
-const wsRefreshEnabled = ref(true)
-const wsRefreshIntervalMS = ref<number | null>(null)
-const wsLastRefreshAt = ref('')
-const wsNextRefreshAt = ref('')
-
-const nextRefreshAtMS = computed<number | null>(() => {
-  if (!wsNextRefreshAt.value) return null
-  const parsed = Date.parse(wsNextRefreshAt.value)
-  return Number.isNaN(parsed) ? null : parsed
-})
-
-const nextURLGroupsRefreshInMS = computed<number | null>(() => {
-  if (nextRefreshAtMS.value == null) return null
-  return Math.max(nextRefreshAtMS.value - nowMS.value, 0)
-})
-
-const nextURLGroupsRefreshLabel = computed(() => {
-  if (sourceGroupCount.value === 0) return 'No URL groups with source URL'
-  if (!wsRefreshEnabled.value) return 'Auto refresh disabled'
-  if (nextURLGroupsRefreshInMS.value == null) return 'Waiting for scheduler state from server'
-  if (nextURLGroupsRefreshInMS.value === 0) return 'Next URL groups refresh is due'
-  return `Next URL groups refresh in ${formatCountdown(nextURLGroupsRefreshInMS.value)}`
-})
-
-function formatCountdown(totalMS: number): string {
-  const totalSeconds = Math.max(0, Math.floor(totalMS / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-
-  if (hours > 0) {
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
 
 const groupNameByID = computed<Record<string, string>>(() => {
   const map: Record<string, string> = {}
@@ -372,24 +308,7 @@ function maybeLoadMore() {
   }
 }
 
-function handlePublicRefreshStateMessage(msg: Record<string, unknown>) {
-  if (msg.type !== 'public_refresh_state') return
-  const state = msg as unknown as PublicRefreshStateMessage
-  wsRefreshEnabled.value = state.enabled !== false
-  wsRefreshIntervalMS.value = typeof state.interval_ms === 'number' ? state.interval_ms : null
-  wsLastRefreshAt.value = typeof state.last_refresh_at === 'string' ? state.last_refresh_at : ''
-  wsNextRefreshAt.value = typeof state.next_refresh_at === 'string' ? state.next_refresh_at : ''
-}
-
 onMounted(() => {
-  ensureSSEConnected()
-  stopRealtimeSubscription = subscribeSSE(handlePublicRefreshStateMessage)
-  // public_refresh_state is pushed automatically by SSE on connect
-
-  countdownIntervalID = setInterval(() => {
-    nowMS.value = Date.now()
-  }, 1000)
-
   observer = new IntersectionObserver(
     (entries) => {
       const hit = entries.some((entry) => entry.isIntersecting)
@@ -414,14 +333,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  stopRealtimeSubscription?.()
-  stopRealtimeSubscription = null
-
-  if (countdownIntervalID) {
-    clearInterval(countdownIntervalID)
-    countdownIntervalID = null
-  }
-
   stopLoadMoreAnchorWatch?.()
   stopLoadMoreAnchorWatch = null
   if (observer) {
@@ -463,22 +374,6 @@ onBeforeUnmount(() => {
             </UiButton>
           </div>
         </div>
-        <div
-          class="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
-        >
-          <span class="font-medium text-foreground/90">Auto refresh:</span>
-          {{ nextURLGroupsRefreshLabel }}
-          <span v-if="wsLastRefreshAt">
-            · Last refresh: {{ new Date(wsLastRefreshAt).toLocaleTimeString() }}
-          </span>
-          <span v-if="wsRefreshIntervalMS && wsRefreshIntervalMS > 0">
-            · Interval: {{ formatCountdown(wsRefreshIntervalMS) }}
-          </span>
-          <span v-if="neverSyncedGroupCount > 0">
-            · First sync pending: {{ neverSyncedGroupCount }}
-          </span>
-        </div>
-
         <div class="flex flex-wrap items-center gap-2">
           <UiInput
             id="node-search"

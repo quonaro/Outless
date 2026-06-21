@@ -19,10 +19,9 @@ import (
 
 // SSEHandler serves Server-Sent Events for admin UI: group sync progress and cache invalidation hints.
 type SSEHandler struct {
-	public                *service.PublicService
-	groups                domain.GroupRepository
-	logger                *slog.Logger
-	publicRefreshInterval time.Duration
+	public *service.PublicService
+	groups domain.GroupRepository
+	logger *slog.Logger
 
 	clientsMu sync.Mutex
 	clients   map[string]*sseClient
@@ -30,10 +29,6 @@ type SSEHandler struct {
 
 	syncMu      sync.Mutex
 	activeSyncs map[string]*syncRun
-
-	publicRefreshMu      sync.Mutex
-	publicRefreshLastRun *time.Time
-	publicRefreshNextRun *time.Time
 
 	statePath   string
 	persistMu   sync.Mutex
@@ -49,18 +44,16 @@ type sseClient struct {
 func NewSSEHandler(
 	public *service.PublicService,
 	groups domain.GroupRepository,
-	publicRefreshInterval time.Duration,
 	statePath string,
 	logger *slog.Logger,
 ) *SSEHandler {
 	h := &SSEHandler{
-		public:                public,
-		groups:                groups,
-		logger:                logger,
-		publicRefreshInterval: publicRefreshInterval,
-		activeSyncs:           make(map[string]*syncRun),
-		statePath:             strings.TrimSpace(statePath),
-		clients:               make(map[string]*sseClient),
+		public:      public,
+		groups:      groups,
+		logger:      logger,
+		activeSyncs: make(map[string]*syncRun),
+		statePath:   strings.TrimSpace(statePath),
+		clients:     make(map[string]*sseClient),
 	}
 	h.loadSnapshot()
 	return h
@@ -144,7 +137,6 @@ func (h *SSEHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.writeEvent(w, flusher, map[string]any{"type": "welcome", "version": 1})
-	h.sendPublicRefreshStateSSE(w, flusher)
 
 	for {
 		select {
@@ -418,68 +410,6 @@ func (h *SSEHandler) runGroupSync(groupID string) {
 
 func isSyncTerminal(status string) bool {
 	return status == "done" || status == "unavailable" || status == "error"
-}
-
-// UpdatePublicRefreshSchedule stores and broadcasts next public source refresh metadata.
-func (h *SSEHandler) UpdatePublicRefreshSchedule(lastRunAt, nextRunAt *time.Time) {
-	h.publicRefreshMu.Lock()
-	if h.publicRefreshInterval <= 0 {
-		h.publicRefreshLastRun = nil
-		h.publicRefreshNextRun = nil
-	} else {
-		if lastRunAt != nil {
-			h.publicRefreshLastRun = cloneTimePtr(lastRunAt)
-		}
-		if nextRunAt != nil {
-			h.publicRefreshNextRun = cloneTimePtr(nextRunAt)
-		}
-	}
-	h.publicRefreshMu.Unlock()
-	h.broadcastPublicRefreshState()
-}
-
-func (h *SSEHandler) broadcastPublicRefreshState() {
-	payload := h.publicRefreshPayload()
-	h.broadcastJSON(payload)
-}
-
-func (h *SSEHandler) sendPublicRefreshStateSSE(w http.ResponseWriter, flusher http.Flusher) {
-	h.writeEvent(w, flusher, h.publicRefreshPayload())
-}
-
-func (h *SSEHandler) publicRefreshPayload() map[string]any {
-	h.publicRefreshMu.Lock()
-	lastRunAt := cloneTimePtr(h.publicRefreshLastRun)
-	nextRunAt := cloneTimePtr(h.publicRefreshNextRun)
-	h.publicRefreshMu.Unlock()
-
-	payload := map[string]any{
-		"type":                "public_refresh_state",
-		"enabled":             h.publicRefreshInterval > 0,
-		"interval_ms":         h.publicRefreshInterval.Milliseconds(),
-		"server_time":         time.Now().UTC().Format(time.RFC3339),
-		"last_refresh_at":     "",
-		"next_refresh_at":     "",
-		"next_refresh_in_ms":  int64(-1),
-		"last_refresh_age_ms": int64(-1),
-	}
-	if lastRunAt != nil {
-		payload["last_refresh_at"] = lastRunAt.UTC().Format(time.RFC3339)
-		payload["last_refresh_age_ms"] = time.Since(lastRunAt.UTC()).Milliseconds()
-	}
-	if nextRunAt != nil {
-		payload["next_refresh_at"] = nextRunAt.UTC().Format(time.RFC3339)
-		payload["next_refresh_in_ms"] = time.Until(nextRunAt.UTC()).Milliseconds()
-	}
-	return payload
-}
-
-func cloneTimePtr(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-	cloned := value.UTC()
-	return &cloned
 }
 
 // --- Snapshot persistence ---

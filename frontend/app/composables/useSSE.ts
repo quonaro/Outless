@@ -12,7 +12,6 @@ const sseConnected = ref(false)
 const sseConnecting = ref(false)
 const sseEverOpened = ref(false)
 
-const globalSubs = new Set<(msg: Record<string, unknown>) => void>()
 const groupSyncSubs = new Map<string, Set<(msg: Record<string, unknown>) => void>>()
 const openHandlers = new Set<() => void>()
 
@@ -57,21 +56,15 @@ function dispatch(msg: Record<string, unknown>) {
     }
     return
   }
-  for (const cb of [...globalSubs]) cb(msg)
   const gid = typeof msg.group_id === 'string' ? msg.group_id : ''
   if (!gid) return
   const set = groupSyncSubs.get(gid)
   if (!set) return
-  for (const cb of [...set]) cb(msg)
+  for (const cb of set) cb(msg)
 }
 
 function notifyOpen() {
-  for (const h of [...openHandlers]) h()
-}
-
-export function subscribeSSE(cb: (msg: Record<string, unknown>) => void): () => void {
-  globalSubs.add(cb)
-  return () => globalSubs.delete(cb)
+  for (const h of openHandlers) h()
 }
 
 export function onSSEOpen(handler: () => void): () => void {
