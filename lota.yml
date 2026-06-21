@@ -15,7 +15,7 @@ build:
     rm -rf "$WEB_DIST"
     mkdir -p "$WEB_DIST"
     cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
-    CGO_ENABLED=0 go build -trimpath -tags with_reality_server -ldflags="-s -w" -o "$BINARY" ./cmd/outless
+    CGO_ENABLED=0 go build -trimpath -tags "with_reality_server with_utls" -ldflags="-s -w" -o "$BINARY" ./cmd/outless
 
 clean:
   desc: Remove built binary and distribution files

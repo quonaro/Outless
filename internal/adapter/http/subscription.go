@@ -25,7 +25,7 @@ func NewSubscriptionHandler(service *service.SubscriptionService, logger *slog.L
 
 type getSubscriptionInput struct {
 	Token     string `path:"token" maxLength:"128"`
-	InboundID string `path:"inbound_id" optional:"true" maxLength:"128"`
+	InboundID string `query:"inbound_id" maxLength:"128"`
 }
 
 type getSubscriptionOutput struct {
@@ -36,7 +36,6 @@ type getSubscriptionOutput struct {
 // Register wires subscription endpoints into Huma API.
 func (h *SubscriptionHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/sub/{token}", h.getSubscription)
-	huma.Get(api, "/v1/sub/{token}/{inbound_id}", h.getSubscription)
 }
 
 func (h *SubscriptionHandler) getSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
@@ -52,7 +51,7 @@ func (h *SubscriptionHandler) getSubscription(ctx context.Context, input *getSub
 		}
 
 		h.logger.Error("failed to build subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, err
+		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
 
 	if payload == "" {

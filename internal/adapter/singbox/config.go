@@ -65,7 +65,7 @@ func sanitizeTag(raw string) string {
 // one user per token+node combination, one VLESS outbound per exit node, and
 // route rules that send each user to its specific outbound. Unmatched traffic
 // is blocked.
-func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubInboundConfig, logger *slog.Logger) (option.Options, error) {
+func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubInboundConfig, singboxLogLevel string, logger *slog.Logger) (option.Options, error) {
 	enableAutoSelfNode := false
 	if len(inbounds) > 0 {
 		enableAutoSelfNode = inbounds[0].EnableAutoSelfNode
@@ -89,13 +89,13 @@ func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubI
 		return option.Options{}, err
 	}
 
-	logLevel := "info"
-	if len(inbounds) > 0 && inbounds[0].LogLevel != "" {
-		logLevel = inbounds[0].LogLevel
+	logLevel := strings.TrimSpace(singboxLogLevel)
+	if logLevel == "" {
+		logLevel = "warn"
 	}
 
 	opts := option.Options{
-		Log:       &option.LogOptions{Level: logLevel, Timestamp: true},
+		Log:       &option.LogOptions{Level: logLevel, Timestamp: false},
 		Inbounds:  inboundOptions,
 		Outbounds: outbounds,
 		Route: &option.RouteOptions{
@@ -139,11 +139,20 @@ func buildInbounds(inbounds []HubInboundConfig, users []option.VLESSUser, logger
 		if handshake == "" {
 			handshake = inbound.SNI
 		}
-
-		var shortIDs option.Listable[string]
-		if inbound.ShortID != "" {
-			shortIDs = option.Listable[string]{inbound.ShortID}
+		if handshake == "" {
+			handshake = "www.google.com"
 		}
+
+		sni := inbound.SNI
+		if sni == "" {
+			sni = handshake
+		}
+
+		shortID := inbound.ShortID
+		if shortID == "" {
+			shortID = "0000000000000000"
+		}
+		var shortIDs option.Listable[string] = option.Listable[string]{shortID}
 
 		reality := &option.InboundRealityOptions{
 			Enabled:    true,
@@ -163,7 +172,7 @@ func buildInbounds(inbounds []HubInboundConfig, users []option.VLESSUser, logger
 			InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{
 				TLS: &option.InboundTLSOptions{
 					Enabled:    true,
-					ServerName: inbound.SNI,
+					ServerName: sni,
 					Reality:    reality,
 				},
 			},

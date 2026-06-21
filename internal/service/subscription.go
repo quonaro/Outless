@@ -25,6 +25,7 @@ type HubConfig struct {
 	Host               string
 	Port               int
 	SNI                string
+	Handshake          string
 	APIKey             string
 	PublicKey          string
 	ShortID            string
@@ -40,6 +41,7 @@ type SubscriptionService struct {
 	tokenRepo    domain.TokenRepository
 	groupRepo    domain.GroupRepository
 	inboundRepo  domain.InboundRepository
+	externalHost string
 	logger       *slog.Logger
 	groupCache   map[string]cachedGroupNames
 	groupCacheMu sync.RWMutex
@@ -51,14 +53,15 @@ type cachedGroupNames struct {
 }
 
 // NewSubscriptionService constructs a subscription service.
-func NewSubscriptionService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, inboundRepo domain.InboundRepository, logger *slog.Logger) *SubscriptionService {
+func NewSubscriptionService(repo domain.NodeRepository, tokenRepo domain.TokenRepository, groupRepo domain.GroupRepository, inboundRepo domain.InboundRepository, externalHost string, logger *slog.Logger) *SubscriptionService {
 	return &SubscriptionService{
-		repo:        repo,
-		tokenRepo:   tokenRepo,
-		groupRepo:   groupRepo,
-		inboundRepo: inboundRepo,
-		logger:      logger,
-		groupCache:  make(map[string]cachedGroupNames),
+		repo:         repo,
+		tokenRepo:    tokenRepo,
+		groupRepo:    groupRepo,
+		inboundRepo:  inboundRepo,
+		externalHost: externalHost,
+		logger:       logger,
+		groupCache:   make(map[string]cachedGroupNames),
 	}
 }
 
@@ -131,6 +134,7 @@ func toHubConfig(inbound domain.Inbound) HubConfig {
 		Host:               inbound.URLHost,
 		Port:               inbound.Port,
 		SNI:                inbound.SNI,
+		Handshake:          inbound.Handshake,
 		PublicKey:          inbound.PublicKey,
 		ShortID:            inbound.ShortID,
 		Fingerprint:        inbound.Fingerprint,
@@ -271,6 +275,9 @@ func shuffleNodes(nodes []domain.Node) {
 func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub HubConfig) string {
 	host := hub.Host
 	if host == "" {
+		host = s.externalHost
+	}
+	if host == "" {
 		host = "hub.example.com"
 	}
 	port := hub.Port
@@ -278,6 +285,12 @@ func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub Hub
 		port = 443
 	}
 	sni := hub.SNI
+	if sni == "" {
+		sni = hub.Handshake
+	}
+	if sni == "" {
+		sni = "www.google.com"
+	}
 	fingerprint := hub.Fingerprint
 	if fingerprint == "" {
 		fingerprint = "chrome"
@@ -293,7 +306,11 @@ func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub Hub
 	if hub.PublicKey != "" {
 		params.Set("pbk", hub.PublicKey)
 	}
-	params.Set("sid", hub.ShortID)
+	sid := hub.ShortID
+	if sid == "" {
+		sid = "0000000000000000"
+	}
+	params.Set("sid", sid)
 
 	return fmt.Sprintf("vless://%s@%s:%s?%s#%s",
 		uuid, host, strconv.Itoa(port), params.Encode(), url.PathEscape(remark))

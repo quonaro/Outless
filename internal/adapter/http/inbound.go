@@ -121,6 +121,15 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 		}
 	}
 
+	shortID := strings.TrimSpace(input.Body.ShortID)
+	if shortID == "" {
+		shortID, err = config.GenerateRealityShortID()
+		if err != nil {
+			h.logger.Error("failed to generate reality short_id", slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to generate reality short_id")
+		}
+	}
+
 	now := time.Now().UTC()
 	inbound := domain.Inbound{
 		ID:                 id,
@@ -131,7 +140,7 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 		Handshake:          strings.TrimSpace(input.Body.Handshake),
 		PrivateKey:         priv,
 		PublicKey:          pub,
-		ShortID:            strings.TrimSpace(input.Body.ShortID),
+		ShortID:            shortID,
 		Fingerprint:        strings.TrimSpace(input.Body.Fingerprint),
 		URLHost:            strings.TrimSpace(input.Body.URLHost),
 		NameTemplate:       input.Body.NameTemplate,
@@ -200,7 +209,16 @@ func (h *InboundManagementHandler) UpdateInbound(ctx context.Context, input *Upd
 	inbound.Port = input.Body.Port
 	inbound.SNI = strings.TrimSpace(input.Body.SNI)
 	inbound.Handshake = strings.TrimSpace(input.Body.Handshake)
-	inbound.ShortID = strings.TrimSpace(input.Body.ShortID)
+	if strings.TrimSpace(input.Body.ShortID) == "" && inbound.ShortID == "" {
+		shortID, err := config.GenerateRealityShortID()
+		if err != nil {
+			h.logger.Error("failed to generate reality short_id", slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to generate reality short_id")
+		}
+		inbound.ShortID = shortID
+	} else if strings.TrimSpace(input.Body.ShortID) != "" {
+		inbound.ShortID = strings.TrimSpace(input.Body.ShortID)
+	}
 	inbound.Fingerprint = strings.TrimSpace(input.Body.Fingerprint)
 	inbound.URLHost = strings.TrimSpace(input.Body.URLHost)
 	inbound.NameTemplate = input.Body.NameTemplate

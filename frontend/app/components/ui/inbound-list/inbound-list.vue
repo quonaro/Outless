@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { Plus, Copy, Check } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import type { Inbound, CreateInbound } from "~/utils/schemas/inbound";
@@ -11,6 +11,7 @@ import {
 } from "~/composables/inbounds/useInbounds";
 import UiButton from "~/components/ui/button/button.vue";
 import UiInput from "~/components/ui/input/input.vue";
+import UiSelect from "~/components/ui/select/select.vue";
 import UiCard from "~/components/ui/card/card.vue";
 import CardHeader from "~/components/ui/card/CardHeader.vue";
 import CardTitle from "~/components/ui/card/CardTitle.vue";
@@ -30,6 +31,47 @@ const copiedUrlId = ref<string | null>(null);
 
 type InboundForm = Omit<CreateInbound, "port"> & { port: string | number };
 
+const FINGERPRINT_OPTIONS = [
+  { label: "Chrome", value: "chrome" },
+  { label: "Firefox", value: "firefox" },
+  { label: "Safari", value: "safari" },
+  { label: "Edge", value: "edge" },
+  { label: "iOS", value: "ios" },
+  { label: "Android", value: "android" },
+  { label: "Random", value: "random" },
+  { label: "Randomized", value: "randomized" },
+  { label: "360", value: "360" },
+  { label: "QQ", value: "qq" },
+];
+
+const ADDRESS_OPTIONS = [
+  { label: "0.0.0.0 (All IPv4)", value: "0.0.0.0" },
+  { label: "127.0.0.1 (Local)", value: "127.0.0.1" },
+  { label: ":: (All IPv6)", value: "::" },
+  { label: "::1 (Local IPv6)", value: "::1" },
+  { label: "Custom", value: "__custom__" },
+];
+
+const TEMPLATE_OPTIONS = [
+  {
+    label: "Flag Country | Group",
+    value: "{{vless.country_flag}} {{vless.country}} | {{vless.group}}",
+  },
+  { label: "Country - Group", value: "{{vless.country}} - {{vless.group}}" },
+  { label: "Node Name", value: "{{vless.name}}" },
+  {
+    label: "Flag Node Name",
+    value: "{{vless.country_flag}} {{vless.name}}",
+  },
+  { label: "Custom", value: "__custom__" },
+];
+
+function generateShortId(): string {
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const form = ref<InboundForm>({
   name: "",
   address: "0.0.0.0",
@@ -37,7 +79,7 @@ const form = ref<InboundForm>({
   sni: "",
   handshake: "",
   private_key: "",
-  short_id: "",
+  short_id: generateShortId(),
   fingerprint: "chrome",
   url_host: "",
   name_template: "",
@@ -48,6 +90,38 @@ const form = ref<InboundForm>({
 const isCreateSubmitting = ref(false);
 const isEditSubmitting = ref(false);
 
+const addressSelectValue = computed({
+  get: () =>
+    ADDRESS_OPTIONS.some((o) => o.value === form.value.address)
+      ? form.value.address
+      : "__custom__",
+  set: (val: string) => {
+    if (val !== "__custom__") {
+      form.value.address = val;
+    }
+  },
+});
+
+const isCustomAddress = computed(
+  () => addressSelectValue.value === "__custom__",
+);
+
+const templateSelectValue = computed({
+  get: () =>
+    TEMPLATE_OPTIONS.some((o) => o.value === form.value.name_template)
+      ? form.value.name_template
+      : "__custom__",
+  set: (val: string) => {
+    if (val !== "__custom__") {
+      form.value.name_template = val;
+    }
+  },
+});
+
+const isCustomTemplate = computed(
+  () => templateSelectValue.value === "__custom__",
+);
+
 function resetForm() {
   form.value = {
     name: "",
@@ -56,7 +130,7 @@ function resetForm() {
     sni: "",
     handshake: "",
     private_key: "",
-    short_id: "",
+    short_id: generateShortId(),
     fingerprint: "chrome",
     url_host: "",
     name_template: "",
@@ -172,7 +246,7 @@ function copyPublicKey(inbound: Inbound) {
 
 function subscriptionUrl(inbound: Inbound) {
   const base = window.location.origin;
-  return `${base}/v1/sub/{token}/${inbound.id}`;
+  return `${base}/v1/sub/{token}?inbound_id=${inbound.id}`;
 }
 
 function copySubscriptionUrl(inbound: Inbound) {
@@ -283,7 +357,15 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Listen Address</label>
-              <UiInput v-model="form.address" placeholder="0.0.0.0" />
+              <UiSelect
+                v-model="addressSelectValue"
+                :options="ADDRESS_OPTIONS"
+              />
+              <UiInput
+                v-if="isCustomAddress"
+                v-model="form.address"
+                placeholder="192.168.1.10"
+              />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Port</label>
@@ -308,11 +390,28 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Short ID</label>
-              <UiInput v-model="form.short_id" placeholder="" />
+              <div class="flex gap-2">
+                <UiInput
+                  v-model="form.short_id"
+                  placeholder=""
+                  class="flex-1"
+                />
+                <UiButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  @click="form.short_id = generateShortId()"
+                >
+                  Generate
+                </UiButton>
+              </div>
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Fingerprint</label>
-              <UiInput v-model="form.fingerprint" placeholder="chrome" />
+              <UiSelect
+                v-model="form.fingerprint"
+                :options="FINGERPRINT_OPTIONS"
+              />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">URL Host</label>
@@ -320,7 +419,12 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2 md:col-span-2">
               <label class="text-sm font-medium">Name Template</label>
+              <UiSelect
+                v-model="templateSelectValue"
+                :options="TEMPLATE_OPTIONS"
+              />
               <UiInput
+                v-if="isCustomTemplate"
                 v-model="form.name_template"
                 placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
               />
@@ -376,7 +480,15 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Listen Address</label>
-              <UiInput v-model="form.address" placeholder="0.0.0.0" />
+              <UiSelect
+                v-model="addressSelectValue"
+                :options="ADDRESS_OPTIONS"
+              />
+              <UiInput
+                v-if="isCustomAddress"
+                v-model="form.address"
+                placeholder="192.168.1.10"
+              />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Port</label>
@@ -401,11 +513,28 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Short ID</label>
-              <UiInput v-model="form.short_id" placeholder="" />
+              <div class="flex gap-2">
+                <UiInput
+                  v-model="form.short_id"
+                  placeholder=""
+                  class="flex-1"
+                />
+                <UiButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  @click="form.short_id = generateShortId()"
+                >
+                  Generate
+                </UiButton>
+              </div>
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Fingerprint</label>
-              <UiInput v-model="form.fingerprint" placeholder="chrome" />
+              <UiSelect
+                v-model="form.fingerprint"
+                :options="FINGERPRINT_OPTIONS"
+              />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">URL Host</label>
@@ -413,7 +542,12 @@ function copySubscriptionUrl(inbound: Inbound) {
             </div>
             <div class="space-y-2 md:col-span-2">
               <label class="text-sm font-medium">Name Template</label>
+              <UiSelect
+                v-model="templateSelectValue"
+                :options="TEMPLATE_OPTIONS"
+              />
               <UiInput
+                v-if="isCustomTemplate"
                 v-model="form.name_template"
                 placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
               />

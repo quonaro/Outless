@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ type Config struct {
 type AppConfig struct {
 	ShutdownGracetime time.Duration `yaml:"shutdown_gracetime"`
 	HTTPPort          int           `yaml:"http_port"`
+	ExternalHost      string        `yaml:"external_host"`     // host used in subscription URLs when inbound.URLHost is empty
+	SingboxLogLevel   string        `yaml:"singbox_log_level"` // sing-box log level: trace/debug/info/warn/error/fatal/panic; empty = warn
 	Logs              LogsConfig    `yaml:"logs"`
 	DisableDocs       bool          `yaml:"disable_docs"`
 }
@@ -95,6 +98,15 @@ func DeriveRealityPublicKey(privateKey string) (string, error) {
 		return "", fmt.Errorf("deriving reality public key: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(pubBytes), nil
+}
+
+// GenerateRealityShortID generates a random REALITY short_id (8 bytes, hex encoded).
+func GenerateRealityShortID() (string, error) {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("reading random short_id: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 // Validate checks critical configuration values and returns an error if they are invalid.

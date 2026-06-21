@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -15,11 +16,12 @@ import (
 // RuntimeController manages an embedded sing-box instance. Because sing-box has
 // no in-place graceful reload, Reload performs a debounced close+recreate.
 type RuntimeController struct {
-	logger      *slog.Logger
-	tokenRepo   domain.TokenRepository
-	nodeRepo    domain.NodeRepository
-	inboundRepo domain.InboundRepository
-	debounce    time.Duration
+	logger          *slog.Logger
+	tokenRepo       domain.TokenRepository
+	nodeRepo        domain.NodeRepository
+	inboundRepo     domain.InboundRepository
+	singboxLogLevel string
+	debounce        time.Duration
 
 	mu       sync.Mutex
 	instance *box.Box
@@ -34,17 +36,19 @@ func NewRuntimeController(
 	tokenRepo domain.TokenRepository,
 	nodeRepo domain.NodeRepository,
 	inboundRepo domain.InboundRepository,
+	singboxLogLevel string,
 	debounce time.Duration,
 ) *RuntimeController {
 	if debounce <= 0 {
 		debounce = 3 * time.Second
 	}
 	return &RuntimeController{
-		logger:      logger,
-		tokenRepo:   tokenRepo,
-		nodeRepo:    nodeRepo,
-		inboundRepo: inboundRepo,
-		debounce:    debounce,
+		logger:          logger,
+		tokenRepo:       tokenRepo,
+		nodeRepo:        nodeRepo,
+		inboundRepo:     inboundRepo,
+		singboxLogLevel: singboxLogLevel,
+		debounce:        debounce,
 	}
 }
 
@@ -157,9 +161,16 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 		})
 	}
 
-	opts, err := GenerateOptions(tokens, nodes, hubInbounds, r.logger)
+	opts, err := GenerateOptions(tokens, nodes, hubInbounds, r.singboxLogLevel, r.logger)
 	if err != nil {
 		return fmt.Errorf("generating sing-box options: %w", err)
+	}
+
+	r.closeLocked()
+
+	if r.logger != nil {
+		debugJSON, _ := json.MarshalIndent(opts, "", "  ")
+		r.logger.Debug("sing-box options", slog.String("config", string(debugJSON)))
 	}
 
 	instance, err := box.New(box.Options{Context: ctx, Options: opts})
@@ -171,7 +182,6 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 		return fmt.Errorf("starting sing-box instance: %w", err)
 	}
 
-	r.closeLocked()
 	r.instance = instance
 	return nil
 }
