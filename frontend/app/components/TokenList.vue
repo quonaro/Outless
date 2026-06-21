@@ -236,7 +236,7 @@ async function copyText(value: string) {
 function viewAccessURL(token: Token) {
   selectedAccessURL.value = resolveAccessURL(token)
   if (!selectedAccessURL.value) {
-    alert('Access URL is unavailable for this legacy token. Re-issue token to recover URL.')
+    toast.error('Access URL is unavailable for this legacy token. Re-issue token to recover URL.')
     return
   }
   showAccessURLDialog.value = true

@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
       </template>
 
       <div class="space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div v-if="selectedNodeIDs.size > 0" class="flex items-center gap-2">
             <span class="text-sm font-medium">{{ selectedNodeIDs.size }} selected</span>
             <UiButton size="sm" variant="outline" @click="openBulkMoveDialog"> Move </UiButton>
@@ -370,8 +370,6 @@ onBeforeUnmount(() => {
               Create Node
             </UiButton>
           </div>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
           <UiInput
             id="node-search"
             v-model="search"
