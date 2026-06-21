@@ -42,6 +42,10 @@ const handleLogout = () => {
   sidebar.closeMobile()
   navigateTo('/login')
 }
+
+const handleCloseMobile = () => {
+  sidebar.closeMobile()
+}
 </script>
 
 <template>
@@ -76,7 +80,7 @@ const handleLogout = () => {
         </div>
         <button
           class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          @click="sidebar.closeMobile()"
+          @click="handleCloseMobile()"
         >
           <X class="h-5 w-5" />
         </button>
