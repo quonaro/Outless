@@ -58,9 +58,6 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 	}
 
 	moduleName := strings.TrimSpace(module)
-	if moduleName == "" {
-		moduleName = "unknown"
-	}
 
 	var consoleHandler slog.Handler
 	switch logType {
