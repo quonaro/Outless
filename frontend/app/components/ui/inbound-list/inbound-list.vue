@@ -222,7 +222,7 @@ async function generatePrivateKey() {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end items-center">
+    <div class="flex justify-start items-center">
       <UiButton @click="openCreateDialog">
         <Plus class="h-4 w-4 mr-2" />
         Create Inbound

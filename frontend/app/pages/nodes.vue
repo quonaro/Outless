@@ -5,6 +5,7 @@ import { Plus, Server } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
+import UiCard from '~/components/ui/card/card.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import Sheet from '~/components/ui/sheet/Sheet.vue'
 import SheetContent from '~/components/ui/sheet/SheetContent.vue'
@@ -351,10 +352,6 @@ onBeforeUnmount(() => {
 
       <div class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <UiButton variant="outline" @click="viewMode = 'grouped'">Grouped</UiButton>
-            <UiButton variant="outline" @click="viewMode = 'flat'">Flat</UiButton>
-          </div>
           <div v-if="selectedNodeIDs.size > 0" class="flex items-center gap-2">
             <span class="text-sm font-medium">{{ selectedNodeIDs.size }} selected</span>
             <UiButton size="sm" variant="outline" @click="openBulkMoveDialog"> Move </UiButton>

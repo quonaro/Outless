@@ -403,7 +403,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-end gap-3">
+    <div class="flex items-center justify-start gap-3">
       <UiButton @click="openCreateDialog">
         <Plus class="h-4 w-4" />
         Issue Token
