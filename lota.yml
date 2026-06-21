@@ -1,0 +1,32 @@
+vars:
+- FRONTEND_DIR=./frontend
+- WEB_DIST=web/dist
+- BINARY=outless
+
+build:
+  desc: Build frontend and Go binary
+  script: |
+    set -euo pipefail
+    (
+      cd "$FRONTEND_DIR"
+      pnpm install
+      pnpm generate
+    )
+    rm -rf "$WEB_DIST"
+    mkdir -p "$WEB_DIST"
+    cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
+    go build -tags with_reality_server -o "$BINARY" ./cmd/outless
+
+clean:
+  desc: Remove built binary and distribution files
+  script: |
+    rm -f "$BINARY"
+    rm -rf "$WEB_DIST"
+
+run:
+  desc: Run the application
+  depends:
+  - build
+  parallel: false
+  script: |
+    ./outless

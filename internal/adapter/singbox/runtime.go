@@ -1,0 +1,184 @@
+package singbox
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"outless/internal/domain"
+
+	box "github.com/sagernet/sing-box"
+)
+
+// RuntimeController manages an embedded sing-box instance. Because sing-box has
+// no in-place graceful reload, Reload performs a debounced close+recreate.
+type RuntimeController struct {
+	logger      *slog.Logger
+	tokenRepo   domain.TokenRepository
+	nodeRepo    domain.NodeRepository
+	inboundRepo domain.InboundRepository
+	debounce    time.Duration
+
+	mu       sync.Mutex
+	instance *box.Box
+	baseCtx  context.Context
+	timer    *time.Timer
+	started  bool
+}
+
+// NewRuntimeController creates an embedded sing-box runtime controller.
+func NewRuntimeController(
+	logger *slog.Logger,
+	tokenRepo domain.TokenRepository,
+	nodeRepo domain.NodeRepository,
+	inboundRepo domain.InboundRepository,
+	debounce time.Duration,
+) *RuntimeController {
+	if debounce <= 0 {
+		debounce = 3 * time.Second
+	}
+	return &RuntimeController{
+		logger:      logger,
+		tokenRepo:   tokenRepo,
+		nodeRepo:    nodeRepo,
+		inboundRepo: inboundRepo,
+		debounce:    debounce,
+	}
+}
+
+// Description identifies this controller.
+func (r *RuntimeController) Description() string { return "embedded-singbox" }
+
+// Start builds the initial config from the database and starts sing-box.
+func (r *RuntimeController) Start(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.baseCtx = ctx
+	if err := r.rebuildLocked(ctx); err != nil {
+		return fmt.Errorf("starting sing-box: %w", err)
+	}
+	r.started = true
+	r.logger.Info("sing-box started")
+	return nil
+}
+
+// Reload schedules a debounced rebuild of the sing-box instance.
+func (r *RuntimeController) Reload() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.started {
+		return nil
+	}
+	if r.timer != nil {
+		r.timer.Stop()
+	}
+	r.timer = time.AfterFunc(r.debounce, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if !r.started || r.baseCtx == nil {
+			return
+		}
+		if err := r.rebuildLocked(r.baseCtx); err != nil {
+			r.logger.Error("sing-box reload failed", slog.String("error", err.Error()))
+		} else {
+			r.logger.Info("sing-box reloaded")
+		}
+	})
+	return nil
+}
+
+// ForceSync rebuilds the instance immediately, bypassing debounce.
+func (r *RuntimeController) ForceSync() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.started || r.baseCtx == nil {
+		return nil
+	}
+	if err := r.rebuildLocked(r.baseCtx); err != nil {
+		return fmt.Errorf("force sync sing-box: %w", err)
+	}
+	r.logger.Info("sing-box force-synced")
+	return nil
+}
+
+// RemoveUser triggers a reload; sing-box has no granular user removal API.
+func (r *RuntimeController) RemoveUser(string) error { return r.Reload() }
+
+// RemoveRulesForUser triggers a reload; rules are regenerated from the database.
+func (r *RuntimeController) RemoveRulesForUser(string) error { return r.Reload() }
+
+// Stop closes the running sing-box instance.
+func (r *RuntimeController) Stop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.timer != nil {
+		r.timer.Stop()
+		r.timer = nil
+	}
+	r.closeLocked()
+	r.started = false
+	r.logger.Info("sing-box stopped")
+}
+
+// rebuildLocked regenerates options from the database and replaces the running
+// instance. Caller must hold r.mu.
+func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
+	now := time.Now().UTC()
+
+	tokens, err := r.tokenRepo.ListActive(ctx, now)
+	if err != nil {
+		return fmt.Errorf("listing active tokens: %w", err)
+	}
+	nodes, err := r.nodeRepo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("listing nodes: %w", err)
+	}
+	inbounds, err := r.inboundRepo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("listing inbounds: %w", err)
+	}
+
+	hubInbounds := make([]HubInboundConfig, 0, len(inbounds))
+	for _, inbound := range inbounds {
+		hubInbounds = append(hubInbounds, HubInboundConfig{
+			Listen:             inbound.Address,
+			Port:               inbound.Port,
+			SNI:                inbound.SNI,
+			Handshake:          inbound.Handshake,
+			PrivateKey:         inbound.PrivateKey,
+			ShortID:            inbound.ShortID,
+			EnableAutoSelfNode: inbound.EnableAutoSelfNode,
+		})
+	}
+
+	opts, err := GenerateOptions(tokens, nodes, hubInbounds, r.logger)
+	if err != nil {
+		return fmt.Errorf("generating sing-box options: %w", err)
+	}
+
+	instance, err := box.New(box.Options{Context: ctx, Options: opts})
+	if err != nil {
+		return fmt.Errorf("creating sing-box instance: %w", err)
+	}
+	if err := instance.Start(); err != nil {
+		_ = instance.Close()
+		return fmt.Errorf("starting sing-box instance: %w", err)
+	}
+
+	r.closeLocked()
+	r.instance = instance
+	return nil
+}
+
+func (r *RuntimeController) closeLocked() {
+	if r.instance != nil {
+		_ = r.instance.Close()
+		r.instance = nil
+	}
+}

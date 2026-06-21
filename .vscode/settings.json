@@ -1,0 +1,19 @@
+{
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true,
+    "**/vendor": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/tmp": true,
+    "outless": true,
+    "outless.db": false,
+    "outless.db-shm": true,
+    "outless.db-wal": true,
+    "frontend/node_modules": true,
+    "frontend/.nuxt": true,
+    "frontend/.output": true,
+    "frontend/dist": true
+  }
+}

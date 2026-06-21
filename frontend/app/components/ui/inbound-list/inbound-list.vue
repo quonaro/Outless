@@ -1,0 +1,455 @@
+<script setup lang="ts">
+import { ref } from "vue";
+import { Plus, Copy, Check } from "lucide-vue-next";
+import { toast } from "vue-sonner";
+import type { Inbound, CreateInbound } from "~/utils/schemas/inbound";
+import {
+  useInbounds,
+  useCreateInbound,
+  useUpdateInbound,
+  useDeleteInbound,
+} from "~/composables/inbounds/useInbounds";
+import UiButton from "~/components/ui/button/button.vue";
+import UiInput from "~/components/ui/input/input.vue";
+import UiCard from "~/components/ui/card/card.vue";
+import CardHeader from "~/components/ui/card/CardHeader.vue";
+import CardTitle from "~/components/ui/card/CardTitle.vue";
+import CardContent from "~/components/ui/card/CardContent.vue";
+import CardFooter from "~/components/ui/card/CardFooter.vue";
+
+const { data: inbounds, isLoading } = useInbounds();
+const createMutation = useCreateInbound();
+const updateMutation = useUpdateInbound();
+const deleteMutation = useDeleteInbound();
+
+const showCreateDialog = ref(false);
+const showEditDialog = ref(false);
+const selectedInbound = ref<Inbound | null>(null);
+const copiedKeyId = ref<string | null>(null);
+const copiedUrlId = ref<string | null>(null);
+
+type InboundForm = Omit<CreateInbound, "port"> & { port: string | number };
+
+const form = ref<InboundForm>({
+  name: "",
+  address: "0.0.0.0",
+  port: 443,
+  sni: "",
+  handshake: "",
+  private_key: "",
+  short_id: "",
+  fingerprint: "chrome",
+  url_host: "",
+  name_template: "",
+  enable_auto_self_node: false,
+  auto_self_node_name: "Direct Exit",
+});
+
+const isCreateSubmitting = ref(false);
+const isEditSubmitting = ref(false);
+
+function resetForm() {
+  form.value = {
+    name: "",
+    address: "0.0.0.0",
+    port: 443,
+    sni: "",
+    handshake: "",
+    private_key: "",
+    short_id: "",
+    fingerprint: "chrome",
+    url_host: "",
+    name_template: "",
+    enable_auto_self_node: false,
+    auto_self_node_name: "Direct Exit",
+  };
+}
+
+function fillForm(inbound: Inbound) {
+  form.value = {
+    name: inbound.name,
+    address: inbound.address,
+    port: inbound.port,
+    sni: inbound.sni,
+    handshake: inbound.handshake,
+    private_key: "",
+    short_id: inbound.short_id,
+    fingerprint: inbound.fingerprint,
+    url_host: inbound.url_host,
+    name_template: inbound.name_template,
+    enable_auto_self_node: inbound.enable_auto_self_node,
+    auto_self_node_name: inbound.auto_self_node_name,
+  };
+}
+
+function openCreateDialog() {
+  createMutation.reset();
+  isCreateSubmitting.value = false;
+  resetForm();
+  showCreateDialog.value = true;
+}
+
+function closeCreateDialog() {
+  showCreateDialog.value = false;
+  resetForm();
+}
+
+function openEditDialog(inbound: Inbound) {
+  updateMutation.reset();
+  isEditSubmitting.value = false;
+  selectedInbound.value = inbound;
+  fillForm(inbound);
+  showEditDialog.value = true;
+}
+
+function closeEditDialog() {
+  showEditDialog.value = false;
+  selectedInbound.value = null;
+  resetForm();
+}
+
+function buildPayload(): CreateInbound {
+  const port = parseInt(String(form.value.port), 10);
+  return {
+    ...form.value,
+    port: Number.isNaN(port) ? 443 : port,
+  };
+}
+
+function handleCreate() {
+  if (!form.value.name.trim() || isCreateSubmitting.value) return;
+  isCreateSubmitting.value = true;
+  createMutation.mutate(buildPayload(), {
+    onSuccess: () => {
+      showCreateDialog.value = false;
+      resetForm();
+      toast.success("Inbound created");
+    },
+    onSettled: () => {
+      isCreateSubmitting.value = false;
+    },
+  });
+}
+
+function handleUpdate() {
+  if (
+    !selectedInbound.value ||
+    !form.value.name.trim() ||
+    isEditSubmitting.value
+  )
+    return;
+  isEditSubmitting.value = true;
+  updateMutation.mutate(
+    { id: selectedInbound.value.id, data: buildPayload() },
+    {
+      onSuccess: () => {
+        showEditDialog.value = false;
+        selectedInbound.value = null;
+        resetForm();
+        toast.success("Inbound updated");
+      },
+      onSettled: () => {
+        isEditSubmitting.value = false;
+      },
+    },
+  );
+}
+
+function handleDelete(inbound: Inbound) {
+  if (!confirm(`Are you sure you want to delete inbound "${inbound.name}"?`))
+    return;
+  deleteMutation.mutate(inbound.id, {
+    onSuccess: () => toast.success("Inbound deleted"),
+  });
+}
+
+function copyPublicKey(inbound: Inbound) {
+  navigator.clipboard.writeText(inbound.public_key);
+  copiedKeyId.value = inbound.id;
+  toast.success("Public key copied");
+  setTimeout(() => (copiedKeyId.value = null), 1500);
+}
+
+function subscriptionUrl(inbound: Inbound) {
+  const base = window.location.origin;
+  return `${base}/v1/sub/{token}/${inbound.id}`;
+}
+
+function copySubscriptionUrl(inbound: Inbound) {
+  navigator.clipboard.writeText(subscriptionUrl(inbound));
+  copiedUrlId.value = inbound.id;
+  toast.success("Subscription URL copied");
+  setTimeout(() => (copiedUrlId.value = null), 1500);
+}
+</script>
+
+<template>
+  <div class="space-y-4">
+    <div class="flex justify-end items-center">
+      <UiButton @click="openCreateDialog">
+        <Plus class="h-4 w-4 mr-2" />
+        Create Inbound
+      </UiButton>
+    </div>
+
+    <div v-if="isLoading" class="text-center text-muted-foreground py-8">
+      Loading inbounds...
+    </div>
+    <div
+      v-else-if="!inbounds || inbounds.length === 0"
+      class="text-center text-muted-foreground py-8"
+    >
+      No inbounds configured
+    </div>
+
+    <UiCard v-for="inbound in inbounds" :key="inbound.id" class="p-4">
+      <CardContent class="p-0">
+        <div
+          class="flex flex-col md:flex-row md:items-center justify-between gap-4"
+        >
+          <div class="space-y-1">
+            <h3 class="font-semibold text-lg">{{ inbound.name }}</h3>
+            <p class="text-muted-foreground text-sm">
+              {{ inbound.address }}:{{ inbound.port }} · SNI:
+              {{ inbound.sni || "-" }}
+            </p>
+            <p class="text-muted-foreground text-sm">
+              URL Host: {{ inbound.url_host || "-" }} · Fingerprint:
+              {{ inbound.fingerprint }}
+            </p>
+            <p class="text-muted-foreground text-sm">
+              Public Key: {{ inbound.public_key.slice(0, 16) }}...{{
+                inbound.public_key.slice(-8)
+              }}
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <UiButton
+              variant="outline"
+              size="sm"
+              @click="copyPublicKey(inbound)"
+            >
+              <component
+                :is="copiedKeyId === inbound.id ? Check : Copy"
+                class="h-4 w-4 mr-1"
+              />
+              Copy Key
+            </UiButton>
+            <UiButton
+              variant="outline"
+              size="sm"
+              @click="copySubscriptionUrl(inbound)"
+            >
+              <component
+                :is="copiedUrlId === inbound.id ? Check : Copy"
+                class="h-4 w-4 mr-1"
+              />
+              Copy Sub URL
+            </UiButton>
+            <UiButton
+              variant="outline"
+              size="sm"
+              @click="openEditDialog(inbound)"
+            >
+              Edit
+            </UiButton>
+            <UiButton
+              variant="destructive"
+              size="sm"
+              :disabled="deleteMutation.isPending"
+              @click="handleDelete(inbound)"
+            >
+              Delete
+            </UiButton>
+          </div>
+        </div>
+      </CardContent>
+    </UiCard>
+
+    <!-- Create Dialog -->
+    <div
+      v-if="showCreateDialog"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+    >
+      <UiCard class="w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+        <CardHeader>
+          <CardTitle>Create Inbound</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Name</label>
+              <UiInput v-model="form.name" placeholder="EU Entry" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Listen Address</label>
+              <UiInput v-model="form.address" placeholder="0.0.0.0" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Port</label>
+              <UiInput v-model="form.port" type="number" placeholder="443" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">SNI</label>
+              <UiInput v-model="form.sni" placeholder="www.google.com" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Handshake Server</label>
+              <UiInput v-model="form.handshake" placeholder="www.google.com" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium"
+                >Private Key (optional, generates if empty)</label
+              >
+              <UiInput
+                v-model="form.private_key"
+                placeholder="base64 private key"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Short ID</label>
+              <UiInput v-model="form.short_id" placeholder="" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Fingerprint</label>
+              <UiInput v-model="form.fingerprint" placeholder="chrome" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">URL Host</label>
+              <UiInput v-model="form.url_host" placeholder="example.com" />
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <label class="text-sm font-medium">Name Template</label>
+              <UiInput
+                v-model="form.name_template"
+                placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Auto Self Node Name</label>
+              <UiInput
+                v-model="form.auto_self_node_name"
+                placeholder="Direct Exit"
+              />
+            </div>
+            <div class="flex items-center gap-2 h-full pt-6">
+              <input
+                id="create-auto-self"
+                v-model="form.enable_auto_self_node"
+                type="checkbox"
+                class="h-4 w-4 rounded border-input"
+              />
+              <label for="create-auto-self" class="text-sm font-medium"
+                >Enable Direct Exit</label
+              >
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter class="flex justify-end gap-2">
+          <UiButton variant="outline" @click="closeCreateDialog">
+            Cancel
+          </UiButton>
+          <UiButton
+            :disabled="!form.name.trim() || isCreateSubmitting"
+            @click="handleCreate"
+          >
+            {{ isCreateSubmitting ? "Creating..." : "Create" }}
+          </UiButton>
+        </CardFooter>
+      </UiCard>
+    </div>
+
+    <!-- Edit Dialog -->
+    <div
+      v-if="showEditDialog"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+    >
+      <UiCard class="w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+        <CardHeader>
+          <CardTitle>Edit Inbound</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Name</label>
+              <UiInput v-model="form.name" placeholder="EU Entry" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Listen Address</label>
+              <UiInput v-model="form.address" placeholder="0.0.0.0" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Port</label>
+              <UiInput v-model="form.port" type="number" placeholder="443" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">SNI</label>
+              <UiInput v-model="form.sni" placeholder="www.google.com" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Handshake Server</label>
+              <UiInput v-model="form.handshake" placeholder="www.google.com" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium"
+                >Private Key (leave blank to keep current)</label
+              >
+              <UiInput
+                v-model="form.private_key"
+                placeholder="base64 private key"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Short ID</label>
+              <UiInput v-model="form.short_id" placeholder="" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Fingerprint</label>
+              <UiInput v-model="form.fingerprint" placeholder="chrome" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">URL Host</label>
+              <UiInput v-model="form.url_host" placeholder="example.com" />
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <label class="text-sm font-medium">Name Template</label>
+              <UiInput
+                v-model="form.name_template"
+                placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Auto Self Node Name</label>
+              <UiInput
+                v-model="form.auto_self_node_name"
+                placeholder="Direct Exit"
+              />
+            </div>
+            <div class="flex items-center gap-2 h-full pt-6">
+              <input
+                id="edit-auto-self"
+                v-model="form.enable_auto_self_node"
+                type="checkbox"
+                class="h-4 w-4 rounded border-input"
+              />
+              <label for="edit-auto-self" class="text-sm font-medium"
+                >Enable Direct Exit</label
+              >
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter class="flex justify-end gap-2">
+          <UiButton variant="outline" @click="closeEditDialog">
+            Cancel
+          </UiButton>
+          <UiButton
+            :disabled="!form.name.trim() || isEditSubmitting"
+            @click="handleUpdate"
+          >
+            {{ isEditSubmitting ? "Updating..." : "Update" }}
+          </UiButton>
+        </CardFooter>
+      </UiCard>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,53 @@
+{
+  "name": "outless-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "start:output": "BACKEND_URL=${BACKEND_URL:-http://localhost:41220} NUXT_PUBLIC_API_BASE=${NUXT_PUBLIC_API_BASE:-/api} node .output/server/index.mjs",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@nuxtjs/color-mode": "^3.5.2",
+    "@tanstack/vue-query": "^5.62.0",
+    "@vee-validate/zod": "^4.15.0",
+    "@vueuse/core": "^11.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-vue-next": "^0.468.0",
+    "nuxt": "^4.0.0",
+    "ofetch": "^1.4.0",
+    "radix-vue": "^1.9.7",
+    "reka-ui": "^2.9.6",
+    "shadcn-nuxt": "^2.6.2",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "vee-validate": "^4.15.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vue-sonner": "^2.0.9",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^0.7.0",
+    "@nuxtjs/tailwindcss": "^6.12.0",
+    "@types/node": "^25.6.0",
+    "@vueuse/nuxt": "^12.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vue-tsc": "^2.2.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

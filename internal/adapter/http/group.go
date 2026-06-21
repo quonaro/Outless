@@ -1,0 +1,214 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"outless/internal/domain"
+	"outless/internal/service"
+)
+
+type GroupManagementHandler struct {
+	groupRepo           domain.GroupRepository
+	nodeRepo            domain.NodeRepository
+	realtime            *SSEHandler
+	subscriptionService *service.SubscriptionService
+	logger              *slog.Logger
+}
+
+func NewGroupManagementHandler(groupRepo domain.GroupRepository, nodeRepo domain.NodeRepository, realtime *SSEHandler, subscriptionService *service.SubscriptionService, logger *slog.Logger) *GroupManagementHandler {
+	return &GroupManagementHandler{
+		groupRepo:           groupRepo,
+		nodeRepo:            nodeRepo,
+		realtime:            realtime,
+		subscriptionService: subscriptionService,
+		logger:              logger,
+	}
+}
+
+type CreateGroupInput struct {
+	Body struct {
+		Name          string `json:"name" required:"true" maxLength:"100"`
+		SourceURL     string `json:"source_url"`
+		RandomEnabled bool   `json:"random_enabled"`
+		RandomLimit   *int   `json:"random_limit"`
+	}
+}
+
+type CreateGroupOutput struct {
+	Body struct {
+		ID            string     `json:"id"`
+		Name          string     `json:"name"`
+		SourceURL     string     `json:"source_url"`
+		RandomEnabled bool       `json:"random_enabled"`
+		RandomLimit   *int       `json:"random_limit"`
+		LastSyncedAt  *time.Time `json:"last_synced_at"`
+		CreatedAt     time.Time  `json:"created_at"`
+	}
+}
+
+type ListGroupsOutput struct {
+	Body []GroupItem `json:"groups"`
+}
+
+type UpdateGroupInput struct {
+	ID   string `path:"id" required:"true"`
+	Body struct {
+		Name          string `json:"name" required:"true" maxLength:"100"`
+		SourceURL     string `json:"source_url"`
+		RandomEnabled bool   `json:"random_enabled"`
+		RandomLimit   *int   `json:"random_limit"`
+	}
+}
+
+type DeleteGroupInput struct {
+	ID string `path:"id" required:"true"`
+}
+
+type GroupItem struct {
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	SourceURL     string     `json:"source_url"`
+	TotalNodes    int        `json:"total_nodes"`
+	RandomEnabled bool       `json:"random_enabled"`
+	RandomLimit   *int       `json:"random_limit"`
+	LastSyncedAt  *time.Time `json:"last_synced_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+func (h *GroupManagementHandler) Register(api huma.API) {
+	huma.Post(api, "/v1/groups", h.CreateGroup)
+	huma.Get(api, "/v1/groups", h.ListGroups)
+	huma.Put(api, "/v1/groups/{id}", h.UpdateGroup)
+	huma.Delete(api, "/v1/groups/{id}", h.DeleteGroup)
+}
+
+func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateGroupInput) (*CreateGroupOutput, error) {
+	input.Body.Name = strings.TrimSpace(input.Body.Name)
+	if input.Body.Name == "" {
+		return nil, huma.Error400BadRequest("name is required")
+	}
+
+	id, err := domain.GenerateGroupID()
+	if err != nil {
+		h.logger.Error("failed to generate group id", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to create group")
+	}
+
+	group := domain.Group{
+		ID:            id,
+		Name:          input.Body.Name,
+		SourceURL:     strings.TrimSpace(input.Body.SourceURL),
+		RandomEnabled: input.Body.RandomEnabled,
+		RandomLimit:   input.Body.RandomLimit,
+		CreatedAt:     time.Now().UTC(),
+	}
+
+	if !input.Body.RandomEnabled && input.Body.RandomLimit != nil {
+		group.RandomEnabled = true
+	}
+
+	if err := h.groupRepo.Create(ctx, group); err != nil {
+		h.logger.Error("failed to create group", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to create group")
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(false, true)
+	}
+
+	out := &CreateGroupOutput{}
+	out.Body.ID = id
+	out.Body.Name = group.Name
+	out.Body.SourceURL = group.SourceURL
+	out.Body.RandomEnabled = group.RandomEnabled
+	out.Body.RandomLimit = group.RandomLimit
+	out.Body.LastSyncedAt = group.LastSyncedAt
+	out.Body.CreatedAt = group.CreatedAt
+
+	return out, nil
+}
+
+func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*ListGroupsOutput, error) {
+	groups, err := h.groupRepo.List(ctx)
+	if err != nil {
+		h.logger.Error("failed to list groups", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to list groups")
+	}
+
+	response := make([]GroupItem, 0, len(groups))
+
+	for _, g := range groups {
+		response = append(response, GroupItem{
+			ID:            g.ID,
+			Name:          g.Name,
+			SourceURL:     g.SourceURL,
+			TotalNodes:    g.TotalNodes,
+			RandomEnabled: g.RandomEnabled,
+			RandomLimit:   g.RandomLimit,
+			LastSyncedAt:  g.LastSyncedAt,
+			CreatedAt:     g.CreatedAt,
+		})
+	}
+
+	out := &ListGroupsOutput{}
+	out.Body = response
+
+	return out, nil
+}
+
+func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateGroupInput) (*struct{}, error) {
+	input.Body.Name = strings.TrimSpace(input.Body.Name)
+	if input.Body.Name == "" {
+		return nil, huma.Error400BadRequest("name is required")
+	}
+
+	group, err := h.groupRepo.FindByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrGroupNotFound) {
+			return nil, huma.Error404NotFound("group not found")
+		}
+		h.logger.Error("group not found", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to find group")
+	}
+
+	group.Name = input.Body.Name
+	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
+	group.RandomEnabled = input.Body.RandomEnabled
+	group.RandomLimit = input.Body.RandomLimit
+
+	if !group.RandomEnabled && group.RandomLimit != nil {
+		group.RandomEnabled = true
+	}
+	if err := h.groupRepo.Update(ctx, group); err != nil {
+		h.logger.Error("failed to update group", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to update group")
+	}
+	if h.subscriptionService != nil {
+		h.subscriptionService.InvalidateGroupCache()
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(false, true)
+	}
+
+	return nil, nil
+}
+
+func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteGroupInput) (*struct{}, error) {
+	if err := h.groupRepo.Delete(ctx, input.ID); err != nil {
+		h.logger.Error("failed to delete group", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to delete group")
+	}
+	if h.subscriptionService != nil {
+		h.subscriptionService.InvalidateGroupCache()
+	}
+	if h.realtime != nil {
+		h.realtime.NotifyInvalidate(true, true)
+	}
+
+	return nil, nil
+}
