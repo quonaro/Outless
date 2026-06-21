@@ -9,6 +9,7 @@ import {
   useUpdateInbound,
   useDeleteInbound,
 } from "~/composables/inbounds/useInbounds";
+import { generateKeypair } from "~/utils/services/inbound";
 import UiButton from "~/components/ui/button/button.vue";
 import UiInput from "~/components/ui/input/input.vue";
 import UiSelect from "~/components/ui/select/select.vue";
@@ -17,6 +18,7 @@ import CardHeader from "~/components/ui/card/CardHeader.vue";
 import CardTitle from "~/components/ui/card/CardTitle.vue";
 import CardContent from "~/components/ui/card/CardContent.vue";
 import CardFooter from "~/components/ui/card/CardFooter.vue";
+import TemplateBuilder from "~/components/TemplateBuilder.vue";
 
 const { data: inbounds, isLoading } = useInbounds();
 const createMutation = useCreateInbound();
@@ -49,13 +51,6 @@ const ADDRESS_OPTIONS = [
   { label: "127.0.0.1 (Local)", value: "127.0.0.1" },
 ];
 
-const TEMPLATE_OPTIONS = [
-  { label: "Country | Group", value: "{{vless.country}} | {{vless.group}}" },
-  { label: "Country - Group", value: "{{vless.country}} - {{vless.group}}" },
-  { label: "Node Name", value: "{{vless.name}}" },
-  { label: "Custom", value: "__custom__" },
-];
-
 function generateShortId(): string {
   const arr = new Uint8Array(8);
   crypto.getRandomValues(arr);
@@ -71,7 +66,6 @@ const form = ref<InboundForm>({
   private_key: "",
   short_id: generateShortId(),
   fingerprint: "random",
-  url_host: "",
   name_template: "",
 });
 
@@ -94,22 +88,6 @@ const isCustomAddress = computed(
   () => addressSelectValue.value === "__custom__",
 );
 
-const templateSelectValue = computed({
-  get: () =>
-    TEMPLATE_OPTIONS.some((o) => o.value === form.value.name_template)
-      ? form.value.name_template
-      : "__custom__",
-  set: (val: string) => {
-    if (val !== "__custom__") {
-      form.value.name_template = val;
-    }
-  },
-});
-
-const isCustomTemplate = computed(
-  () => templateSelectValue.value === "__custom__",
-);
-
 function resetForm() {
   form.value = {
     name: "",
@@ -120,7 +98,6 @@ function resetForm() {
     private_key: "",
     short_id: generateShortId(),
     fingerprint: "random",
-    url_host: "",
     name_template: "",
   };
 }
@@ -135,7 +112,6 @@ function fillForm(inbound: Inbound) {
     private_key: "",
     short_id: inbound.short_id,
     fingerprint: inbound.fingerprint,
-    url_host: inbound.url_host,
     name_template: inbound.name_template,
   };
 }
@@ -239,6 +215,16 @@ function copySubscriptionUrl(inbound: Inbound) {
   toast.success("Subscription URL copied");
   setTimeout(() => (copiedUrlId.value = null), 1500);
 }
+
+async function generatePrivateKey() {
+  try {
+    const res = await generateKeypair();
+    form.value.private_key = res.private_key;
+    toast.success("Key pair generated");
+  } catch {
+    toast.error("Failed to generate key pair");
+  }
+}
 </script>
 
 <template>
@@ -272,8 +258,7 @@ function copySubscriptionUrl(inbound: Inbound) {
               {{ inbound.sni || "-" }}
             </p>
             <p class="text-muted-foreground text-sm">
-              URL Host: {{ inbound.url_host || "-" }} · Fingerprint:
-              {{ inbound.fingerprint }}
+              Fingerprint: {{ inbound.fingerprint }}
             </p>
             <p class="text-muted-foreground text-sm">
               Public Key: {{ inbound.public_key.slice(0, 16) }}...{{
@@ -367,10 +352,21 @@ function copySubscriptionUrl(inbound: Inbound) {
               <label class="text-sm font-medium"
                 >Private Key (optional, generates if empty)</label
               >
-              <UiInput
-                v-model="form.private_key"
-                placeholder="base64 private key"
-              />
+              <div class="flex gap-2">
+                <UiInput
+                  v-model="form.private_key"
+                  placeholder="base64 private key"
+                  class="flex-1 h-10"
+                />
+                <UiButton
+                  type="button"
+                  variant="outline"
+                  class="h-10"
+                  @click="generatePrivateKey"
+                >
+                  Generate
+                </UiButton>
+              </div>
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Short ID</label>
@@ -378,7 +374,7 @@ function copySubscriptionUrl(inbound: Inbound) {
                 <UiInput
                   v-model="form.short_id"
                   placeholder=""
-                  class="flex-1"
+                  class="flex-1 h-10"
                 />
                 <UiButton
                   type="button"
@@ -397,21 +393,8 @@ function copySubscriptionUrl(inbound: Inbound) {
                 :options="FINGERPRINT_OPTIONS"
               />
             </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium">URL Host</label>
-              <UiInput v-model="form.url_host" placeholder="example.com" />
-            </div>
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-sm font-medium">Name Template</label>
-              <UiSelect
-                v-model="templateSelectValue"
-                :options="TEMPLATE_OPTIONS"
-              />
-              <UiInput
-                v-if="isCustomTemplate"
-                v-model="form.name_template"
-                placeholder="{{vless.country}} | {{vless.group}}"
-              />
+            <div class="md:col-span-2">
+              <TemplateBuilder v-model="form.name_template" />
             </div>
           </div>
         </CardContent>
@@ -472,10 +455,21 @@ function copySubscriptionUrl(inbound: Inbound) {
               <label class="text-sm font-medium"
                 >Private Key (leave blank to keep current)</label
               >
-              <UiInput
-                v-model="form.private_key"
-                placeholder="base64 private key"
-              />
+              <div class="flex gap-2">
+                <UiInput
+                  v-model="form.private_key"
+                  placeholder="base64 private key"
+                  class="flex-1 h-10"
+                />
+                <UiButton
+                  type="button"
+                  variant="outline"
+                  class="h-10"
+                  @click="generatePrivateKey"
+                >
+                  Generate
+                </UiButton>
+              </div>
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Short ID</label>
@@ -483,7 +477,7 @@ function copySubscriptionUrl(inbound: Inbound) {
                 <UiInput
                   v-model="form.short_id"
                   placeholder=""
-                  class="flex-1"
+                  class="flex-1 h-10"
                 />
                 <UiButton
                   type="button"
@@ -502,21 +496,8 @@ function copySubscriptionUrl(inbound: Inbound) {
                 :options="FINGERPRINT_OPTIONS"
               />
             </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium">URL Host</label>
-              <UiInput v-model="form.url_host" placeholder="example.com" />
-            </div>
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-sm font-medium">Name Template</label>
-              <UiSelect
-                v-model="templateSelectValue"
-                :options="TEMPLATE_OPTIONS"
-              />
-              <UiInput
-                v-if="isCustomTemplate"
-                v-model="form.name_template"
-                placeholder="{{vless.country}} | {{vless.group}}"
-              />
+            <div class="md:col-span-2">
+              <TemplateBuilder v-model="form.name_template" />
             </div>
           </div>
         </CardContent>

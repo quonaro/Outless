@@ -11,6 +11,10 @@ definePageMeta({
   layout: false,
 });
 
+useHead({
+  title: "Login",
+});
+
 const FormSchema = toTypedSchema(
   z.object({
     username: z.string().min(1, "Username is required"),

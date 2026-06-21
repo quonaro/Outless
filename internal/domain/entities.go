@@ -62,7 +62,6 @@ type Inbound struct {
 	PrivateKey   string
 	ShortID      string
 	Fingerprint  string
-	URLHost      string
 	NameTemplate string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

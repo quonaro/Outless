@@ -1,7 +1,7 @@
 vars:
-- FRONTEND_DIR=./frontend
-- WEB_DIST=web/dist
-- BINARY=outless
+  - FRONTEND_DIR=./frontend
+  - WEB_DIST=web/dist
+  - BINARY=outless
 
 build:
   desc: Build frontend and Go binary
@@ -17,37 +17,33 @@ build:
     cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
     CGO_ENABLED=0 go build -trimpath -tags "with_reality_server with_utls" -ldflags="-s -w" -o "$BINARY" ./cmd/outless
 
-clean:
-  desc: Remove built binary and distribution files
-  script: |
-    rm -f "$BINARY"
-    rm -rf "$WEB_DIST"
-
 run:
   desc: Run the application
   depends:
-  - build
+    - build
   parallel: false
   script: |
     ./outless
 
-frontend-dev:
-  desc: Start frontend dev server with hot reload
-  script: |
-    cd "$FRONTEND_DIR"
-    exec pnpm dev
-
-backend-dev:
-  desc: Start backend dev server with hot reload
-  script: |
-    exec air
-
 dev:
   desc: Run frontend and backend in dev mode with hot reload
   depends:
-  - frontend-dev
-  - backend-dev
+    - frontend-dev
+    - backend-dev
   parallel: true
   script: |
     echo "Dev mode started. Frontend: http://localhost:41221, API: http://localhost:41220"
     echo "Press Ctrl+C to stop."
+
+lint:
+  backend:
+    desc: Run golangci-lint on the backend
+    script: |
+      golangci-lint run ./...
+
+  frontend:
+    desc: Run eslint and oxlint on the frontend
+    script: |
+      cd "$FRONTEND_DIR"
+      pnpm lint
+      pnpm lint:ox

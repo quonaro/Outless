@@ -20,7 +20,6 @@ import (
 
 // HubConfig describes the Hub endpoint clients connect to.
 type HubConfig struct {
-	Host         string
 	Port         int
 	SNI          string
 	Handshake    string
@@ -177,7 +176,6 @@ func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token
 
 func toHubConfig(inbound domain.Inbound) HubConfig {
 	return HubConfig{
-		Host:         inbound.URLHost,
 		Port:         inbound.Port,
 		SNI:          inbound.SNI,
 		Handshake:    inbound.Handshake,
@@ -297,10 +295,7 @@ func shuffleNodes(nodes []domain.Node) {
 }
 
 func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub HubConfig) string {
-	host := hub.Host
-	if host == "" {
-		host = s.externalHost
-	}
+	host := s.externalHost
 	if host == "" {
 		host = "hub.example.com"
 	}

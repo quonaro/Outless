@@ -10,7 +10,6 @@ export const InboundSchema = z.object({
   public_key: z.string().default(''),
   short_id: z.string().default(''),
   fingerprint: z.string().default('random'),
-  url_host: z.string().default(''),
   name_template: z.string().default(''),
   created_at: z.string(),
   updated_at: z.string(),
@@ -25,7 +24,6 @@ export const CreateInboundSchema = z.object({
   private_key: z.string().optional().default(''),
   short_id: z.string().optional().default(''),
   fingerprint: z.string().optional().default('random'),
-  url_host: z.string().optional().default(''),
   name_template: z.string().optional().default(''),
 })
 

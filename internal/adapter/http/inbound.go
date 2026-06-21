@@ -32,7 +32,6 @@ type InboundItem struct {
 	PublicKey    string    `json:"public_key"`
 	ShortID      string    `json:"short_id"`
 	Fingerprint  string    `json:"fingerprint"`
-	URLHost      string    `json:"url_host"`
 	NameTemplate string    `json:"name_template"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -48,7 +47,6 @@ type CreateInboundInput struct {
 		PrivateKey   string `json:"private_key" required:"false"`
 		ShortID      string `json:"short_id" required:"false"`
 		Fingerprint  string `json:"fingerprint" required:"false"`
-		URLHost      string `json:"url_host" required:"false"`
 		NameTemplate string `json:"name_template" required:"false"`
 	}
 }
@@ -72,7 +70,6 @@ type UpdateInboundInput struct {
 		PrivateKey   string `json:"private_key" required:"false"`
 		ShortID      string `json:"short_id" required:"false"`
 		Fingerprint  string `json:"fingerprint" required:"false"`
-		URLHost      string `json:"url_host" required:"false"`
 		NameTemplate string `json:"name_template" required:"false"`
 	}
 }
@@ -81,11 +78,31 @@ type DeleteInboundInput struct {
 	ID string `path:"id" required:"true"`
 }
 
+type GenerateKeypairOutput struct {
+	Body struct {
+		PrivateKey string `json:"private_key"`
+		PublicKey  string `json:"public_key"`
+	}
+}
+
 func (h *InboundManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/inbounds", h.CreateInbound)
 	huma.Get(api, "/v1/inbounds", h.ListInbounds)
+	huma.Get(api, "/v1/inbounds/keypair", h.GenerateKeypair)
 	huma.Put(api, "/v1/inbounds/{id}", h.UpdateInbound)
 	huma.Delete(api, "/v1/inbounds/{id}", h.DeleteInbound)
+}
+
+func (h *InboundManagementHandler) GenerateKeypair(ctx context.Context, _ *struct{}) (*GenerateKeypairOutput, error) {
+	priv, pub, err := config.GenerateRealityKeyPair()
+	if err != nil {
+		h.logger.Error("failed to generate reality key pair", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to generate key pair")
+	}
+	out := &GenerateKeypairOutput{}
+	out.Body.PrivateKey = priv
+	out.Body.PublicKey = pub
+	return out, nil
 }
 
 func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *CreateInboundInput) (*CreateInboundOutput, error) {
@@ -136,7 +153,6 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 		PublicKey:    pub,
 		ShortID:      shortID,
 		Fingerprint:  strings.TrimSpace(input.Body.Fingerprint),
-		URLHost:      strings.TrimSpace(input.Body.URLHost),
 		NameTemplate: input.Body.NameTemplate,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -209,7 +225,6 @@ func (h *InboundManagementHandler) UpdateInbound(ctx context.Context, input *Upd
 		inbound.ShortID = strings.TrimSpace(input.Body.ShortID)
 	}
 	inbound.Fingerprint = strings.TrimSpace(input.Body.Fingerprint)
-	inbound.URLHost = strings.TrimSpace(input.Body.URLHost)
 	inbound.NameTemplate = input.Body.NameTemplate
 	if inbound.Port == 0 {
 		inbound.Port = 443
@@ -259,7 +274,6 @@ func toInboundItem(inbound domain.Inbound) InboundItem {
 		PublicKey:    inbound.PublicKey,
 		ShortID:      inbound.ShortID,
 		Fingerprint:  inbound.Fingerprint,
-		URLHost:      inbound.URLHost,
 		NameTemplate: inbound.NameTemplate,
 		CreatedAt:    inbound.CreatedAt,
 		UpdatedAt:    inbound.UpdatedAt,

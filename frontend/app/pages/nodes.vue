@@ -26,6 +26,10 @@ import { countryBadgeLabel, normalizeCountryCode } from "~/utils/country";
 
 definePageMeta({ layout: "default" });
 
+useHead({
+  title: "Nodes",
+});
+
 type ViewMode = "grouped" | "flat";
 
 interface PublicRefreshStateMessage {

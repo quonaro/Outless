@@ -9,6 +9,10 @@ import UiButton from "~/components/ui/button/button.vue";
 import ChangePasswordDialog from "~/components/ui/change-password-dialog/change-password-dialog.vue";
 import { useAuth } from "~/composables/useAuth";
 
+useHead({
+  title: "Settings",
+});
+
 const auth = useAuth();
 const isChangePasswordOpen = ref(false);
 

@@ -22,7 +22,6 @@ type inboundModel struct {
 	PrivateKey   string    `gorm:"column:private_key"`
 	ShortID      string    `gorm:"column:short_id"`
 	Fingerprint  string    `gorm:"column:fingerprint"`
-	URLHost      string    `gorm:"column:url_host"`
 	NameTemplate string    `gorm:"column:name_template"`
 	CreatedAt    time.Time `gorm:"column:created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at"`
@@ -53,7 +52,6 @@ func (r *InboundRepository) Create(ctx context.Context, inbound domain.Inbound) 
 		PrivateKey:   inbound.PrivateKey,
 		ShortID:      inbound.ShortID,
 		Fingerprint:  inbound.Fingerprint,
-		URLHost:      inbound.URLHost,
 		NameTemplate: inbound.NameTemplate,
 		CreatedAt:    inbound.CreatedAt,
 		UpdatedAt:    inbound.UpdatedAt,
@@ -106,7 +104,6 @@ func (r *InboundRepository) Update(ctx context.Context, inbound domain.Inbound) 
 		"private_key":   inbound.PrivateKey,
 		"short_id":      inbound.ShortID,
 		"fingerprint":   inbound.Fingerprint,
-		"url_host":      inbound.URLHost,
 		"name_template": inbound.NameTemplate,
 		"updated_at":    time.Now().UTC(),
 	}
@@ -145,7 +142,6 @@ func toDomainInbound(model inboundModel) domain.Inbound {
 		PrivateKey:   model.PrivateKey,
 		ShortID:      model.ShortID,
 		Fingerprint:  model.Fingerprint,
-		URLHost:      model.URLHost,
 		NameTemplate: model.NameTemplate,
 		CreatedAt:    model.CreatedAt,
 		UpdatedAt:    model.UpdatedAt,
