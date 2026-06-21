@@ -23,6 +23,7 @@ func NewDB(path string) (*gorm.DB, error) {
 		&nodeModel{},
 		&tokenModel{},
 		&tokenGroupModel{},
+		&tokenInboundModel{},
 		&groupModel{},
 		&publicSourceModel{},
 		&adminModel{},

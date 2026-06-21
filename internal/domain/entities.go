@@ -18,14 +18,15 @@ type Node struct {
 // Token describes subscription access token metadata.
 // UUID is the per-token identifier used as a VLESS user id on the hub inbound.
 type Token struct {
-	ID        string
-	Owner     string
-	GroupID   string
-	GroupIDs  []string
-	UUID      string
-	IsActive  bool
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID         string
+	Owner      string
+	GroupID    string
+	GroupIDs   []string
+	InboundIDs []string
+	UUID       string
+	IsActive   bool
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
 }
 
 // Group represents a collection of nodes and tokens for access control.
@@ -51,22 +52,20 @@ type PublicSource struct {
 
 // Inbound represents a VLESS REALITY entry point managed by Outless.
 type Inbound struct {
-	ID                 string
-	Name               string
-	Address            string
-	Port               int
-	SNI                string
-	Handshake          string
-	PublicKey          string
-	PrivateKey         string
-	ShortID            string
-	Fingerprint        string
-	URLHost            string
-	NameTemplate       string
-	EnableAutoSelfNode bool
-	AutoSelfNodeName   string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID           string
+	Name         string
+	Address      string
+	Port         int
+	SNI          string
+	Handshake    string
+	PublicKey    string
+	PrivateKey   string
+	ShortID      string
+	Fingerprint  string
+	URLHost      string
+	NameTemplate string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Admin represents an administrative user with access to management endpoints.

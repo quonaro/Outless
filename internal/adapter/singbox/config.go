@@ -16,19 +16,17 @@ import (
 
 // HubInboundConfig holds REALITY inbound parameters for the generated sing-box config.
 type HubInboundConfig struct {
-	Listen             string
-	Port               int
-	SNI                string
-	Handshake          string
-	PrivateKey         string
-	ShortID            string
-	EnableAutoSelfNode bool
-	LogLevel           string
+	Listen     string
+	Port       int
+	SNI        string
+	Handshake  string
+	PrivateKey string
+	ShortID    string
+	LogLevel   string
 }
 
 const (
 	tagInbound = "vless-in"
-	tagDirect  = "direct"
 	tagBlock   = "block"
 	flowVision = "xtls-rprx-vision"
 )
@@ -36,10 +34,6 @@ const (
 // userName builds a deterministic sing-box inbound user name for a token+node pair.
 func userName(tokenID, nodeID string) string {
 	return fmt.Sprintf("t-%s-n-%s", tokenID, nodeID)
-}
-
-func selfUserName(tokenID string) string {
-	return fmt.Sprintf("t-%s-self", tokenID)
 }
 
 func outboundTag(nodeID string) string {
@@ -66,11 +60,7 @@ func sanitizeTag(raw string) string {
 // route rules that send each user to its specific outbound. Unmatched traffic
 // is blocked.
 func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubInboundConfig, singboxLogLevel string, logger *slog.Logger) (option.Options, error) {
-	enableAutoSelfNode := false
-	if len(inbounds) > 0 {
-		enableAutoSelfNode = inbounds[0].EnableAutoSelfNode
-	}
-	users, rules, err := buildUsersAndRules(tokens, nodes, enableAutoSelfNode, logger)
+	users, rules, err := buildUsersAndRules(tokens, nodes, logger)
 	if err != nil {
 		return option.Options{}, err
 	}
@@ -80,7 +70,6 @@ func GenerateOptions(tokens []domain.Token, nodes []domain.Node, inbounds []HubI
 		return option.Options{}, err
 	}
 	outbounds = append(outbounds,
-		option.Outbound{Type: C.TypeDirect, Tag: tagDirect},
 		option.Outbound{Type: C.TypeBlock, Tag: tagBlock},
 	)
 
@@ -186,7 +175,7 @@ func buildInbounds(inbounds []HubInboundConfig, users []option.VLESSUser, logger
 
 // buildUsersAndRules creates one inbound user per accessible token+node pair and
 // matching auth_user route rules. Tokens without node access get a blocked user.
-func buildUsersAndRules(tokens []domain.Token, nodes []domain.Node, enableAutoSelfNode bool, logger *slog.Logger) ([]option.VLESSUser, []option.Rule, error) {
+func buildUsersAndRules(tokens []domain.Token, nodes []domain.Node, logger *slog.Logger) ([]option.VLESSUser, []option.Rule, error) {
 	users := make([]option.VLESSUser, 0)
 	rules := make([]option.Rule, 0)
 
@@ -222,13 +211,6 @@ func buildUsersAndRules(tokens []domain.Token, nodes []domain.Node, enableAutoSe
 			name := fmt.Sprintf("t-%s-blocked", token.ID)
 			users = append(users, option.VLESSUser{Name: name, UUID: token.UUID, Flow: flowVision})
 			rules = append(rules, routeUserTo(name, tagBlock))
-		}
-
-		if enableAutoSelfNode {
-			name := selfUserName(token.ID)
-			uuid := utils.GenerateUUIDFromTokenNode(token.ID, "__self__")
-			users = append(users, option.VLESSUser{Name: name, UUID: uuid, Flow: flowVision})
-			rules = append(rules, routeUserTo(name, tagDirect))
 		}
 	}
 

@@ -151,13 +151,12 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 	hubInbounds := make([]HubInboundConfig, 0, len(inbounds))
 	for _, inbound := range inbounds {
 		hubInbounds = append(hubInbounds, HubInboundConfig{
-			Listen:             inbound.Address,
-			Port:               inbound.Port,
-			SNI:                inbound.SNI,
-			Handshake:          inbound.Handshake,
-			PrivateKey:         inbound.PrivateKey,
-			ShortID:            inbound.ShortID,
-			EnableAutoSelfNode: inbound.EnableAutoSelfNode,
+			Listen:     inbound.Address,
+			Port:       inbound.Port,
+			SNI:        inbound.SNI,
+			Handshake:  inbound.Handshake,
+			PrivateKey: inbound.PrivateKey,
+			ShortID:    inbound.ShortID,
 		})
 	}
 

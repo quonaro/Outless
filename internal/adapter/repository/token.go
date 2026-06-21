@@ -38,6 +38,14 @@ type tokenGroupModel struct {
 
 func (tokenGroupModel) TableName() string { return "token_groups" }
 
+type tokenInboundModel struct {
+	TokenID   string    `gorm:"column:token_id;primaryKey"`
+	InboundID string    `gorm:"column:inbound_id;primaryKey"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+}
+
+func (tokenInboundModel) TableName() string { return "token_inbounds" }
+
 // TokenRepository persists subscription tokens in SQLite.
 type TokenRepository struct {
 	db     *gorm.DB
@@ -50,7 +58,7 @@ func NewTokenRepository(db *gorm.DB, logger *slog.Logger) *TokenRepository {
 }
 
 // IssueToken creates a new token and returns token metadata including plain token.
-func (r *TokenRepository) IssueToken(ctx context.Context, owner string, groupIDs []string, expiresAt time.Time) (domain.Token, string, error) {
+func (r *TokenRepository) IssueToken(ctx context.Context, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) (domain.Token, string, error) {
 	if strings.TrimSpace(owner) == "" {
 		return domain.Token{}, "", fmt.Errorf("owner is required")
 	}
@@ -100,14 +108,20 @@ func (r *TokenRepository) IssueToken(ctx context.Context, owner string, groupIDs
 				return fmt.Errorf("creating token_groups link: %w", err)
 			}
 		}
+		for _, inboundID := range uniqueNonEmpty(inboundIDs) {
+			link := tokenInboundModel{TokenID: tokenID, InboundID: inboundID, CreatedAt: now}
+			if err := tx.Create(&link).Error; err != nil {
+				return fmt.Errorf("creating token_inbounds link: %w", err)
+			}
+		}
 		return nil
 	})
 	if txErr != nil {
 		return domain.Token{}, "", txErr
 	}
 
-	r.logger.Info("subscription token issued", slog.String("token_id", model.ID), slog.String("owner", owner), slog.Int("group_count", len(groupIDs)))
-	return toDomainToken(model, uniqueNonEmpty(groupIDs)), plainToken, nil
+	r.logger.Info("subscription token issued", slog.String("token_id", model.ID), slog.String("owner", owner), slog.Int("group_count", len(groupIDs)), slog.Int("inbound_count", len(inboundIDs)))
+	return toDomainToken(model, uniqueNonEmpty(groupIDs), uniqueNonEmpty(inboundIDs)), plainToken, nil
 }
 
 // ValidateToken verifies token activity and expiration.
@@ -164,9 +178,13 @@ func (r *TokenRepository) List(ctx context.Context) ([]domain.Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	inboundIDsMap, err := r.loadInboundIDsByTokenIDs(ctx, extractTokenIDs(models))
+	if err != nil {
+		return nil, err
+	}
 	tokens := make([]domain.Token, 0, len(models))
 	for _, model := range models {
-		tokens = append(tokens, toDomainToken(model, groupIDsMap[model.ID]))
+		tokens = append(tokens, toDomainToken(model, groupIDsMap[model.ID], inboundIDsMap[model.ID]))
 	}
 	return tokens, nil
 }
@@ -183,9 +201,13 @@ func (r *TokenRepository) ListActive(ctx context.Context, at time.Time) ([]domai
 	if err != nil {
 		return nil, err
 	}
+	inboundIDsMap, err := r.loadInboundIDsByTokenIDs(ctx, extractTokenIDs(models))
+	if err != nil {
+		return nil, err
+	}
 	tokens := make([]domain.Token, 0, len(models))
 	for _, model := range models {
-		tokens = append(tokens, toDomainToken(model, groupIDsMap[model.ID]))
+		tokens = append(tokens, toDomainToken(model, groupIDsMap[model.ID], inboundIDsMap[model.ID]))
 	}
 	return tokens, nil
 }
@@ -210,7 +232,11 @@ func (r *TokenRepository) GetTokenByPlain(ctx context.Context, token string, at 
 	if err != nil {
 		return domain.Token{}, err
 	}
-	return toDomainToken(model, groupIDsMap[model.ID]), nil
+	inboundIDsMap, err := r.loadInboundIDsByTokenIDs(ctx, []string{model.ID})
+	if err != nil {
+		return domain.Token{}, err
+	}
+	return toDomainToken(model, groupIDsMap[model.ID], inboundIDsMap[model.ID]), nil
 }
 
 // FindByID retrieves a token by its ID.
@@ -227,7 +253,11 @@ func (r *TokenRepository) FindByID(ctx context.Context, id string) (domain.Token
 	if err != nil {
 		return domain.Token{}, err
 	}
-	return toDomainToken(model, groupIDsMap[model.ID]), nil
+	inboundIDsMap, err := r.loadInboundIDsByTokenIDs(ctx, []string{model.ID})
+	if err != nil {
+		return domain.Token{}, err
+	}
+	return toDomainToken(model, groupIDsMap[model.ID], inboundIDsMap[model.ID]), nil
 }
 
 // Deactivate disables a token by ID.
@@ -256,11 +286,14 @@ func (r *TokenRepository) Activate(ctx context.Context, id string) error {
 	return nil
 }
 
-// Remove permanently deletes a token by ID and its group links.
+// Remove permanently deletes a token by ID and its group/inbound links.
 func (r *TokenRepository) Remove(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("token_id = ?", id).Delete(&tokenGroupModel{}).Error; err != nil {
 			return fmt.Errorf("deleting token group links: %w", err)
+		}
+		if err := tx.Where("token_id = ?", id).Delete(&tokenInboundModel{}).Error; err != nil {
+			return fmt.Errorf("deleting token inbound links: %w", err)
 		}
 		result := tx.Where("id = ?", id).Delete(&tokenModel{})
 		if result.Error != nil {
@@ -286,7 +319,10 @@ func (r *TokenRepository) CleanupExpired(ctx context.Context, cutoff time.Time) 
 			return nil
 		}
 		if err := tx.Where("token_id IN ?", expiredIDs).Delete(&tokenGroupModel{}).Error; err != nil {
-			return fmt.Errorf("deleting expired token links: %w", err)
+			return fmt.Errorf("deleting expired token group links: %w", err)
+		}
+		if err := tx.Where("token_id IN ?", expiredIDs).Delete(&tokenInboundModel{}).Error; err != nil {
+			return fmt.Errorf("deleting expired token inbound links: %w", err)
 		}
 		result := tx.Where("id IN ?", expiredIDs).Delete(&tokenModel{})
 		if result.Error != nil {
@@ -304,8 +340,8 @@ func (r *TokenRepository) CleanupExpired(ctx context.Context, cutoff time.Time) 
 	return deleted, nil
 }
 
-// Update modifies token owner, group IDs, and expiration.
-func (r *TokenRepository) Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error {
+// Update modifies token owner, group IDs, inbound IDs, and expiration.
+func (r *TokenRepository) Update(ctx context.Context, id string, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) error {
 	if strings.TrimSpace(owner) == "" {
 		return fmt.Errorf("owner is required")
 	}
@@ -342,6 +378,15 @@ func (r *TokenRepository) Update(ctx context.Context, id string, owner string, g
 				return fmt.Errorf("creating token_groups link: %w", err)
 			}
 		}
+		if err := tx.Where("token_id = ?", id).Delete(&tokenInboundModel{}).Error; err != nil {
+			return fmt.Errorf("deleting old inbound links: %w", err)
+		}
+		for _, inboundID := range uniqueNonEmpty(inboundIDs) {
+			link := tokenInboundModel{TokenID: id, InboundID: inboundID, CreatedAt: now}
+			if err := tx.Create(&link).Error; err != nil {
+				return fmt.Errorf("creating token_inbounds link: %w", err)
+			}
+		}
 		return nil
 	})
 	if txErr != nil {
@@ -368,7 +413,24 @@ func (r *TokenRepository) loadGroupIDsByTokenIDs(ctx context.Context, tokenIDs [
 	return out, nil
 }
 
-func toDomainToken(model tokenModel, groupIDs []string) domain.Token {
+func (r *TokenRepository) loadInboundIDsByTokenIDs(ctx context.Context, tokenIDs []string) (map[string][]string, error) {
+	if len(tokenIDs) == 0 {
+		return map[string][]string{}, nil
+	}
+	rows := make([]tokenInboundModel, 0, len(tokenIDs))
+	if err := r.db.WithContext(ctx).
+		Where("token_id IN ?", tokenIDs).
+		Order("created_at ASC").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("loading token inbound links: %w", err)
+	}
+	out := make(map[string][]string, len(tokenIDs))
+	for _, row := range rows {
+		out[row.TokenID] = append(out[row.TokenID], row.InboundID)
+	}
+	return out, nil
+}
+
+func toDomainToken(model tokenModel, groupIDs []string, inboundIDs []string) domain.Token {
 	groupIDs = uniqueNonEmpty(groupIDs)
 	legacyGroupID := derefString(model.GroupID)
 	if len(groupIDs) == 0 && legacyGroupID != "" {
@@ -379,14 +441,15 @@ func toDomainToken(model tokenModel, groupIDs []string) domain.Token {
 		primaryGroupID = groupIDs[0]
 	}
 	return domain.Token{
-		ID:        model.ID,
-		Owner:     model.Owner,
-		GroupID:   primaryGroupID,
-		GroupIDs:  groupIDs,
-		UUID:      model.UUID,
-		IsActive:  model.IsActive,
-		ExpiresAt: model.ExpiresAt,
-		CreatedAt: model.CreatedAt,
+		ID:         model.ID,
+		Owner:      model.Owner,
+		GroupID:    primaryGroupID,
+		GroupIDs:   groupIDs,
+		InboundIDs: uniqueNonEmpty(inboundIDs),
+		UUID:       model.UUID,
+		IsActive:   model.IsActive,
+		ExpiresAt:  model.ExpiresAt,
+		CreatedAt:  model.CreatedAt,
 	}
 }
 

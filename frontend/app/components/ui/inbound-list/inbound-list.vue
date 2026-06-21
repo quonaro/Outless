@@ -32,14 +32,14 @@ const copiedUrlId = ref<string | null>(null);
 type InboundForm = Omit<CreateInbound, "port"> & { port: string | number };
 
 const FINGERPRINT_OPTIONS = [
+  { label: "Random", value: "random" },
+  { label: "Randomized", value: "randomized" },
   { label: "Chrome", value: "chrome" },
   { label: "Firefox", value: "firefox" },
   { label: "Safari", value: "safari" },
   { label: "Edge", value: "edge" },
   { label: "iOS", value: "ios" },
   { label: "Android", value: "android" },
-  { label: "Random", value: "random" },
-  { label: "Randomized", value: "randomized" },
   { label: "360", value: "360" },
   { label: "QQ", value: "qq" },
 ];
@@ -47,22 +47,12 @@ const FINGERPRINT_OPTIONS = [
 const ADDRESS_OPTIONS = [
   { label: "0.0.0.0 (All IPv4)", value: "0.0.0.0" },
   { label: "127.0.0.1 (Local)", value: "127.0.0.1" },
-  { label: ":: (All IPv6)", value: "::" },
-  { label: "::1 (Local IPv6)", value: "::1" },
-  { label: "Custom", value: "__custom__" },
 ];
 
 const TEMPLATE_OPTIONS = [
-  {
-    label: "Flag Country | Group",
-    value: "{{vless.country_flag}} {{vless.country}} | {{vless.group}}",
-  },
+  { label: "Country | Group", value: "{{vless.country}} | {{vless.group}}" },
   { label: "Country - Group", value: "{{vless.country}} - {{vless.group}}" },
   { label: "Node Name", value: "{{vless.name}}" },
-  {
-    label: "Flag Node Name",
-    value: "{{vless.country_flag}} {{vless.name}}",
-  },
   { label: "Custom", value: "__custom__" },
 ];
 
@@ -80,11 +70,9 @@ const form = ref<InboundForm>({
   handshake: "",
   private_key: "",
   short_id: generateShortId(),
-  fingerprint: "chrome",
+  fingerprint: "random",
   url_host: "",
   name_template: "",
-  enable_auto_self_node: false,
-  auto_self_node_name: "Direct Exit",
 });
 
 const isCreateSubmitting = ref(false);
@@ -131,11 +119,9 @@ function resetForm() {
     handshake: "",
     private_key: "",
     short_id: generateShortId(),
-    fingerprint: "chrome",
+    fingerprint: "random",
     url_host: "",
     name_template: "",
-    enable_auto_self_node: false,
-    auto_self_node_name: "Direct Exit",
   };
 }
 
@@ -151,8 +137,6 @@ function fillForm(inbound: Inbound) {
     fingerprint: inbound.fingerprint,
     url_host: inbound.url_host,
     name_template: inbound.name_template,
-    enable_auto_self_node: inbound.enable_auto_self_node,
-    auto_self_node_name: inbound.auto_self_node_name,
   };
 }
 
@@ -399,7 +383,7 @@ function copySubscriptionUrl(inbound: Inbound) {
                 <UiButton
                   type="button"
                   variant="outline"
-                  size="sm"
+                  class="h-10"
                   @click="form.short_id = generateShortId()"
                 >
                   Generate
@@ -426,26 +410,8 @@ function copySubscriptionUrl(inbound: Inbound) {
               <UiInput
                 v-if="isCustomTemplate"
                 v-model="form.name_template"
-                placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
+                placeholder="{{vless.country}} | {{vless.group}}"
               />
-            </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium">Auto Self Node Name</label>
-              <UiInput
-                v-model="form.auto_self_node_name"
-                placeholder="Direct Exit"
-              />
-            </div>
-            <div class="flex items-center gap-2 h-full pt-6">
-              <input
-                id="create-auto-self"
-                v-model="form.enable_auto_self_node"
-                type="checkbox"
-                class="h-4 w-4 rounded border-input"
-              />
-              <label for="create-auto-self" class="text-sm font-medium"
-                >Enable Direct Exit</label
-              >
             </div>
           </div>
         </CardContent>
@@ -522,7 +488,7 @@ function copySubscriptionUrl(inbound: Inbound) {
                 <UiButton
                   type="button"
                   variant="outline"
-                  size="sm"
+                  class="h-10"
                   @click="form.short_id = generateShortId()"
                 >
                   Generate
@@ -549,26 +515,8 @@ function copySubscriptionUrl(inbound: Inbound) {
               <UiInput
                 v-if="isCustomTemplate"
                 v-model="form.name_template"
-                placeholder="{{vless.country_flag}} {{vless.country}} | {{vless.group}}"
+                placeholder="{{vless.country}} | {{vless.group}}"
               />
-            </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium">Auto Self Node Name</label>
-              <UiInput
-                v-model="form.auto_self_node_name"
-                placeholder="Direct Exit"
-              />
-            </div>
-            <div class="flex items-center gap-2 h-full pt-6">
-              <input
-                id="edit-auto-self"
-                v-model="form.enable_auto_self_node"
-                type="checkbox"
-                class="h-4 w-4 rounded border-input"
-              />
-              <label for="edit-auto-self" class="text-sm font-medium"
-                >Enable Direct Exit</label
-              >
             </div>
           </div>
         </CardContent>

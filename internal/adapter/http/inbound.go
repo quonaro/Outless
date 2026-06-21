@@ -23,37 +23,33 @@ func NewInboundManagementHandler(inboundRepo domain.InboundRepository, logger *s
 }
 
 type InboundItem struct {
-	ID                 string    `json:"id"`
-	Name               string    `json:"name"`
-	Address            string    `json:"address"`
-	Port               int       `json:"port"`
-	SNI                string    `json:"sni"`
-	Handshake          string    `json:"handshake"`
-	PublicKey          string    `json:"public_key"`
-	ShortID            string    `json:"short_id"`
-	Fingerprint        string    `json:"fingerprint"`
-	URLHost            string    `json:"url_host"`
-	NameTemplate       string    `json:"name_template"`
-	EnableAutoSelfNode bool      `json:"enable_auto_self_node"`
-	AutoSelfNodeName   string    `json:"auto_self_node_name"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Address      string    `json:"address"`
+	Port         int       `json:"port"`
+	SNI          string    `json:"sni"`
+	Handshake    string    `json:"handshake"`
+	PublicKey    string    `json:"public_key"`
+	ShortID      string    `json:"short_id"`
+	Fingerprint  string    `json:"fingerprint"`
+	URLHost      string    `json:"url_host"`
+	NameTemplate string    `json:"name_template"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type CreateInboundInput struct {
 	Body struct {
-		Name               string `json:"name" required:"true" maxLength:"100"`
-		Address            string `json:"address" required:"false"`
-		Port               int    `json:"port" required:"false"`
-		SNI                string `json:"sni" required:"false"`
-		Handshake          string `json:"handshake" required:"false"`
-		PrivateKey         string `json:"private_key" required:"false"`
-		ShortID            string `json:"short_id" required:"false"`
-		Fingerprint        string `json:"fingerprint" required:"false"`
-		URLHost            string `json:"url_host" required:"false"`
-		NameTemplate       string `json:"name_template" required:"false"`
-		EnableAutoSelfNode bool   `json:"enable_auto_self_node" required:"false"`
-		AutoSelfNodeName   string `json:"auto_self_node_name" required:"false"`
+		Name         string `json:"name" required:"true" maxLength:"100"`
+		Address      string `json:"address" required:"false"`
+		Port         int    `json:"port" required:"false"`
+		SNI          string `json:"sni" required:"false"`
+		Handshake    string `json:"handshake" required:"false"`
+		PrivateKey   string `json:"private_key" required:"false"`
+		ShortID      string `json:"short_id" required:"false"`
+		Fingerprint  string `json:"fingerprint" required:"false"`
+		URLHost      string `json:"url_host" required:"false"`
+		NameTemplate string `json:"name_template" required:"false"`
 	}
 }
 
@@ -68,18 +64,16 @@ type ListInboundsOutput struct {
 type UpdateInboundInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		Name               string `json:"name" required:"true" maxLength:"100"`
-		Address            string `json:"address" required:"false"`
-		Port               int    `json:"port" required:"false"`
-		SNI                string `json:"sni" required:"false"`
-		Handshake          string `json:"handshake" required:"false"`
-		PrivateKey         string `json:"private_key" required:"false"`
-		ShortID            string `json:"short_id" required:"false"`
-		Fingerprint        string `json:"fingerprint" required:"false"`
-		URLHost            string `json:"url_host" required:"false"`
-		NameTemplate       string `json:"name_template" required:"false"`
-		EnableAutoSelfNode bool   `json:"enable_auto_self_node" required:"false"`
-		AutoSelfNodeName   string `json:"auto_self_node_name" required:"false"`
+		Name         string `json:"name" required:"true" maxLength:"100"`
+		Address      string `json:"address" required:"false"`
+		Port         int    `json:"port" required:"false"`
+		SNI          string `json:"sni" required:"false"`
+		Handshake    string `json:"handshake" required:"false"`
+		PrivateKey   string `json:"private_key" required:"false"`
+		ShortID      string `json:"short_id" required:"false"`
+		Fingerprint  string `json:"fingerprint" required:"false"`
+		URLHost      string `json:"url_host" required:"false"`
+		NameTemplate string `json:"name_template" required:"false"`
 	}
 }
 
@@ -132,31 +126,26 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 
 	now := time.Now().UTC()
 	inbound := domain.Inbound{
-		ID:                 id,
-		Name:               input.Body.Name,
-		Address:            strings.TrimSpace(input.Body.Address),
-		Port:               input.Body.Port,
-		SNI:                strings.TrimSpace(input.Body.SNI),
-		Handshake:          strings.TrimSpace(input.Body.Handshake),
-		PrivateKey:         priv,
-		PublicKey:          pub,
-		ShortID:            shortID,
-		Fingerprint:        strings.TrimSpace(input.Body.Fingerprint),
-		URLHost:            strings.TrimSpace(input.Body.URLHost),
-		NameTemplate:       input.Body.NameTemplate,
-		EnableAutoSelfNode: input.Body.EnableAutoSelfNode,
-		AutoSelfNodeName:   input.Body.AutoSelfNodeName,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:           id,
+		Name:         input.Body.Name,
+		Address:      strings.TrimSpace(input.Body.Address),
+		Port:         input.Body.Port,
+		SNI:          strings.TrimSpace(input.Body.SNI),
+		Handshake:    strings.TrimSpace(input.Body.Handshake),
+		PrivateKey:   priv,
+		PublicKey:    pub,
+		ShortID:      shortID,
+		Fingerprint:  strings.TrimSpace(input.Body.Fingerprint),
+		URLHost:      strings.TrimSpace(input.Body.URLHost),
+		NameTemplate: input.Body.NameTemplate,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	if inbound.Port == 0 {
 		inbound.Port = 443
 	}
 	if inbound.Fingerprint == "" {
 		inbound.Fingerprint = "chrome"
-	}
-	if inbound.AutoSelfNodeName == "" {
-		inbound.AutoSelfNodeName = "Direct Exit"
 	}
 	if inbound.Handshake == "" {
 		inbound.Handshake = inbound.SNI
@@ -222,17 +211,11 @@ func (h *InboundManagementHandler) UpdateInbound(ctx context.Context, input *Upd
 	inbound.Fingerprint = strings.TrimSpace(input.Body.Fingerprint)
 	inbound.URLHost = strings.TrimSpace(input.Body.URLHost)
 	inbound.NameTemplate = input.Body.NameTemplate
-	inbound.EnableAutoSelfNode = input.Body.EnableAutoSelfNode
-	inbound.AutoSelfNodeName = input.Body.AutoSelfNodeName
-
 	if inbound.Port == 0 {
 		inbound.Port = 443
 	}
 	if inbound.Fingerprint == "" {
 		inbound.Fingerprint = "chrome"
-	}
-	if inbound.AutoSelfNodeName == "" {
-		inbound.AutoSelfNodeName = "Direct Exit"
 	}
 	if inbound.Handshake == "" {
 		inbound.Handshake = inbound.SNI
@@ -267,20 +250,18 @@ func (h *InboundManagementHandler) DeleteInbound(ctx context.Context, input *Del
 
 func toInboundItem(inbound domain.Inbound) InboundItem {
 	return InboundItem{
-		ID:                 inbound.ID,
-		Name:               inbound.Name,
-		Address:            inbound.Address,
-		Port:               inbound.Port,
-		SNI:                inbound.SNI,
-		Handshake:          inbound.Handshake,
-		PublicKey:          inbound.PublicKey,
-		ShortID:            inbound.ShortID,
-		Fingerprint:        inbound.Fingerprint,
-		URLHost:            inbound.URLHost,
-		NameTemplate:       inbound.NameTemplate,
-		EnableAutoSelfNode: inbound.EnableAutoSelfNode,
-		AutoSelfNodeName:   inbound.AutoSelfNodeName,
-		CreatedAt:          inbound.CreatedAt,
-		UpdatedAt:          inbound.UpdatedAt,
+		ID:           inbound.ID,
+		Name:         inbound.Name,
+		Address:      inbound.Address,
+		Port:         inbound.Port,
+		SNI:          inbound.SNI,
+		Handshake:    inbound.Handshake,
+		PublicKey:    inbound.PublicKey,
+		ShortID:      inbound.ShortID,
+		Fingerprint:  inbound.Fingerprint,
+		URLHost:      inbound.URLHost,
+		NameTemplate: inbound.NameTemplate,
+		CreatedAt:    inbound.CreatedAt,
+		UpdatedAt:    inbound.UpdatedAt,
 	}
 }

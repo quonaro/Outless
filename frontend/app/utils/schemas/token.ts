@@ -5,6 +5,7 @@ export const TokenSchema = z.object({
   owner: z.string(),
   group_id: z.string(),
   group_ids: z.array(z.string()).optional().default([]),
+  inbound_ids: z.array(z.string()).optional().default([]),
   access_url: z.string().optional().default(''),
   is_active: z.boolean(),
   expires_at: z.string(),
@@ -14,12 +15,14 @@ export const TokenSchema = z.object({
 export const CreateTokenSchema = z.object({
   owner: z.string().min(1),
   group_ids: z.array(z.string()).optional().default([]),
+  inbound_ids: z.array(z.string()).optional().default([]),
   expires_in: z.string().min(1),
 })
 
 export const UpdateTokenSchema = z.object({
   owner: z.string().min(1),
   group_ids: z.array(z.string()).optional().default([]),
+  inbound_ids: z.array(z.string()).optional().default([]),
   expires_in: z.string().min(1),
 })
 

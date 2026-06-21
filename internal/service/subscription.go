@@ -2,9 +2,7 @@ package service
 
 import (
 	"context"
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
@@ -22,17 +20,15 @@ import (
 
 // HubConfig describes the Hub endpoint clients connect to.
 type HubConfig struct {
-	Host               string
-	Port               int
-	SNI                string
-	Handshake          string
-	APIKey             string
-	PublicKey          string
-	ShortID            string
-	Fingerprint        string
-	NameTemplate       string
-	EnableAutoSelfNode bool
-	AutoSelfNodeName   string
+	Host         string
+	Port         int
+	SNI          string
+	Handshake    string
+	APIKey       string
+	PublicKey    string
+	ShortID      string
+	Fingerprint  string
+	NameTemplate string
 }
 
 // SubscriptionService prepares subscription payloads.
@@ -66,7 +62,8 @@ func NewSubscriptionService(repo domain.NodeRepository, tokenRepo domain.TokenRe
 }
 
 // BuildBase64VLESS returns base64 encoded list of Hub-pointing VLESS URLs.
-// If inboundID is empty, the first stored inbound is used.
+// If inboundID is empty, uses token.InboundIDs when present (mixing multiple
+// inbounds), otherwise falls back to all configured inbounds.
 func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string, inboundID string) (string, error) {
 	now := time.Now().UTC()
 
@@ -76,11 +73,6 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 	}
 	if tokenInfo.UUID == "" {
 		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
-	}
-
-	hub, err := s.resolveInbound(ctx, inboundID)
-	if err != nil {
-		return "", err
 	}
 
 	groupSettings, err := s.loadGroupSettings(ctx)
@@ -98,13 +90,32 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 		return "", err
 	}
 
-	hubURLs := s.buildHubURLsWithGroupSettings(tokenInfo, nodes, groupNames, groupSettings, hub)
-	if len(hubURLs) == 0 {
+	var hubs []HubConfig
+	if inboundID != "" {
+		hub, err := s.resolveInbound(ctx, inboundID)
+		if err != nil {
+			return "", err
+		}
+		hubs = []HubConfig{hub}
+	} else {
+		hubs, err = s.resolveInboundsForToken(ctx, tokenInfo)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	var allURLs []string
+	for _, hub := range hubs {
+		hubURLs := s.buildHubURLsWithGroupSettings(tokenInfo, nodes, groupNames, groupSettings, hub)
+		allURLs = append(allURLs, hubURLs...)
+	}
+
+	if len(allURLs) == 0 {
 		s.logger.Warn("no hub URLs generated for token", slog.String("token_id", tokenInfo.ID))
 		return "", nil
 	}
 
-	payload := strings.Join(hubURLs, "\n")
+	payload := strings.Join(allURLs, "\n")
 	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
 }
 
@@ -129,30 +140,52 @@ func (s *SubscriptionService) resolveInbound(ctx context.Context, inboundID stri
 	return HubConfig{}, fmt.Errorf("inbound not found: %s", inboundID)
 }
 
-func toHubConfig(inbound domain.Inbound) HubConfig {
-	return HubConfig{
-		Host:               inbound.URLHost,
-		Port:               inbound.Port,
-		SNI:                inbound.SNI,
-		Handshake:          inbound.Handshake,
-		PublicKey:          inbound.PublicKey,
-		ShortID:            inbound.ShortID,
-		Fingerprint:        inbound.Fingerprint,
-		NameTemplate:       inbound.NameTemplate,
-		EnableAutoSelfNode: inbound.EnableAutoSelfNode,
-		AutoSelfNodeName:   inbound.AutoSelfNodeName,
+func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token domain.Token) ([]HubConfig, error) {
+	inbounds, err := s.inboundRepo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading inbounds: %w", err)
 	}
+	if len(inbounds) == 0 {
+		return nil, fmt.Errorf("no inbounds configured")
+	}
+
+	// If token has no inbound restrictions, return all inbounds.
+	if len(token.InboundIDs) == 0 {
+		hubs := make([]HubConfig, 0, len(inbounds))
+		for _, inbound := range inbounds {
+			hubs = append(hubs, toHubConfig(inbound))
+		}
+		return hubs, nil
+	}
+
+	allowed := make(map[string]struct{}, len(token.InboundIDs))
+	for _, id := range token.InboundIDs {
+		allowed[id] = struct{}{}
+	}
+
+	var hubs []HubConfig
+	for _, inbound := range inbounds {
+		if _, ok := allowed[inbound.ID]; ok {
+			hubs = append(hubs, toHubConfig(inbound))
+		}
+	}
+	if len(hubs) == 0 {
+		return nil, fmt.Errorf("token has inbound restrictions but none match configured inbounds")
+	}
+	return hubs, nil
 }
 
-func generateSelfNodeUUID(tokenID string) string {
-	if tokenID == "" {
-		return ""
+func toHubConfig(inbound domain.Inbound) HubConfig {
+	return HubConfig{
+		Host:         inbound.URLHost,
+		Port:         inbound.Port,
+		SNI:          inbound.SNI,
+		Handshake:    inbound.Handshake,
+		PublicKey:    inbound.PublicKey,
+		ShortID:      inbound.ShortID,
+		Fingerprint:  inbound.Fingerprint,
+		NameTemplate: inbound.NameTemplate,
 	}
-	h := md5.New()
-	h.Write([]byte(tokenID))
-	h.Write([]byte("__self__"))
-	hash := hex.EncodeToString(h.Sum(nil))
-	return fmt.Sprintf("%s-%s-%s-%s-%s", hash[0:8], hash[8:12], hash[12:16], hash[16:20], hash[20:32])
 }
 
 func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain.Node, groupNames map[string]string, hub HubConfig) []string {
@@ -200,7 +233,7 @@ func (s *SubscriptionService) buildHubURLs(token domain.Token, allNodes []domain
 		} else {
 			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
 			hostLabel := extractNodeHost(node.URL)
-			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country), 0)
+			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country))
 		}
 
 		uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
@@ -252,15 +285,6 @@ func (s *SubscriptionService) buildHubURLsWithGroupSettings(token domain.Token, 
 	}
 
 	urls := s.buildHubURLs(token, selectedNodes, groupNames, hub)
-
-	if hub.EnableAutoSelfNode {
-		selfNodeUUID := generateSelfNodeUUID(token.ID)
-		selfNodeName := hub.AutoSelfNodeName
-		if selfNodeName == "" {
-			selfNodeName = "Direct Exit"
-		}
-		urls = append(urls, s.formatVLESSURL(selfNodeUUID, selfNodeName, hub))
-	}
 
 	return urls
 }
@@ -404,16 +428,11 @@ func extractNodeHost(rawURL string) string {
 	return host
 }
 
-func buildConnectionRemark(groupName string, host string, country string, latency time.Duration) string {
+func buildConnectionRemark(groupName string, host string, country string) string {
 	groupName = sanitizeRemarkPart(groupName, "ungrouped")
 	host = sanitizeRemarkPart(host, "unknown-host")
 	country = sanitizeRemarkPart(country, "XX")
-	flag := countryFlagEmoji(country)
-	latencyMS := latency.Milliseconds()
-	if latencyMS < 0 {
-		latencyMS = 0
-	}
-	return fmt.Sprintf("🛰️ %s | 🖥️ %s | 🌍 %s %s | ⚡ %dms", groupName, host, country, flag, latencyMS)
+	return fmt.Sprintf("%s | %s | %s", groupName, host, country)
 }
 
 func sanitizeRemarkPart(value string, fallback string) string {

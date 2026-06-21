@@ -25,7 +25,7 @@ type NodeRepository interface {
 
 // TokenRepository provides secure operations for subscription tokens.
 type TokenRepository interface {
-	IssueToken(ctx context.Context, owner string, groupIDs []string, expiresAt time.Time) (Token, string, error)
+	IssueToken(ctx context.Context, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) (Token, string, error)
 	ValidateToken(ctx context.Context, token string, at time.Time) (bool, error)
 	GetTokenGroupID(ctx context.Context, token string, at time.Time) (string, error)
 	GetTokenByPlain(ctx context.Context, token string, at time.Time) (Token, error)
@@ -35,7 +35,7 @@ type TokenRepository interface {
 	Deactivate(ctx context.Context, id string) error
 	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
-	Update(ctx context.Context, id string, owner string, groupIDs []string, expiresAt time.Time) error
+	Update(ctx context.Context, id string, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) error
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
