@@ -130,6 +130,7 @@ func (s *PublicService) ImportAll(ctx context.Context) error {
 }
 
 // SyncGroup loads nodes for a group source URL and reports progress events.
+//
 //nolint:gocognit,gocyclo,funlen
 func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal func(int), onEvent func(SyncEvent)) (SyncResult, error) {
 	group, err := s.groupRepo.FindByID(ctx, groupID)
