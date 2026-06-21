@@ -415,33 +415,33 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       No tokens issued yet
     </div>
 
-    <UiCard v-for="token in sortedTokens" :key="token.id" class="px-3 py-2">
+    <UiCard v-for="token in sortedTokens" :key="token.id" class="p-4">
       <CardContent class="p-0">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1 space-y-0.5">
-            <div class="flex flex-wrap items-center gap-1.5">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0 flex-1 space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
               <span
                 class="rounded-full px-2 py-0.5 text-xs font-medium uppercase"
                 :class="statusBadge(token).cls"
               >
                 {{ statusBadge(token).label }}
               </span>
-              <span class="truncate text-sm font-semibold">{{ token.owner }}</span>
+              <span class="truncate text-base font-semibold">{{ token.owner }}</span>
             </div>
-            <p class="text-xs text-muted-foreground">
+            <p class="text-sm text-muted-foreground">
               Groups:
               <span class="font-medium">{{ tokenGroupLabels(token) }}</span>
             </p>
-            <p class="text-xs text-muted-foreground">
+            <p class="text-sm text-muted-foreground">
               Inbounds:
               <span class="font-medium">{{ tokenInboundLabels(token) }}</span>
             </p>
-            <p class="text-xs text-muted-foreground">
+            <p class="text-sm text-muted-foreground">
               Expires: {{ new Date(token.expires_at).toLocaleString() }} · Created:
               {{ new Date(token.created_at).toLocaleString() }}
             </p>
           </div>
-          <div class="flex shrink-0 gap-1">
+          <div class="flex shrink-0 gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
                 <UiButton variant="ghost" size="icon">

@@ -89,7 +89,7 @@ const handleCloseMobile = () => {
         <button
           v-for="item in navItems"
           :key="item.id"
-          class="w-full flex items-center gap-3 rounded-lg p-3 transition-colors"
+          class="group w-full flex items-center gap-3 rounded-lg p-3 transition-colors"
           :class="
             activeItem === item.id
               ? 'bg-primary/10 text-primary dark:bg-primary/20'
@@ -97,16 +97,21 @@ const handleCloseMobile = () => {
           "
           @click="handleNavClick(item.path)"
         >
-          <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+          <component
+            :is="item.icon"
+            class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+          />
           <span class="font-medium">{{ item.label }}</span>
         </button>
       </nav>
       <div class="border-t border-border p-4">
         <button
-          class="w-full flex items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          class="group w-full flex items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           @click="handleLogout"
         >
-          <LogOut class="h-5 w-5 flex-shrink-0" />
+          <LogOut
+            class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+          />
           <span class="font-medium">Logout</span>
         </button>
       </div>
@@ -155,7 +160,7 @@ const handleCloseMobile = () => {
       <template v-for="item in navItems" :key="item.id">
         <div class="group relative">
           <button
-            class="flex w-full items-center justify-between rounded-lg p-3 transition-colors"
+            class="group flex w-full items-center justify-between rounded-lg p-3 transition-colors"
             :class="
               activeItem === item.id
                 ? 'bg-primary/10 text-primary dark:bg-primary/20'
@@ -164,7 +169,10 @@ const handleCloseMobile = () => {
             @click="handleNavClick(item.path)"
           >
             <div class="flex items-center gap-3">
-              <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+              <component
+                :is="item.icon"
+                class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+              />
               <span v-if="sidebar.isExpanded" class="font-medium">{{ item.label }}</span>
             </div>
           </button>
@@ -175,10 +183,12 @@ const handleCloseMobile = () => {
     <!-- Logout Button -->
     <div class="border-t border-border p-4">
       <button
-        class="flex w-full items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        class="group flex w-full items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         @click="handleLogout"
       >
-        <LogOut class="h-5 w-5 flex-shrink-0" />
+        <LogOut
+          class="h-5 w-5 flex-shrink-0 transition-transform duration-200 ease-out group-hover:scale-110 group-hover:rotate-3"
+        />
         <span v-if="sidebar.isExpanded" class="font-medium">Logout</span>
       </button>
     </div>
