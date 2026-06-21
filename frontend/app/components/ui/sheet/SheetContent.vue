@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogOverlay,
   DialogPortal,
+  injectDialogRootContext,
   useForwardPropsEmits,
 } from 'reka-ui'
 import { cn } from '~/utils'
@@ -18,6 +19,29 @@ const emits = defineEmits<DialogContentEmits>()
 const delegatedProps = reactiveOmit(props, 'class')
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
+
+const rootContext = injectDialogRootContext()
+
+const SWIPE_THRESHOLD = 80
+let touchStartY = 0
+let touchStartX = 0
+
+function onTouchStart(event: TouchEvent) {
+  const touch = event.touches[0]
+  if (!touch) return
+  touchStartY = touch.clientY
+  touchStartX = touch.clientX
+}
+
+function onTouchEnd(event: TouchEvent) {
+  const touch = event.changedTouches[0]
+  if (!touch) return
+  const deltaY = touch.clientY - touchStartY
+  const deltaX = Math.abs(touch.clientX - touchStartX)
+  if (deltaY > SWIPE_THRESHOLD && deltaX < deltaY * 0.8) {
+    rootContext?.onOpenChange(false)
+  }
+}
 </script>
 
 <template>
@@ -39,7 +63,11 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
         )
       "
     >
-      <div class="mx-auto mb-2 h-1.5 w-12 shrink-0 rounded-full bg-muted sm:hidden" />
+      <div
+        class="mx-auto mb-2 h-1.5 w-12 shrink-0 rounded-full bg-muted sm:hidden touch-pan-y"
+        @touchstart="onTouchStart"
+        @touchend="onTouchEnd"
+      />
       <slot />
       <DialogClose
         class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"

@@ -14,6 +14,7 @@ import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
 import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 import GroupAccordion from '~/components/GroupAccordion.vue'
 import { useInfiniteNodes } from '~/composables/nodes/useInfiniteNodes'
 import { useGroups } from '~/composables/groups/useGroups'
@@ -217,11 +218,15 @@ function submitCreateGroup() {
 
 function submitCreateNode() {
   const url = nodeURLInput.value.trim()
-  if (!url || isCreateNodeSubmitting.value) return
+  const groupId = nodeGroupIDInput.value.trim()
+  if (!url || !groupId || isCreateNodeSubmitting.value) {
+    createNodeErrorMessage.value = 'Please select a group.'
+    return
+  }
   createNodeErrorMessage.value = ''
   isCreateNodeSubmitting.value = true
   createNodeMutation.mutate(
-    { url, group_id: nodeGroupIDInput.value },
+    { url, group_id: groupId },
     {
       onError: (error) => {
         createNodeErrorMessage.value = resolveCreateNodeErrorMessage(error)
@@ -559,6 +564,7 @@ onBeforeUnmount(() => {
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Create Group</SheetTitle>
+            <SheetDescription>Create a new group for organizing nodes.</SheetDescription>
           </SheetHeader>
           <div class="space-y-4 py-4">
             <div class="space-y-2">
@@ -625,6 +631,7 @@ onBeforeUnmount(() => {
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Create Node</SheetTitle>
+            <SheetDescription>Add a new VLESS node to a group.</SheetDescription>
           </SheetHeader>
           <div class="space-y-4 py-4">
             <div class="space-y-2">
@@ -644,8 +651,9 @@ onBeforeUnmount(() => {
                 v-model="nodeGroupIDInput"
                 name="create-node-group-id"
                 class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                required
               >
-                <option value="">No group</option>
+                <option value="" disabled selected>Select a group</option>
                 <option v-for="group in groups ?? []" :key="group.id" :value="group.id">
                   {{ group.name }}
                 </option>
@@ -658,7 +666,7 @@ onBeforeUnmount(() => {
           <SheetFooter>
             <UiButton variant="outline" @click="closeCreateNodeDialog"> Cancel </UiButton>
             <UiButton
-              :disabled="!nodeURLInput.trim() || isCreateNodeSubmitting"
+              :disabled="!nodeURLInput.trim() || !nodeGroupIDInput.trim() || isCreateNodeSubmitting"
               @click="submitCreateNode"
             >
               {{ isCreateNodeSubmitting ? 'Creating...' : 'Create' }}
@@ -671,6 +679,7 @@ onBeforeUnmount(() => {
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Move selected nodes</SheetTitle>
+            <SheetDescription>Move selected nodes to another group.</SheetDescription>
           </SheetHeader>
           <div class="space-y-4 py-4">
             <p class="text-sm text-muted-foreground">

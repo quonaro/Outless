@@ -9,7 +9,7 @@ export const NodeSchema = z.object({
 
 export const CreateNodeSchema = z.object({
   url: z.string().min(1),
-  group_id: z.string().optional().default(''),
+  group_id: z.string().min(1),
 })
 
 export const UpdateNodeSchema = z.object({

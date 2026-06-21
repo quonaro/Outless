@@ -131,10 +131,10 @@ function closeEditDialog() {
 }
 
 function handleCreate() {
-  if (!nodeUrl.value.trim() || isCreateSubmitting.value) return
+  if (!nodeUrl.value.trim() || !nodeGroupId.value.trim() || isCreateSubmitting.value) return
   const payload: CreateNode = {
     url: nodeUrl.value.trim(),
-    group_id: nodeGroupId.value,
+    group_id: nodeGroupId.value.trim(),
   }
   isCreateSubmitting.value = true
   createMutation.mutate(payload, {
@@ -252,7 +252,9 @@ function handleDelete(node: Node) {
             <select
               v-model="nodeGroupId"
               class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              required
             >
+              <option value="" disabled selected>Select a group</option>
               <option v-for="g in groups ?? []" :key="g.id" :value="g.id">
                 {{ g.name }}
               </option>
@@ -262,7 +264,7 @@ function handleDelete(node: Node) {
         <CardFooter class="flex justify-end gap-2">
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
           <UiButton
-            :disabled="!nodeUrl.trim() || !nodeGroupId || isCreateSubmitting"
+            :disabled="!nodeUrl.trim() || !nodeGroupId.trim() || isCreateSubmitting"
             @click="handleCreate"
           >
             {{ isCreateSubmitting ? 'Adding...' : 'Add' }}

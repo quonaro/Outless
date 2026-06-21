@@ -23,6 +23,7 @@ import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
 import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -498,6 +499,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Issue Token</SheetTitle>
+          <SheetDescription>Create a new access token for a user or device.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="space-y-2">
@@ -579,6 +581,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Edit Token</SheetTitle>
+          <SheetDescription>Update token access and expiration.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="space-y-2">
@@ -660,6 +663,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Token Issued</SheetTitle>
+          <SheetDescription>Token has been generated successfully.</SheetDescription>
         </SheetHeader>
         <div v-if="issuedToken" class="space-y-3 py-4">
           <p class="text-sm text-muted-foreground">
@@ -680,6 +684,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Access URL</SheetTitle>
+          <SheetDescription>Subscription URL for the selected token.</SheetDescription>
         </SheetHeader>
         <div v-if="selectedAccessURL" class="py-4">
           <pre class="overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">{{

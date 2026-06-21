@@ -37,7 +37,7 @@ func NewNodeManagementHandler(
 type CreateNodeInput struct {
 	Body struct {
 		URL     string `json:"url" required:"true"`
-		GroupID string `json:"group_id"`
+		GroupID string `json:"group_id" required:"true"`
 	}
 }
 

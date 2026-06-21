@@ -13,6 +13,7 @@ import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
 import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 
 const queryClient = useQueryClient()
 
@@ -171,6 +172,7 @@ function closeEditDialog() {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Create Group</SheetTitle>
+          <SheetDescription>Create a new group of nodes.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="space-y-2">
@@ -199,6 +201,7 @@ function closeEditDialog() {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Edit Group</SheetTitle>
+          <SheetDescription>Update the group name and source URL.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="space-y-2">

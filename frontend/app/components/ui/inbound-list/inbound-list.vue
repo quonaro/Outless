@@ -20,6 +20,7 @@ import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
 import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 import TemplateBuilder from '~/components/TemplateBuilder.vue'
 
 const { data: inbounds, isLoading } = useInbounds()
@@ -277,6 +278,7 @@ async function generatePrivateKey() {
       <SheetContent class="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>Create Inbound</SheetTitle>
+          <SheetDescription>Create a new inbound server configuration.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -350,6 +352,7 @@ async function generatePrivateKey() {
       <SheetContent class="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>Edit Inbound</SheetTitle>
+          <SheetDescription>Update inbound server configuration.</SheetDescription>
         </SheetHeader>
         <div class="space-y-4 py-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

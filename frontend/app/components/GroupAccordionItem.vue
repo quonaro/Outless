@@ -21,6 +21,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '~/components/ui/sheet'
 import UiInput from '~/components/ui/input/input.vue'
 import UiLabel from '~/components/ui/label/label.vue'
 import { ArrowRight, Copy, MoreHorizontal, Plus, Pencil, Trash2 } from 'lucide-vue-next'
@@ -394,13 +402,13 @@ function handleDuplicateNode() {
     </CardContent>
   </details>
 
-  <!-- Edit Group Dialog -->
-  <Dialog v-model:open="editDialogOpen">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Edit Group</DialogTitle>
-        <DialogDescription> Change the group name and public URL. </DialogDescription>
-      </DialogHeader>
+  <!-- Edit Group Sheet -->
+  <Sheet v-model:open="editDialogOpen">
+    <SheetContent>
+      <SheetHeader>
+        <SheetTitle>Edit Group</SheetTitle>
+        <SheetDescription> Change the group name and public URL. </SheetDescription>
+      </SheetHeader>
       <div class="space-y-4 py-4">
         <div class="space-y-2">
           <UiLabel for="edit-name">Name</UiLabel>
@@ -439,14 +447,14 @@ function handleDuplicateNode() {
           </p>
         </div>
       </div>
-      <DialogFooter>
+      <SheetFooter>
         <UiButton variant="outline" @click="editDialogOpen = false">Cancel</UiButton>
         <UiButton :disabled="!canSaveEdit" @click="confirmEdit">
           {{ props.editingGroup ? 'Saving...' : 'Save' }}
         </UiButton>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 
   <!-- Delete Group Dialog -->
   <Dialog :open="deleteDialogOpen" @update:open="deleteDialogOpen = $event">
