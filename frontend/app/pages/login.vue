@@ -3,7 +3,7 @@ import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 import { nextTick } from 'vue'
-import { LogIn } from 'lucide-vue-next'
+import { LogIn, Github, ArrowRight } from 'lucide-vue-next'
 import { login } from '~/utils/services/auth'
 import { useAuth } from '~/composables/useAuth'
 
@@ -69,32 +69,51 @@ onMounted(async () => {
   <div class="flex min-h-screen">
     <!-- Left side -->
     <div
-      class="hidden lg:flex lg:w-1/2 relative items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"
+      class="hidden lg:flex lg:w-1/2 relative flex-col justify-center items-center overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-12 py-16"
     >
-      <div
-        class="blob blob-1 absolute w-72 h-72 rounded-full bg-purple-500 blur-3xl opacity-30 top-10 left-10"
-      ></div>
-      <div
-        class="blob blob-2 absolute w-96 h-96 rounded-full bg-blue-500 blur-3xl opacity-20 bottom-20 right-10"
-      ></div>
-      <div
-        class="blob blob-3 absolute w-64 h-64 rounded-full bg-cyan-400 blur-3xl opacity-25 top-1/2 left-1/2"
-      ></div>
+      <NetworkBackground />
 
-      <div class="relative z-10 flex flex-col items-center gap-6">
-        <img src="~/assets/img/logo-d-s.webp" alt="Outless" class="h-20 w-auto drop-shadow-lg" />
-        <h1 class="text-4xl font-bold text-white tracking-tight drop-shadow">Outless</h1>
-        <p class="text-slate-300 text-lg max-w-xs text-center">Simple. Fast. Secure.</p>
+      <div class="relative z-10 flex flex-col items-center gap-8">
+        <div class="max-w-md text-center">
+          <h2 class="text-5xl font-bold text-white leading-tight">
+            Proxy management, <span class="text-blue-500">redefined</span>
+          </h2>
+          <p class="mt-6 text-slate-400 text-lg leading-relaxed">
+            Deploy, monitor, and scale your proxy servers from one unified dashboard. Built for
+            speed, engineered for reliability.
+          </p>
+        </div>
+
+        <a
+          href="https://github.com/OutVless/Outless"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:text-white hover:border-slate-400 transition-colors"
+        >
+          <Github class="h-5 w-5" />
+          <span class="text-sm">View on GitHub</span>
+          <ArrowRight class="h-4 w-4 ml-1" />
+        </a>
+      </div>
+
+      <div class="absolute bottom-6 left-0 right-0 text-center text-slate-500 text-sm">
+        © 2026 Outless. Open source.
       </div>
     </div>
 
     <!-- Right side -->
     <div
-      class="w-full lg:w-1/2 flex min-h-screen items-center justify-center bg-background px-4 relative"
+      class="w-full lg:w-1/2 flex min-h-screen flex-col items-center justify-center bg-background px-4 relative"
     >
       <div class="absolute top-4 right-4">
         <ThemeToggle />
       </div>
+
+      <div class="flex items-center gap-4 mb-10">
+        <img src="~/assets/img/logo-d-s.webp" alt="Outless" class="h-16 w-auto" />
+        <h1 class="text-4xl font-bold text-foreground tracking-tight">Outless</h1>
+      </div>
+
       <Card class="w-full max-w-md bg-card border-border">
         <CardHeader class="space-y-1">
           <CardTitle class="text-2xl font-bold text-center text-card-foreground">
@@ -153,30 +172,3 @@ onMounted(async () => {
     </div>
   </div>
 </template>
-
-<style scoped>
-@keyframes float {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-}
-.blob {
-  animation: float 8s infinite ease-in-out;
-}
-.blob-1 {
-  animation-delay: 0s;
-}
-.blob-2 {
-  animation-delay: 2s;
-}
-.blob-3 {
-  animation-delay: 4s;
-}
-</style>

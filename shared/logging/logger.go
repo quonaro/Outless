@@ -6,18 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
-
-	"outless/shared/config"
 )
 
 const (
-	envLogLevel      = "OUTLESS_LOG_LEVEL"
-	envLogFormat     = "OUTLESS_LOG_FORMAT"
-	logFormatText    = "text"
-	logFormatConsole = "console"
+	envLogLevel  = "OUTLESS_LOG_LEVEL"
+	envLogFormat = "OUTLESS_LOG_FORMAT"
 )
 
 // New creates a process logger with unified format across services.
@@ -48,9 +43,8 @@ func New(service string) *slog.Logger {
 }
 
 // NewFromConfig creates a process logger with configuration-based settings.
-func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.Logger {
-	level := parseLevel(cfg.Level)
-	logType := strings.ToLower(strings.TrimSpace(cfg.Type))
+func NewFromConfig(service string, level string, module string) *slog.Logger {
+	parsed := parseLevel(level)
 
 	name := strings.TrimSpace(service)
 	if name == "" {
@@ -59,61 +53,13 @@ func NewFromConfig(service string, cfg config.LogsConfig, module string) *slog.L
 
 	moduleName := strings.TrimSpace(module)
 
-	var consoleHandler slog.Handler
-	switch logType {
-	case "pretty":
-		consoleHandler = &minimalHandler{w: os.Stdout, level: level, colored: cfg.Colored, module: moduleName}
-	case "text", "console":
-		consoleHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})
-	default:
-		consoleHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})
-	}
+	handler := &minimalHandler{w: os.Stdout, level: parsed, colored: true, module: moduleName}
 
-	var finalHandler slog.Handler
-	if output := getOutputHandler(cfg.Output, level, logType, cfg.Colored, moduleName); output != nil {
-		finalHandler = output
-	} else {
-		finalHandler = consoleHandler
-	}
-
-	return slog.New(finalHandler).With(
+	return slog.New(handler).With(
 		slog.String("service", name),
 		slog.String("module", moduleName),
 		slog.Int("pid", os.Getpid()),
 	)
-}
-
-func getOutputHandler(output string, level slog.Level, logType string, colored bool, moduleName string) slog.Handler {
-	if output == "" || output == "none" {
-		return nil
-	}
-
-	var writer io.Writer
-	switch strings.ToLower(strings.TrimSpace(output)) {
-	case "stdout":
-		writer = os.Stdout
-	case "stderr":
-		writer = os.Stderr
-	default:
-		dir := filepath.Dir(output)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil
-		}
-		f, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return nil
-		}
-		writer = f
-	}
-
-	switch logType {
-	case "pretty":
-		return &minimalHandler{w: writer, level: level, colored: colored, module: moduleName}
-	case logFormatText, logFormatConsole:
-		return slog.NewTextHandler(writer, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})
-	default:
-		return slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceBuiltInAttrs})
-	}
 }
 
 // minimalHandler implements a minimal log format: [LEVEL] (module): message

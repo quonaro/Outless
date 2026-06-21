@@ -25,18 +25,10 @@ func NewSettingsHandler(configPath string, logger *slog.Logger) *SettingsHandler
 
 // SafeAPIConfig exposes app settings.
 type SafeAPIConfig struct {
-	ShutdownGracetime string         `json:"shutdown_gracetime"`
-	HTTPPort          int            `json:"http_port"`
-	Logs              SafeLogsConfig `json:"logs"`
-	DisableDocs       bool           `json:"disable_docs"`
-}
-
-// SafeLogsConfig exposes logs settings.
-type SafeLogsConfig struct {
-	Level   string `json:"level"`
-	Colored bool   `json:"colored"`
-	Type    string `json:"type"`
-	Output  string `json:"output"`
+	ShutdownGracetime string `json:"shutdown_gracetime"`
+	HTTPPort          int    `json:"http_port"`
+	LogLevel          string `json:"log_level"`
+	DisableDocs       bool   `json:"disable_docs"`
 }
 
 // SettingsOutput is returned by GET /v1/settings.
@@ -76,13 +68,8 @@ func (h *SettingsHandler) GetSettings(ctx context.Context, _ *struct{}) (*Settin
 	out.Body.App = SafeAPIConfig{
 		ShutdownGracetime: cfg.App.ShutdownGracetime.String(),
 		HTTPPort:          cfg.App.HTTPPort,
+		LogLevel:          cfg.App.LogLevel,
 		DisableDocs:       cfg.App.DisableDocs,
-		Logs: SafeLogsConfig{
-			Level:   cfg.App.Logs.Level,
-			Colored: cfg.App.Logs.Colored,
-			Type:    cfg.App.Logs.Type,
-			Output:  cfg.App.Logs.Output,
-		},
 	}
 	return out, nil
 }
@@ -102,12 +89,7 @@ func (h *SettingsHandler) UpdateSettings(ctx context.Context, input *UpdateSetti
 	}
 	cfg.App.HTTPPort = input.Body.App.HTTPPort
 	cfg.App.DisableDocs = input.Body.App.DisableDocs
-	cfg.App.Logs = config.LogsConfig{
-		Level:   input.Body.App.Logs.Level,
-		Colored: input.Body.App.Logs.Colored,
-		Type:    input.Body.App.Logs.Type,
-		Output:  input.Body.App.Logs.Output,
-	}
+	cfg.App.LogLevel = input.Body.App.LogLevel
 	if err := loader.Save(h.configPath, &cfg); err != nil {
 		h.logger.Error("failed to save config", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to save settings")

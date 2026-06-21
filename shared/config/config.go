@@ -24,7 +24,7 @@ type AppConfig struct {
 	HTTPPort          int           `yaml:"http_port"`
 	ExternalHost      string        `yaml:"external_host"`     // host used in subscription URLs when inbound.URLHost is empty
 	SingboxLogLevel   string        `yaml:"singbox_log_level"` // sing-box log level: trace/debug/info/warn/error/fatal/panic; empty = warn
-	Logs              LogsConfig    `yaml:"logs"`
+	LogLevel          string        `yaml:"log_level"`         // process log level: debug/info/warn/error
 	DisableDocs       bool          `yaml:"disable_docs"`
 }
 
@@ -37,26 +37,13 @@ type JWTConfig struct {
 	Expiry time.Duration `yaml:"expiry"`
 }
 
-// LogsConfig holds logging configuration.
-type LogsConfig struct {
-	Level   string `yaml:"level"`
-	Colored bool   `yaml:"colored"`
-	Type    string `yaml:"type"`
-	Output  string `yaml:"output"` // stdout, stderr, none, or file path
-}
-
 // DefaultConfig returns default configuration tuned for a single-binary deployment.
 func DefaultConfig() Config {
 	return Config{
 		App: AppConfig{
 			ShutdownGracetime: 10 * time.Second,
 			HTTPPort:          41220,
-			Logs: LogsConfig{
-				Level:   "info",
-				Colored: true,
-				Type:    "pretty",
-				Output:  "stdout",
-			},
+			LogLevel:          "info",
 		},
 		JWT: JWTConfig{
 			Secret: "CHANGE_ME_IN_PRODUCTION",
