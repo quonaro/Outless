@@ -193,6 +193,7 @@ func toHubConfig(inbound domain.Inbound) HubConfig {
 	}
 }
 
+//nolint:funlen
 func (s *SubscriptionService) buildHubURLs(
 	token domain.Token,
 	allNodes []domain.Node,

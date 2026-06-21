@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useMutation } from '@tanstack/vue-query'
+import { ZodError } from 'zod'
 import { ChangeAdminPasswordSchema, type ChangeAdminPassword } from '~/utils/schemas/admin'
 import { changeAdminPassword } from '~/utils/services/admin'
 import UiButton from '~/components/ui/button/button.vue'
@@ -40,9 +41,10 @@ const mutation = useMutation({
     emit('update:open', false)
     resetForm()
   },
-  onError: (error: any) => {
-    if (error.data?.message) {
-      errors.value.current_password = error.data.message
+  onError: (error: unknown) => {
+    const apiError = error as { data?: { message?: string } }
+    if (apiError.data?.message) {
+      errors.value.current_password = apiError.data.message
     } else {
       errors.value.current_password = 'Failed to change password'
     }
@@ -62,14 +64,17 @@ function resetForm() {
 
 function handleSubmit() {
   errors.value = {}
-  
+
   try {
     ChangeAdminPasswordSchema.parse(formData.value)
     mutation.mutate(formData.value)
-  } catch (err: any) {
-    err.errors.forEach((error: any) => {
-      errors.value[error.path[0]] = error.message
-    })
+  } catch (err: unknown) {
+    if (err instanceof ZodError) {
+      err.errors.forEach((error) => {
+        const path = error.path[0] as string
+        errors.value[path] = error.message
+      })
+    }
   }
 }
 
@@ -103,7 +108,9 @@ function handleOpenChange(value: boolean) {
             type="text"
             :class="{ 'border-red-500': errors.current_login }"
           />
-          <span v-if="errors.current_login" class="text-sm text-red-500">{{ errors.current_login }}</span>
+          <span v-if="errors.current_login" class="text-sm text-red-500">{{
+            errors.current_login
+          }}</span>
         </div>
 
         <div class="space-y-2">
@@ -114,7 +121,9 @@ function handleOpenChange(value: boolean) {
             placeholder="Enter current password"
             :class="{ 'border-red-500': errors.current_password }"
           />
-          <span v-if="errors.current_password" class="text-sm text-red-500">{{ errors.current_password }}</span>
+          <span v-if="errors.current_password" class="text-sm text-red-500">{{
+            errors.current_password
+          }}</span>
         </div>
 
         <div class="space-y-2">
@@ -136,7 +145,9 @@ function handleOpenChange(value: boolean) {
             placeholder="Min 8 characters"
             :class="{ 'border-red-500': errors.new_password }"
           />
-          <span v-if="errors.new_password" class="text-sm text-red-500">{{ errors.new_password }}</span>
+          <span v-if="errors.new_password" class="text-sm text-red-500">{{
+            errors.new_password
+          }}</span>
         </div>
 
         <div class="space-y-2">
@@ -147,21 +158,15 @@ function handleOpenChange(value: boolean) {
             placeholder="Confirm new password"
             :class="{ 'border-red-500': errors.confirm_password }"
           />
-          <span v-if="errors.confirm_password" class="text-sm text-red-500">{{ errors.confirm_password }}</span>
+          <span v-if="errors.confirm_password" class="text-sm text-red-500">{{
+            errors.confirm_password
+          }}</span>
         </div>
       </div>
 
       <DialogFooter>
-        <UiButton
-          variant="outline"
-          @click="emit('update:open', false)"
-        >
-          Cancel
-        </UiButton>
-        <UiButton
-          :disabled="mutation.isPending"
-          @click="handleSubmit"
-        >
+        <UiButton variant="outline" @click="emit('update:open', false)"> Cancel </UiButton>
+        <UiButton :disabled="mutation.isPending" @click="handleSubmit">
           {{ mutation.isPending ? 'Changing...' : 'Change Password' }}
         </UiButton>
       </DialogFooter>

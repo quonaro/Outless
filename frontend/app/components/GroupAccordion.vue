@@ -18,7 +18,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   removeNode: [node: Node]
   addNode: [groupId: string]
-  moveNode: [payload: { node: Node, targetGroupId: string }]
+  moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
   duplicateNode: [node: Node]
 }>()
@@ -33,9 +33,7 @@ const editingGroupIDs = ref<Set<string>>(new Set())
 const visibleGroups = computed(() => {
   const q = props.search.trim().toLowerCase()
   if (!q) return props.groups
-  return props.groups.filter(g =>
-    `${g.name} ${g.id} ${g.source_url}`.toLowerCase().includes(q)
-  )
+  return props.groups.filter((g) => `${g.name} ${g.id} ${g.source_url}`.toLowerCase().includes(q))
 })
 
 const deleteMutation = useMutation({
@@ -45,11 +43,6 @@ const deleteMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   },
 })
-const updateGroupMutation = useMutation({
-  mutationFn: ({ id, group }: { id: string, group: { name: string, source_url: string, random_enabled: boolean, random_limit?: number | null } }) =>
-    updateGroup(id, group),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
-})
 const deleteGroupMutation = useMutation({
   mutationFn: (groupId: string) => deleteGroup(groupId),
   onSuccess: () => {
@@ -58,8 +51,19 @@ const deleteGroupMutation = useMutation({
   },
 })
 const editGroupMutation = useMutation({
-  mutationFn: ({ id, name, source_url, random_enabled, random_limit }: { id: string, name: string, source_url: string, random_enabled: boolean, random_limit?: number | null }) =>
-    updateGroup(id, { name, source_url, random_enabled, random_limit }),
+  mutationFn: ({
+    id,
+    name,
+    source_url,
+    random_enabled,
+    random_limit,
+  }: {
+    id: string
+    name: string
+    source_url: string
+    random_enabled: boolean
+    random_limit?: number | null
+  }) => updateGroup(id, { name, source_url, random_enabled, random_limit }),
   onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
 })
 function stateForGroup(groupID: string) {
@@ -103,7 +107,9 @@ function syncProgressPercent(group: Group): number {
 
 function syncInterrupted(group: Group): boolean {
   const st = stateForGroup(group.id)
-  return !st.isSyncing.value && st.syncTotal.value > 0 && st.syncProcessed.value < st.syncTotal.value
+  return (
+    !st.isSyncing.value && st.syncTotal.value > 0 && st.syncProcessed.value < st.syncTotal.value
+  )
 }
 
 function startSync(group: Group) {
@@ -126,32 +132,41 @@ function removeNode(node: Node) {
 function handleAddNode(groupId: string) {
   emit('addNode', groupId)
 }
-function handleMoveNode(payload: { node: Node, targetGroupId: string }) {
+function handleMoveNode(payload: { node: Node; targetGroupId: string }) {
   emit('moveNode', payload)
 }
 function nodeSyncError(groupID: string, nodeID: string): string {
   return stateForGroup(groupID).syncingNodes.value.get(nodeID)?.error ?? ''
 }
-function handleEditGroup(group: { id: string, name: string, source_url: string, random_enabled: boolean, random_limit: number | null }) {
-  const existingGroup = props.groups.find(g => g.id === group.id)
+function handleEditGroup(group: {
+  id: string
+  name: string
+  source_url: string
+  random_enabled: boolean
+  random_limit: number | null
+}) {
+  const existingGroup = props.groups.find((g) => g.id === group.id)
   if (!existingGroup) return
 
   const next = new Set(editingGroupIDs.value)
   next.add(group.id)
   editingGroupIDs.value = next
-  editGroupMutation.mutate({
-    id: group.id,
-    name: group.name,
-    source_url: group.source_url,
-    random_enabled: group.random_enabled,
-    random_limit: group.random_limit,
-  }, {
-    onSettled: () => {
-      const current = new Set(editingGroupIDs.value)
-      current.delete(group.id)
-      editingGroupIDs.value = current
+  editGroupMutation.mutate(
+    {
+      id: group.id,
+      name: group.name,
+      source_url: group.source_url,
+      random_enabled: group.random_enabled,
+      random_limit: group.random_limit,
     },
-  })
+    {
+      onSettled: () => {
+        const current = new Set(editingGroupIDs.value)
+        current.delete(group.id)
+        editingGroupIDs.value = current
+      },
+    }
+  )
 }
 function handleDeleteGroup(groupId: string) {
   const next = new Set(deletingGroupIDs.value)
@@ -197,18 +212,18 @@ onBeforeUnmount(() => {
       :is-cancelled="syncCancelled(group.id)"
       :sync-error="syncErrorText(group.id)"
       :sync-progress-percent="syncProgressPercent(group)"
-      @add-node="handleAddNode"
       :sync-processed-count="syncProcessedCount(group.id)"
-      @move-node="handleMoveNode"
       :sync-total-count="syncTotalCount(group)"
-      @toggle-selection="emit('toggleSelection', $event)"
       :sync-interrupted="syncInterrupted(group)"
-      @duplicate-node="emit('duplicateNode', $event)"
       :sync-added-count="syncAddedCount(group.id)"
       :editing-group="editingGroupIDs.has(group.id)"
       :deleting-group="deletingGroupIDs.has(group.id)"
       :deleting-ids="deletingNodeIDs"
       :sync-node-error="(id: string) => nodeSyncError(group.id, id)"
+      @add-node="handleAddNode"
+      @move-node="handleMoveNode"
+      @toggle-selection="emit('toggleSelection', $event)"
+      @duplicate-node="emit('duplicateNode', $event)"
       @start-sync="startSync(group)"
       @cancel-sync="cancelSync(group)"
       @remove-node="removeNode"

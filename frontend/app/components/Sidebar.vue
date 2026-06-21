@@ -7,6 +7,8 @@ import { useSSEStatus } from '~/composables/useSSE'
 import logoImage from '~/assets/img/logo-d-a.webp'
 import ThemeToggle from './ThemeToggle.vue'
 
+defineOptions({ name: 'AppSidebar' })
+
 const sidebar = useSidebar()
 const auth = useAuth()
 const route = useRoute()
