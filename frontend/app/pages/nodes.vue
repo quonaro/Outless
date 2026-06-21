@@ -653,10 +653,7 @@ onBeforeUnmount(() => {
           <CardFooter class="flex justify-end gap-2">
             <UiButton
               variant="outline"
-              @click="
-                showCreateNodeDialog = false
-                createNodeErrorMessage = ''
-              "
+              @click="showCreateNodeDialog = false; createNodeErrorMessage = ''"
             >
               Cancel
             </UiButton>
