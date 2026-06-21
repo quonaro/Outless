@@ -1,6 +1,6 @@
 # Binaries
 outless
-outless.exe
+outless_*
 *.exe
 *.dll
 *.so
@@ -11,6 +11,7 @@ outless.exe
 *.out
 vendor/
 dist/
+dist_frontend/
 build/
 tmp/
 
@@ -32,3 +33,4 @@ frontend/node_modules/
 frontend/.nuxt/
 frontend/.output/
 frontend/dist/
+frontend/dist

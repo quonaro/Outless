@@ -82,6 +82,6 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Roboto', 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+    font-family: 'Roboto', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
   }
 }

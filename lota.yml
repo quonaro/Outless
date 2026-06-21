@@ -15,7 +15,7 @@ build:
     rm -rf "$WEB_DIST"
     mkdir -p "$WEB_DIST"
     cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
-    go build -tags with_reality_server -o "$BINARY" ./cmd/outless
+    CGO_ENABLED=0 go build -trimpath -tags with_reality_server -ldflags="-s -w" -o "$BINARY" ./cmd/outless
 
 clean:
   desc: Remove built binary and distribution files
@@ -30,3 +30,24 @@ run:
   parallel: false
   script: |
     ./outless
+
+frontend-dev:
+  desc: Start frontend dev server with hot reload
+  script: |
+    cd "$FRONTEND_DIR"
+    exec pnpm dev
+
+backend-dev:
+  desc: Start backend dev server with hot reload
+  script: |
+    exec air
+
+dev:
+  desc: Run frontend and backend in dev mode with hot reload
+  depends:
+  - frontend-dev
+  - backend-dev
+  parallel: true
+  script: |
+    echo "Dev mode started. Frontend: http://localhost:41221, API: http://localhost:41220"
+    echo "Press Ctrl+C to stop."
