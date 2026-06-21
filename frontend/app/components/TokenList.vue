@@ -17,10 +17,12 @@ import { Plus, MoreVertical, Eye, Pencil, Power, PowerOff, Trash2, Copy } from '
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import UiCard from '~/components/ui/card/card.vue'
-import CardHeader from '~/components/ui/card/CardHeader.vue'
-import CardTitle from '~/components/ui/card/CardTitle.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import CardFooter from '~/components/ui/card/CardFooter.vue'
+import Sheet from '~/components/ui/sheet/Sheet.vue'
+import SheetContent from '~/components/ui/sheet/SheetContent.vue'
+import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
+import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
+import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -492,15 +494,12 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       </CardContent>
     </UiCard>
 
-    <div
-      v-if="showCreateDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <UiCard class="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Issue Token</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
+    <Sheet v-model:open="showCreateDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Issue Token</SheetTitle>
+        </SheetHeader>
+        <div class="space-y-4 py-4">
           <div class="space-y-2">
             <label class="text-sm font-medium">Owner</label>
             <UiInput
@@ -566,25 +565,22 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               </option>
             </select>
           </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
+        </div>
+        <SheetFooter>
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
           <UiButton :disabled="!ownerInput.trim() || isIssueSubmitting" @click="handleCreate">
             {{ isIssueSubmitting ? 'Issuing...' : 'Issue' }}
           </UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
 
-    <div
-      v-if="showEditDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <UiCard class="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Edit Token</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
+    <Sheet v-model:open="showEditDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit Token</SheetTitle>
+        </SheetHeader>
+        <div class="space-y-4 py-4">
           <div class="space-y-2">
             <label class="text-sm font-medium">Owner</label>
             <UiInput
@@ -650,57 +646,51 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               </option>
             </select>
           </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
+        </div>
+        <SheetFooter>
           <UiButton variant="outline" @click="closeEditDialog"> Cancel </UiButton>
           <UiButton :disabled="!editOwnerInput.trim() || isEditSubmitting" @click="handleEdit">
             {{ isEditSubmitting ? 'Updating...' : 'Update' }}
           </UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
 
-    <div
-      v-if="showIssuedDialog && issuedToken"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <UiCard class="w-full max-w-lg p-6">
-        <CardHeader>
-          <CardTitle>Token Issued</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-3">
+    <Sheet v-model:open="showIssuedDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Token Issued</SheetTitle>
+        </SheetHeader>
+        <div v-if="issuedToken" class="space-y-3 py-4">
           <p class="text-sm text-muted-foreground">
             Copy and share this subscription URL. Users can import it directly in VLESS clients.
           </p>
           <pre class="max-h-40 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">{{
             issuedAccessURL
           }}</pre>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
+        </div>
+        <SheetFooter>
           <UiButton variant="outline" @click="copyText(issuedAccessURL)">Copy URL</UiButton>
           <UiButton @click="closeIssuedDialog">Close</UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
 
-    <div
-      v-if="showAccessURLDialog && selectedAccessURL"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <UiCard class="w-full max-w-xl p-6">
-        <CardHeader>
-          <CardTitle>Access URL</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <Sheet v-model:open="showAccessURLDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Access URL</SheetTitle>
+        </SheetHeader>
+        <div v-if="selectedAccessURL" class="py-4">
           <pre class="overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">{{
             selectedAccessURL
           }}</pre>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
+        </div>
+        <SheetFooter>
           <UiButton variant="outline" @click="copyText(selectedAccessURL)">Copy</UiButton>
           <UiButton @click="showAccessURLDialog = false">Close</UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>

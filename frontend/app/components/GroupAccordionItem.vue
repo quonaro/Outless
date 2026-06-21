@@ -25,34 +25,45 @@ import UiInput from '~/components/ui/input/input.vue'
 import UiLabel from '~/components/ui/label/label.vue'
 import { ArrowRight, Copy, MoreHorizontal, Plus, Pencil, Trash2 } from 'lucide-vue-next'
 
-const props = withDefaults(defineProps<{
-  group: Group
-  search: string
-  isSyncing: boolean
-  isCancelled: boolean
-  syncError: string
-  syncProgressPercent: number
-  syncProcessedCount: number
-  syncTotalCount: number
-  syncInterrupted: boolean
-  syncAddedCount: number
-  deletingIds: Set<string>
-  movingIds: Set<string>
-  selectedIds: Set<string>
-  allGroups: Group[]
-  syncNodeError: (nodeId: string) => string
-  editingGroup: boolean
-  deletingGroup: boolean
-}>(), { allGroups: () => [] })
+const props = withDefaults(
+  defineProps<{
+    group: Group
+    search: string
+    isSyncing: boolean
+    isCancelled: boolean
+    syncError: string
+    syncProgressPercent: number
+    syncProcessedCount: number
+    syncTotalCount: number
+    syncInterrupted: boolean
+    syncAddedCount: number
+    deletingIds: Set<string>
+    movingIds: Set<string>
+    selectedIds: Set<string>
+    allGroups: Group[]
+    syncNodeError: (nodeId: string) => string
+    editingGroup: boolean
+    deletingGroup: boolean
+  }>(),
+  { allGroups: () => [] }
+)
 
 const emit = defineEmits<{
   startSync: []
   cancelSync: []
   removeNode: [node: Node]
-  editGroup: [group: { id: string, name: string, source_url: string, random_enabled: boolean, random_limit: number | null }]
+  editGroup: [
+    group: {
+      id: string
+      name: string
+      source_url: string
+      random_enabled: boolean
+      random_limit: number | null
+    },
+  ]
   deleteGroup: [groupId: string]
   addNode: [groupId: string]
-  moveNode: [payload: { node: Node, targetGroupId: string }]
+  moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
   bulkMove: [targetGroupId: string]
   bulkDelete: []
@@ -89,17 +100,13 @@ const {
   isLoading,
 } = useGroupNodesInfinite(() => props.group.id)
 
-const allNodesInGroup = computed(() =>
-  nodePages.value?.pages.flatMap((p) => p.nodes) ?? [],
-)
+const allNodesInGroup = computed(() => nodePages.value?.pages.flatMap((p) => p.nodes) ?? [])
 
 const displayNodes = computed(() => {
   let list = allNodesInGroup.value
   const q = props.search.trim().toLowerCase()
   if (q) {
-    list = list.filter((n) =>
-      `${n.url} ${n.id} ${n.country}`.toLowerCase().includes(q),
-    )
+    list = list.filter((n) => `${n.url} ${n.id} ${n.country}`.toLowerCase().includes(q))
   }
   return list
 })
@@ -127,18 +134,17 @@ watch(
           maybeLoadMoreInList()
         }
       },
-      { root, rootMargin: '160px 0px 160px 0px', threshold: 0 },
+      { root, rootMargin: '160px 0px 160px 0px', threshold: 0 }
     )
     listObserver.observe(target)
   },
-  { flush: 'post' },
+  { flush: 'post' }
 )
 
 onBeforeUnmount(() => {
   listObserver?.disconnect()
   listObserver = null
 })
-
 
 async function copyNodeURL(node: Node) {
   await navigator.clipboard.writeText(node.url)
@@ -225,17 +231,25 @@ function handleDuplicateNode() {
       <div class="flex min-w-0 items-start justify-between gap-2">
         <div class="min-w-0 flex-1">
           <p class="truncate font-medium">
-            {{ props.group.name }} <span class="text-muted-foreground">({{ props.group.total_nodes }})</span>
+            {{ props.group.name }}
+            <span class="text-muted-foreground">({{ props.group.total_nodes }})</span>
           </p>
           <div class="flex items-center gap-2 text-xs text-muted-foreground">
             <p class="truncate min-w-0">
               {{ props.group.source_url || 'Manual group' }}
             </p>
-            <span v-if="props.group.last_synced_at" class="shrink-0"> · Last sync: {{ new Date(props.group.last_synced_at).toLocaleString() }}</span>
+            <span v-if="props.group.last_synced_at" class="shrink-0">
+              · Last sync: {{ new Date(props.group.last_synced_at).toLocaleString() }}</span
+            >
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          <UiButton variant="ghost" size="icon" class="h-8 w-8" @click.prevent="emit('addNode', props.group.id)">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8"
+            @click.prevent="emit('addNode', props.group.id)"
+          >
             <Plus class="h-4 w-4" />
           </UiButton>
           <DropdownMenu>
@@ -249,7 +263,11 @@ function handleDuplicateNode() {
                 <Pencil class="mr-2 h-4 w-4" />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem class="text-destructive focus:text-destructive" :disabled="props.deletingGroup" @click.prevent="openDeleteDialog">
+              <DropdownMenuItem
+                class="text-destructive focus:text-destructive"
+                :disabled="props.deletingGroup"
+                @click.prevent="openDeleteDialog"
+              >
                 <Trash2 class="mr-2 h-4 w-4" />
                 Delete group
               </DropdownMenuItem>
@@ -262,15 +280,20 @@ function handleDuplicateNode() {
       v-if="props.isSyncing || props.syncInterrupted"
       class="flex items-center gap-2 border-b border-border/80 bg-muted/40 px-4 py-2.5"
     >
-      <span class="text-xs font-medium text-muted-foreground">{{ props.isSyncing ? 'Load' : 'Load interrupted' }}</span>
-      <span class="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-xs tabular-nums text-primary">
+      <span class="text-xs font-medium text-muted-foreground">{{
+        props.isSyncing ? 'Load' : 'Load interrupted'
+      }}</span>
+      <span
+        class="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-xs tabular-nums text-primary"
+      >
         {{ props.syncProgressPercent }}% · {{ props.syncProcessedCount }}/{{ props.syncTotalCount }}
       </span>
-      <span class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      <span
+        class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700"
+      >
         +{{ props.syncAddedCount }} new
       </span>
     </div>
-
 
     <CardContent class="border-t px-0 py-0">
       <div v-if="props.isCancelled" class="flex flex-wrap items-center gap-2 px-4 pt-3">
@@ -286,11 +309,7 @@ function handleDuplicateNode() {
         class="max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain rounded-md border border-border/60 bg-muted/20 px-4 py-3 pr-2 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.45)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-600/60 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500/80"
       >
         <div class="space-y-2">
-          <UiCard
-            v-for="node in displayNodes"
-            :key="node.id"
-            class="px-3 py-2"
-          >
+          <UiCard v-for="node in displayNodes" :key="node.id" class="px-3 py-2">
             <CardContent class="p-0">
               <div class="flex items-center gap-2">
                 <input
@@ -298,7 +317,7 @@ function handleDuplicateNode() {
                   :checked="props.selectedIds.has(node.id)"
                   class="h-4 w-4 rounded border-gray-400 shrink-0"
                   @change="emit('toggleSelection', node.id)"
-                >
+                />
                 <div class="min-w-0 flex-1">
                   <div class="group relative min-w-0">
                     <p class="truncate text-sm font-medium">{{ node.url }}</p>
@@ -322,7 +341,9 @@ function handleDuplicateNode() {
                     </span>
                   </p>
                 </div>
-                <div class="flex shrink-0 flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+                <div
+                  class="flex shrink-0 flex-nowrap items-center justify-end gap-1 whitespace-nowrap"
+                >
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
                       <UiButton variant="ghost" size="icon" class="h-7 w-7" @click.prevent>
@@ -330,7 +351,10 @@ function handleDuplicateNode() {
                       </UiButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem :disabled="props.movingIds.has(node.id)" @click.prevent="openMoveNodeDialog(node)">
+                      <DropdownMenuItem
+                        :disabled="props.movingIds.has(node.id)"
+                        @click.prevent="openMoveNodeDialog(node)"
+                      >
                         <ArrowRight class="mr-2 h-3.5 w-3.5" />
                         Move
                       </DropdownMenuItem>
@@ -338,7 +362,11 @@ function handleDuplicateNode() {
                         <Copy class="mr-2 h-3.5 w-3.5" />
                         Copy
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="text-destructive focus:text-destructive" :disabled="props.deletingIds.has(node.id)" @click.prevent="emit('removeNode', node)">
+                      <DropdownMenuItem
+                        class="text-destructive focus:text-destructive"
+                        :disabled="props.deletingIds.has(node.id)"
+                        @click.prevent="emit('removeNode', node)"
+                      >
                         <Trash2 class="mr-2 h-3.5 w-3.5" />
                         Delete
                       </DropdownMenuItem>
@@ -371,18 +399,12 @@ function handleDuplicateNode() {
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Edit Group</DialogTitle>
-        <DialogDescription>
-          Change the group name and public URL.
-        </DialogDescription>
+        <DialogDescription> Change the group name and public URL. </DialogDescription>
       </DialogHeader>
       <div class="space-y-4 py-4">
         <div class="space-y-2">
           <UiLabel for="edit-name">Name</UiLabel>
-          <UiInput
-            id="edit-name"
-            v-model="editName"
-            placeholder="Group name"
-          />
+          <UiInput id="edit-name" v-model="editName" placeholder="Group name" />
         </div>
         <div class="space-y-2">
           <UiLabel for="edit-source-url">Public URL</UiLabel>
@@ -398,8 +420,10 @@ function handleDuplicateNode() {
             v-model="editRandomEnabled"
             type="checkbox"
             class="h-4 w-4 rounded border-input"
+          />
+          <label for="edit-random-enabled" class="text-sm"
+            >Random selection for subscriptions</label
           >
-          <label for="edit-random-enabled" class="text-sm">Random selection for subscriptions</label>
         </div>
         <div class="space-y-2">
           <UiLabel for="edit-random-limit">Limit (optional)</UiLabel>
@@ -410,7 +434,9 @@ function handleDuplicateNode() {
             min="1"
             placeholder="Max nodes to return"
           />
-          <p class="text-xs text-muted-foreground">Maximum number of nodes to return in subscriptions</p>
+          <p class="text-xs text-muted-foreground">
+            Maximum number of nodes to return in subscriptions
+          </p>
         </div>
       </div>
       <DialogFooter>
@@ -428,7 +454,8 @@ function handleDuplicateNode() {
       <DialogHeader>
         <DialogTitle>Delete group</DialogTitle>
         <DialogDescription>
-          Are you sure you want to delete group "{{ props.group.name }}"? This action cannot be undone.
+          Are you sure you want to delete group "{{ props.group.name }}"? This action cannot be
+          undone.
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
@@ -444,13 +471,15 @@ function handleDuplicateNode() {
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Move node</DialogTitle>
-        <DialogDescription>
-          Select target group to move this node.
-        </DialogDescription>
+        <DialogDescription> Select target group to move this node. </DialogDescription>
       </DialogHeader>
       <div class="py-4">
         <UiLabel for="move-target-group">Target group</UiLabel>
-        <select id="move-target-group" v-model="moveTargetGroupId" class="mt-1.5 w-full rounded-md border bg-background px-3 py-2 text-sm">
+        <select
+          id="move-target-group"
+          v-model="moveTargetGroupId"
+          class="mt-1.5 w-full rounded-md border bg-background px-3 py-2 text-sm"
+        >
           <option value="">No group</option>
           <option v-for="g in props.allGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
         </select>

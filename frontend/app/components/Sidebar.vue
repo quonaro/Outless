@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutDashboard, Key, Globe, Settings, LogOut, Server } from 'lucide-vue-next'
+import { LayoutDashboard, Key, Globe, Settings, LogOut, Server, X } from 'lucide-vue-next'
 
 import { useSidebar } from '~/composables/useSidebar'
 import { useAuth } from '~/composables/useAuth'
@@ -33,28 +33,94 @@ const activeItem = computed(() => {
 })
 
 const handleNavClick = (path: string) => {
+  sidebar.closeMobile()
   navigateTo(path)
 }
 
 const handleLogout = () => {
   auth.clearToken()
+  sidebar.closeMobile()
   navigateTo('/login')
 }
 </script>
 
 <template>
+  <!-- Mobile drawer -->
+  <Teleport to="body">
+    <div
+      class="fixed inset-0 z-40 bg-black/60 transition-opacity duration-300 md:hidden"
+      :class="
+        sidebar.isMobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      "
+      @click="sidebar.closeMobile()"
+    />
+    <aside
+      class="fixed left-0 top-0 z-50 h-screen w-full flex flex-col border-r bg-background transition-transform duration-300 ease-in-out md:hidden"
+      :class="sidebar.isMobileOpen ? 'translate-x-0' : '-translate-x-full'"
+    >
+      <div class="flex items-center justify-between border-b border-border p-4">
+        <div class="flex items-center gap-3">
+          <img :src="logoImage" alt="Outless Logo" class="h-10 w-10 flex-shrink-0" />
+          <span class="font-bold text-lg text-foreground">
+            Outless
+            <ClientOnly>
+              <span
+                class="ml-2 inline-block h-2.5 w-2.5 rounded-full"
+                :class="isBackendAvailable ? 'bg-emerald-500' : 'bg-red-500'"
+              />
+              <template #fallback>
+                <span class="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+              </template>
+            </ClientOnly>
+          </span>
+        </div>
+        <button
+          class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          @click="sidebar.closeMobile()"
+        >
+          <X class="h-5 w-5" />
+        </button>
+      </div>
+      <nav class="flex-1 space-y-2 overflow-y-auto p-4">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          class="w-full flex items-center gap-3 rounded-lg p-3 transition-colors"
+          :class="
+            activeItem === item.id
+              ? 'bg-primary/10 text-primary dark:bg-primary/20'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          "
+          @click="handleNavClick(item.path)"
+        >
+          <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+          <span class="font-medium">{{ item.label }}</span>
+        </button>
+      </nav>
+      <div class="border-t border-border p-4">
+        <button
+          class="w-full flex items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          @click="handleLogout"
+        >
+          <LogOut class="h-5 w-5 flex-shrink-0" />
+          <span class="font-medium">Logout</span>
+        </button>
+      </div>
+    </aside>
+  </Teleport>
+
+  <!-- Desktop sidebar -->
   <aside
-    class="h-screen flex flex-col border-r bg-background transition-all duration-300"
+    class="hidden h-screen flex-col border-r bg-background transition-all duration-300 md:flex"
     :class="sidebar.isExpanded ? 'w-72' : 'w-20'"
   >
     <!-- Logo Section -->
-    <div class="p-4 border-b border-border">
+    <div class="border-b border-border p-4">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-          <img :src="logoImage" alt="Outless Logo" class="w-12 h-12 flex-shrink-0" />
+          <img :src="logoImage" alt="Outless Logo" class="h-12 w-12 flex-shrink-0" />
           <span v-if="sidebar.isExpanded" class="font-bold text-lg text-foreground">
             Outless
-            <!-- SSE state differs SSR vs client; avoid hydration mismatch -->
             <ClientOnly>
               <span
                 class="ml-2 inline-block h-2.5 w-2.5 rounded-full"
@@ -81,21 +147,20 @@ const handleLogout = () => {
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+    <nav class="flex-1 space-y-2 overflow-y-auto p-4">
       <template v-for="item in navItems" :key="item.id">
-        <div class="relative group">
-          <!-- Main Nav Item -->
+        <div class="group relative">
           <button
-            class="w-full flex items-center justify-between p-3 rounded-lg transition-colors"
+            class="flex w-full items-center justify-between rounded-lg p-3 transition-colors"
             :class="
               activeItem === item.id
                 ? 'bg-primary/10 text-primary dark:bg-primary/20'
-                : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             "
             @click="handleNavClick(item.path)"
           >
             <div class="flex items-center gap-3">
-              <component :is="item.icon" class="w-5 h-5 flex-shrink-0" />
+              <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
               <span v-if="sidebar.isExpanded" class="font-medium">{{ item.label }}</span>
             </div>
           </button>
@@ -104,12 +169,12 @@ const handleLogout = () => {
     </nav>
 
     <!-- Logout Button -->
-    <div class="p-4 border-t border-border">
+    <div class="border-t border-border p-4">
       <button
-        class="w-full flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+        class="flex w-full items-center gap-3 rounded-lg p-3 transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         @click="handleLogout"
       >
-        <LogOut class="w-5 h-5 flex-shrink-0" />
+        <LogOut class="h-5 w-5 flex-shrink-0" />
         <span v-if="sidebar.isExpanded" class="font-medium">Logout</span>
       </button>
     </div>

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 definePageMeta({
   layout: false,
-  middleware: [
-    () => navigateTo('/dashboard', { redirectCode: 301 }),
-  ],
+  middleware: [() => navigateTo('/dashboard', { redirectCode: 301 })],
 })
 </script>
 

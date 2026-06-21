@@ -1,143 +1,137 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { GripVertical } from "lucide-vue-next";
+import { computed, ref } from 'vue'
+import { GripVertical } from 'lucide-vue-next'
 
 const props = defineProps<{
-  modelValue: string;
-}>();
+  modelValue: string
+}>()
 const emit = defineEmits<{
-  "update:modelValue": [value: string];
-}>();
+  'update:modelValue': [value: string]
+}>()
 
 const TOKEN_PREVIEW: Record<string, string> = {
-  "vless.group": "Europe",
-  "vless.name": "NL-VPS-01",
-  "vless.host": "1.2.3.4",
-  "vless.port": "443",
-  "vless.sni": "www.google.com",
-  "vless.security": "reality",
-  "vless.encryption": "none",
-  "vless.flow": "xtls-rprx-vision",
-  "vless.fp": "chrome",
-  "vless.user": "user-123",
-};
-
-const TOKENS = [
-  { label: "Group", value: "{{vless.group}}", key: "vless.group" },
-  { label: "Node Name", value: "{{vless.name}}", key: "vless.name" },
-  { label: "Host", value: "{{vless.host}}", key: "vless.host" },
-  { label: "Port", value: "{{vless.port}}", key: "vless.port" },
-  { label: "SNI", value: "{{vless.sni}}", key: "vless.sni" },
-  { label: "Security", value: "{{vless.security}}", key: "vless.security" },
-  { label: "Flow", value: "{{vless.flow}}", key: "vless.flow" },
-  { label: "Fingerprint", value: "{{vless.fp}}", key: "vless.fp" },
-  { label: "User", value: "{{vless.user}}", key: "vless.user" },
-];
-
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const isDraggingOver = ref(false);
-
-function renderPreview(tmpl: string): string {
-  const re = /\{\{([a-zA-Z0-9_.]+)(?:\|([^{} ]+))?\}\}/g;
-  return tmpl.replace(
-    re,
-    (_match, key: string, fallback: string | undefined) => {
-      if (TOKEN_PREVIEW[key]) return TOKEN_PREVIEW[key];
-      if (fallback) {
-        if (fallback.startsWith('"') && fallback.endsWith('"')) {
-          return fallback.slice(1, -1);
-        }
-        return TOKEN_PREVIEW[fallback] || `{{${key}}}`;
-      }
-      return `{{${key}}}`;
-    },
-  );
+  'vless.group': 'Europe',
+  'vless.name': 'NL-VPS-01',
+  'vless.host': '1.2.3.4',
+  'vless.port': '443',
+  'vless.sni': 'www.google.com',
+  'vless.security': 'reality',
+  'vless.encryption': 'none',
+  'vless.flow': 'xtls-rprx-vision',
+  'vless.fp': 'chrome',
+  'vless.user': 'user-123',
 }
 
-const preview = computed(() => renderPreview(props.modelValue));
+const TOKENS = [
+  { label: 'Group', value: '{{vless.group}}', key: 'vless.group' },
+  { label: 'Node Name', value: '{{vless.name}}', key: 'vless.name' },
+  { label: 'Host', value: '{{vless.host}}', key: 'vless.host' },
+  { label: 'Port', value: '{{vless.port}}', key: 'vless.port' },
+  { label: 'SNI', value: '{{vless.sni}}', key: 'vless.sni' },
+  { label: 'Security', value: '{{vless.security}}', key: 'vless.security' },
+  { label: 'Flow', value: '{{vless.flow}}', key: 'vless.flow' },
+  { label: 'Fingerprint', value: '{{vless.fp}}', key: 'vless.fp' },
+  { label: 'User', value: '{{vless.user}}', key: 'vless.user' },
+]
+
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const isDraggingOver = ref(false)
+
+function renderPreview(tmpl: string): string {
+  const re = /\{\{([a-zA-Z0-9_.]+)(?:\|([^{} ]+))?\}\}/g
+  return tmpl.replace(re, (_match, key: string, fallback: string | undefined) => {
+    if (TOKEN_PREVIEW[key]) return TOKEN_PREVIEW[key]
+    if (fallback) {
+      if (fallback.startsWith('"') && fallback.endsWith('"')) {
+        return fallback.slice(1, -1)
+      }
+      return TOKEN_PREVIEW[fallback] || `{{${key}}}`
+    }
+    return `{{${key}}}`
+  })
+}
+
+const preview = computed(() => renderPreview(props.modelValue))
 
 function updateValue(val: string) {
-  emit("update:modelValue", val);
+  emit('update:modelValue', val)
 }
 
 function insertToken(token: string) {
-  const el = textareaRef.value;
+  const el = textareaRef.value
   if (!el) {
-    updateValue(props.modelValue + token);
-    return;
+    updateValue(props.modelValue + token)
+    return
   }
-  const start = el.selectionStart ?? props.modelValue.length;
-  const end = el.selectionEnd ?? props.modelValue.length;
-  const before = props.modelValue.slice(0, start);
-  const after = props.modelValue.slice(end);
-  const next = before + token + after;
-  updateValue(next);
+  const start = el.selectionStart ?? props.modelValue.length
+  const end = el.selectionEnd ?? props.modelValue.length
+  const before = props.modelValue.slice(0, start)
+  const after = props.modelValue.slice(end)
+  const next = before + token + after
+  updateValue(next)
   requestAnimationFrame(() => {
-    el.focus();
-    const pos = start + token.length;
-    el.selectionStart = pos;
-    el.selectionEnd = pos;
-  });
+    el.focus()
+    const pos = start + token.length
+    el.selectionStart = pos
+    el.selectionEnd = pos
+  })
 }
 
 function handleDragStart(e: DragEvent, token: string) {
-  e.dataTransfer?.setData("text/plain", token);
-  e.dataTransfer!.effectAllowed = "copy";
+  e.dataTransfer?.setData('text/plain', token)
+  e.dataTransfer!.effectAllowed = 'copy'
 }
 
 function handleDragOver(e: DragEvent) {
-  e.preventDefault();
-  e.dataTransfer!.dropEffect = "copy";
-  isDraggingOver.value = true;
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'copy'
+  isDraggingOver.value = true
 }
 
 function handleDragLeave() {
-  isDraggingOver.value = false;
+  isDraggingOver.value = false
 }
 
 function handleDrop(e: DragEvent) {
-  e.preventDefault();
-  isDraggingOver.value = false;
-  const token = e.dataTransfer?.getData("text/plain");
-  if (!token || !textareaRef.value) return;
+  e.preventDefault()
+  isDraggingOver.value = false
+  const token = e.dataTransfer?.getData('text/plain')
+  if (!token || !textareaRef.value) return
 
-  const el = textareaRef.value;
-  const rect = el.getBoundingClientRect();
-  const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
-  const paddingTop = parseFloat(getComputedStyle(el).paddingTop) || 8;
-  const paddingLeft = parseFloat(getComputedStyle(el).paddingLeft) || 12;
+  const el = textareaRef.value
+  const rect = el.getBoundingClientRect()
+  const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20
+  const paddingTop = parseFloat(getComputedStyle(el).paddingTop) || 8
+  const paddingLeft = parseFloat(getComputedStyle(el).paddingLeft) || 12
 
-  const relativeY = e.clientY - rect.top - paddingTop;
-  const relativeX = e.clientX - rect.left - paddingLeft;
-  const approxLine = Math.max(0, Math.floor(relativeY / lineHeight));
+  const relativeY = e.clientY - rect.top - paddingTop
+  const relativeX = e.clientX - rect.left - paddingLeft
+  const approxLine = Math.max(0, Math.floor(relativeY / lineHeight))
 
-  const lines = props.modelValue.split("\n");
-  let charIndex = 0;
+  const lines = props.modelValue.split('\n')
+  let charIndex = 0
   for (let i = 0; i < Math.min(approxLine, lines.length); i++) {
-    charIndex += (lines[i] || "").length + 1; // +1 for newline
+    charIndex += (lines[i] || '').length + 1 // +1 for newline
   }
 
-  const targetLine = lines[Math.min(approxLine, lines.length - 1)] || "";
-  const approxCol = Math.min(
-    Math.max(0, Math.round(relativeX / 7.5)),
-    targetLine.length,
-  );
-  const insertPos = charIndex + approxCol;
+  const targetLine = lines[Math.min(approxLine, lines.length - 1)] || ''
+  const approxCol = Math.min(Math.max(0, Math.round(relativeX / 7.5)), targetLine.length)
+  const insertPos = charIndex + approxCol
 
-  const before = props.modelValue.slice(0, insertPos);
-  const after = props.modelValue.slice(insertPos);
-  const next = before + token + after;
-  updateValue(next);
+  const before = props.modelValue.slice(0, insertPos)
+  const after = props.modelValue.slice(insertPos)
+  const next = before + token + after
+  updateValue(next)
   requestAnimationFrame(() => {
-    el.focus();
-    const pos = insertPos + token.length;
-    el.selectionStart = pos;
-    el.selectionEnd = pos;
-  });
+    el.focus()
+    const pos = insertPos + token.length
+    el.selectionStart = pos
+    el.selectionEnd = pos
+  })
 }
 
 function onClickToken(token: string) {
-  insertToken(token);
+  insertToken(token)
 }
 </script>
 
@@ -171,13 +165,10 @@ function onClickToken(token: string) {
         @dragover="handleDragOver"
         @dragleave="handleDragLeave"
         @drop="handleDrop"
-        @input="
-          ($event) => updateValue(($event.target as HTMLTextAreaElement).value)
-        "
+        @input="($event) => updateValue(($event.target as HTMLTextAreaElement).value)"
       />
       <p class="text-xs text-muted-foreground">
-        Click a variable above to insert it. You can also drag variables into
-        the template field.
+        Click a variable above to insert it. You can also drag variables into the template field.
       </p>
     </div>
 

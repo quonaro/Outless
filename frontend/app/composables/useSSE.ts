@@ -38,7 +38,6 @@ function buildSSEURL(base: string): string {
   }
   const pathPrefix = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')
   const url = `${u.protocol}//${u.host}${pathPrefix}/v1/events`
-  console.log('[SSE] buildSSEURL:', { base, url })
   return url
 }
 
@@ -148,23 +147,14 @@ function handle401() {
 }
 
 export function connectSSE() {
-  console.log('[SSE] connectSSE called', {
-    hasWindow: typeof window !== 'undefined',
-    apiBase,
-    tokenExists: !!getToken(),
-    sseConnected: sseConnected.value,
-    sseConnecting: sseConnecting.value,
-  })
   if (typeof window === 'undefined') return
   const token = getToken()
   if (!token || !apiBase) {
-    console.log('[SSE] missing token or apiBase, aborting')
     disconnectSSE()
     return
   }
 
   if (sseConnected.value || sseConnecting.value) {
-    console.log('[SSE] already connected or connecting, skipping')
     return
   }
 
@@ -173,14 +163,11 @@ export function connectSSE() {
 
   const url = buildSSEURL(apiBase)
   abortController = new AbortController()
-  console.log('[SSE] starting fetch to', url)
-
   fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: abortController.signal,
   })
     .then(async (res) => {
-      console.log('[SSE] fetch response', res.status, res.ok)
       if (res.status === 401) {
         handle401()
         return
@@ -227,7 +214,6 @@ export function connectSSE() {
       }
     })
     .catch((err) => {
-      console.log('[SSE] fetch error', err.name, err.message)
       if (err.name === 'AbortError') return
       sseConnected.value = false
       sseConnecting.value = false
@@ -237,7 +223,6 @@ export function connectSSE() {
       }
     })
     .finally(() => {
-      console.log('[SSE] fetch finally, connected=', sseConnected.value)
       sseConnected.value = false
       sseConnecting.value = false
       if (getToken() && apiBase) {

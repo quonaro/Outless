@@ -1,7 +1,7 @@
 <script setup lang="ts">
 onMounted(async () => {
-  await navigateTo("/dashboard");
-});
+  await navigateTo('/dashboard')
+})
 </script>
 
 <template>

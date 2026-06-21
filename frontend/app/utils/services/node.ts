@@ -33,7 +33,7 @@ export async function fetchNodes(): Promise<Node[]> {
 export async function fetchNodesPage(
   limit: number,
   offset: number,
-  groupId?: string,
+  groupId?: string
 ): Promise<NodesPage> {
   const query: Record<string, string | number> = { limit, offset }
   if (groupId) {
@@ -69,7 +69,10 @@ export async function createNode(node: CreateNode): Promise<void> {
 export async function fetchNodeByID(id: string): Promise<Node> {
   const { $api } = useNuxtApp()
   const data = await $api<{ node?: unknown } | unknown>(`/v1/nodes/${id}`)
-  const raw = typeof data === 'object' && data !== null && 'node' in data ? (data as { node?: unknown }).node : data
+  const raw =
+    typeof data === 'object' && data !== null && 'node' in data
+      ? (data as { node?: unknown }).node
+      : data
   return NodeSchema.parse(raw)
 }
 

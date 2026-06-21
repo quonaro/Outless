@@ -3,7 +3,9 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
 
-  devtools: { enabled: process.env.NODE_ENV === 'production' ? false : process.env.NUXT_DEVTOOLS !== 'false' },
+  devtools: {
+    enabled: process.env.NODE_ENV === 'production' ? false : process.env.NUXT_DEVTOOLS !== 'false',
+  },
 
   future: {
     compatibilityVersion: 4,
@@ -25,13 +27,7 @@ export default defineNuxtConfig({
     },
   },
 
-
-  modules: [
-    '@nuxtjs/color-mode',
-    '@vueuse/nuxt',
-    'shadcn-nuxt',
-    '@nuxt/eslint',
-  ],
+  modules: ['@nuxtjs/color-mode', '@vueuse/nuxt', 'shadcn-nuxt', '@nuxt/eslint'],
 
   shadcn: {
     prefix: '',
@@ -52,13 +48,11 @@ export default defineNuxtConfig({
       // DEV: use relative /api (proxied by vite to current host)
       // PROD: use full URL from NUXT_PUBLIC_API_BASE env var
       apiBase: (() => {
-        const apiBase = process.env.NODE_ENV === 'development' ? '/api' : (process.env.NUXT_PUBLIC_API_BASE || '/api');
-        console.log('=== API BASE CONFIG ===');
-        console.log('NUXT_PUBLIC_API_BASE:', process.env.NUXT_PUBLIC_API_BASE);
-        console.log('NODE_ENV:', process.env.NODE_ENV);
-        console.log('apiBase (runtimeConfig):', apiBase);
-        console.log('========================');
-        return apiBase;
+        const apiBase =
+          process.env.NODE_ENV === 'development'
+            ? '/api'
+            : process.env.NUXT_PUBLIC_API_BASE || '/api'
+        return apiBase
       })(),
     },
   },

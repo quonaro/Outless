@@ -7,8 +7,7 @@ export function useUpdateGroup(
   options?: UseMutationOptions<void, Error, { id: string; group: UpdateGroup }>
 ) {
   return useMutation({
-    mutationFn: ({ id, group }: { id: string; group: UpdateGroup }) =>
-      updateGroup(id, group),
+    mutationFn: ({ id, group }: { id: string; group: UpdateGroup }) => updateGroup(id, group),
     onSuccess: () => {
       toast.success('Group updated successfully')
     },

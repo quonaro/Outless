@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import { GroupSchema, CreateGroupSchema, UpdateGroupSchema, type Group, type CreateGroup, type UpdateGroup } from '~/utils/schemas/group'
+import {
+  GroupSchema,
+  CreateGroupSchema,
+  UpdateGroupSchema,
+  type Group,
+  type CreateGroup,
+  type UpdateGroup,
+} from '~/utils/schemas/group'
 
 interface ListGroupsResponse {
   groups: unknown[]
@@ -67,4 +74,3 @@ export interface GroupSyncStateEvent {
   synced_at?: string
   added_count?: number
 }
-

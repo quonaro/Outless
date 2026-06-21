@@ -6,12 +6,12 @@ import { ChangeAdminPasswordSchema, type ChangeAdminPassword } from '~/utils/sch
 import { changeAdminPassword } from '~/utils/services/admin'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
-import Dialog from '~/components/ui/dialog/Dialog.vue'
-import DialogContent from '~/components/ui/dialog/DialogContent.vue'
-import DialogDescription from '~/components/ui/dialog/DialogDescription.vue'
-import DialogFooter from '~/components/ui/dialog/DialogFooter.vue'
-import DialogHeader from '~/components/ui/dialog/DialogHeader.vue'
-import DialogTitle from '~/components/ui/dialog/DialogTitle.vue'
+import Sheet from '~/components/ui/sheet/Sheet.vue'
+import SheetContent from '~/components/ui/sheet/SheetContent.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
+import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
+import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
+import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 
 interface Props {
   open: boolean
@@ -90,14 +90,14 @@ function handleOpenChange(value: boolean) {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="handleOpenChange">
-    <DialogContent class="sm:max-w-[500px]">
-      <DialogHeader>
-        <DialogTitle>Change Admin Password</DialogTitle>
-        <DialogDescription>
+  <Sheet :open="open" @update:open="handleOpenChange">
+    <SheetContent class="sm:max-w-[500px]">
+      <SheetHeader>
+        <SheetTitle>Change Admin Password</SheetTitle>
+        <SheetDescription>
           Enter your current credentials and new password to change admin access.
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
 
       <div class="space-y-4 py-4">
         <div class="space-y-2">
@@ -164,12 +164,12 @@ function handleOpenChange(value: boolean) {
         </div>
       </div>
 
-      <DialogFooter>
+      <SheetFooter>
         <UiButton variant="outline" @click="emit('update:open', false)"> Cancel </UiButton>
         <UiButton :disabled="mutation.isPending" @click="handleSubmit">
           {{ mutation.isPending ? 'Changing...' : 'Change Password' }}
         </UiButton>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>

@@ -145,52 +145,45 @@ function handleCreate() {
 }
 
 function handleUpdate() {
-  if (!selectedNode.value || !nodeUrl.value.trim() || !nodeGroupId.value || isEditSubmitting.value) return
+  if (!selectedNode.value || !nodeUrl.value.trim() || !nodeGroupId.value || isEditSubmitting.value)
+    return
   const payload: UpdateNode = {
     url: nodeUrl.value.trim(),
     group_id: nodeGroupId.value,
   }
   isEditSubmitting.value = true
-  updateMutation.mutate({ id: selectedNode.value.id, ...payload }, {
-    onSettled: () => {
-      isEditSubmitting.value = false
-    },
-  })
+  updateMutation.mutate(
+    { id: selectedNode.value.id, ...payload },
+    {
+      onSettled: () => {
+        isEditSubmitting.value = false
+      },
+    }
+  )
 }
 
 function handleDelete(node: Node) {
   if (!confirm(`Delete node ${node.url}?`)) return
   deleteMutation.mutate(node.id)
 }
-
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-end gap-3">
       <div class="flex items-center gap-2">
-        <select
-          v-model="filterGroupId"
-          class="rounded-md border bg-background px-3 py-2 text-sm"
-        >
+        <select v-model="filterGroupId" class="rounded-md border bg-background px-3 py-2 text-sm">
           <option value="">All groups</option>
           <option v-for="g in groups ?? []" :key="g.id" :value="g.id">
             {{ g.name }}
           </option>
         </select>
-        <UiButton @click="openCreateDialog">
-          Add Node
-        </UiButton>
+        <UiButton @click="openCreateDialog"> Add Node </UiButton>
       </div>
     </div>
 
-    <div v-if="isLoading" class="py-8 text-center text-muted-foreground">
-      Loading nodes...
-    </div>
-    <div
-      v-else-if="visibleNodes.length === 0"
-      class="py-8 text-center text-muted-foreground"
-    >
+    <div v-if="isLoading" class="py-8 text-center text-muted-foreground">Loading nodes...</div>
+    <div v-else-if="visibleNodes.length === 0" class="py-8 text-center text-muted-foreground">
       No nodes found
     </div>
 
@@ -215,7 +208,12 @@ function handleDelete(node: Node) {
             </p>
           </div>
           <div class="flex shrink-0 flex-nowrap gap-2">
-            <UiButton variant="outline" size="sm" class="whitespace-nowrap" @click="openEditDialog(node)">
+            <UiButton
+              variant="outline"
+              size="sm"
+              class="whitespace-nowrap"
+              @click="openEditDialog(node)"
+            >
               Edit
             </UiButton>
             <UiButton
@@ -262,9 +260,7 @@ function handleDelete(node: Node) {
           </div>
         </CardContent>
         <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeCreateDialog">
-            Cancel
-          </UiButton>
+          <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
           <UiButton
             :disabled="!nodeUrl.trim() || !nodeGroupId || isCreateSubmitting"
             @click="handleCreate"
@@ -301,13 +297,8 @@ function handleDelete(node: Node) {
           </div>
         </CardContent>
         <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeEditDialog">
-            Cancel
-          </UiButton>
-          <UiButton
-            :disabled="!nodeUrl.trim() || isEditSubmitting"
-            @click="handleUpdate"
-          >
+          <UiButton variant="outline" @click="closeEditDialog"> Cancel </UiButton>
+          <UiButton :disabled="!nodeUrl.trim() || isEditSubmitting" @click="handleUpdate">
             {{ isEditSubmitting ? 'Saving...' : 'Save' }}
           </UiButton>
         </CardFooter>

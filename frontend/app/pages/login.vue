@@ -38,20 +38,12 @@ const onSubmit = handleSubmit(async (values) => {
   errorMessage.value = ''
 
   try {
-    console.log('[LOGIN] Starting login with username:', values.username)
     const response = await login(values)
-    console.log('[LOGIN] Login response received:', response)
     auth.setToken(response.token)
-    console.log('[LOGIN] Token set, current token:', auth.token.value)
     auth.setUser({ username: response.username })
-    console.log('[LOGIN] User set, current user:', auth.user.value)
-    console.log('[LOGIN] isAuthenticated:', auth.isAuthenticated.value)
     await nextTick()
-    console.log('[LOGIN] nextTick completed, navigating to /dashboard')
     await navigateTo('/dashboard')
-    console.log('[LOGIN] navigateTo completed')
-  } catch (error) {
-    console.error('[LOGIN] Login error:', error)
+  } catch {
     errorMessage.value = 'Invalid username or password'
   } finally {
     isLoading.value = false

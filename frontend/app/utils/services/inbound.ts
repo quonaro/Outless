@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import { InboundSchema, CreateInboundSchema, UpdateInboundSchema, type Inbound, type CreateInbound, type UpdateInbound } from '~/utils/schemas/inbound'
+import {
+  InboundSchema,
+  CreateInboundSchema,
+  UpdateInboundSchema,
+  type Inbound,
+  type CreateInbound,
+  type UpdateInbound,
+} from '~/utils/schemas/inbound'
 
 interface ListInboundsResponse {
   inbounds: unknown[]

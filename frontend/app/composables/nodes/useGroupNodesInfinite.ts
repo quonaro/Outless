@@ -12,8 +12,7 @@ export function useGroupNodesInfinite(groupId: MaybeRefOrGetter<string>) {
     queryKey: computed(() => ['nodes', 'group', gid.value, 'infinite'] as const),
     initialPageParam: 0,
     enabled: computed(() => Boolean(gid.value)),
-    queryFn: ({ pageParam }) =>
-      fetchNodesPage(GROUP_NODES_PAGE_SIZE, Number(pageParam), gid.value),
+    queryFn: ({ pageParam }) => fetchNodesPage(GROUP_NODES_PAGE_SIZE, Number(pageParam), gid.value),
     getNextPageParam: (lastPage) =>
       lastPage.hasMore && lastPage.nextOffset != null ? lastPage.nextOffset : undefined,
   })

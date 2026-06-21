@@ -4,11 +4,10 @@ import { createPublicSource } from '~/utils/services/public-source'
 import type { CreatePublicSource, PublicSource } from '~/utils/schemas/public-source'
 
 export function useCreatePublicSource(
-  options?: UseMutationOptions<PublicSource, Error, CreatePublicSource>,
+  options?: UseMutationOptions<PublicSource, Error, CreatePublicSource>
 ) {
   return useMutation({
-    mutationFn: (payload: CreatePublicSource) =>
-      createPublicSource(payload),
+    mutationFn: (payload: CreatePublicSource) => createPublicSource(payload),
     onSuccess: () => {
       toast.success('Public source created successfully')
     },

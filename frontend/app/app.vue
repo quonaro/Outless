@@ -1,10 +1,10 @@
 <script setup lang="ts">
 useHead({
-  titleTemplate: "%s | Outless",
-  title: "Outless",
-});
+  titleTemplate: '%s | Outless',
+  title: 'Outless',
+})
 
-useTheme();
+useTheme()
 </script>
 
 <template>

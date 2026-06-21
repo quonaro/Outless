@@ -7,10 +7,12 @@ import { fetchGroups, createGroup, updateGroup, deleteGroup } from '~/utils/serv
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import UiCard from '~/components/ui/card/card.vue'
-import CardHeader from '~/components/ui/card/CardHeader.vue'
-import CardTitle from '~/components/ui/card/CardTitle.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import CardFooter from '~/components/ui/card/CardFooter.vue'
+import Sheet from '~/components/ui/sheet/Sheet.vue'
+import SheetContent from '~/components/ui/sheet/SheetContent.vue'
+import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
+import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
+import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 
 const queryClient = useQueryClient()
 
@@ -37,8 +39,7 @@ const createMutation = useMutation({
 })
 
 const updateMutation = useMutation({
-  mutationFn: ({ id, data }: { id: string; data: UpdateGroup }) =>
-    updateGroup(id, data),
+  mutationFn: ({ id, data }: { id: string; data: UpdateGroup }) => updateGroup(id, data),
   onSuccess: () => {
     showEditDialog.value = false
     groupName.value = ''
@@ -135,36 +136,24 @@ function closeEditDialog() {
       </UiButton>
     </div>
 
-    <div v-if="isLoading" class="text-center text-muted-foreground py-8">
-      Loading groups...
-    </div>
+    <div v-if="isLoading" class="text-center text-muted-foreground py-8">Loading groups...</div>
     <div v-else-if="!groups || groups.length === 0" class="text-center text-muted-foreground py-8">
       No groups found
     </div>
-    
+
     <UiCard v-for="group in groups" :key="group.id" class="p-4">
       <CardContent class="p-0">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="font-semibold text-lg">{{ group.name }}</h3>
-            <p class="text-muted-foreground text-sm mt-1">
-              ID: {{ group.id }}
-            </p>
-            <p class="text-muted-foreground text-sm">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <h3 class="text-lg font-semibold">{{ group.name }}</h3>
+            <p class="mt-1 text-sm text-muted-foreground">ID: {{ group.id }}</p>
+            <p class="text-sm text-muted-foreground">
               Created: {{ new Date(group.created_at).toLocaleString() }}
             </p>
-            <p class="text-muted-foreground text-sm">
-              Source: {{ group.source_url || 'Manual' }}
-            </p>
+            <p class="text-sm text-muted-foreground">Source: {{ group.source_url || 'Manual' }}</p>
           </div>
-          <div class="flex gap-2">
-            <UiButton
-              variant="outline"
-              size="sm"
-              @click="openEditDialog(group)"
-            >
-              Edit
-            </UiButton>
+          <div class="flex shrink-0 gap-2">
+            <UiButton variant="outline" size="sm" @click="openEditDialog(group)"> Edit </UiButton>
             <UiButton
               variant="destructive"
               size="sm"
@@ -178,13 +167,12 @@ function closeEditDialog() {
       </CardContent>
     </UiCard>
 
-    <!-- Create Group Dialog -->
-    <div v-if="showCreateDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <UiCard class="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Create Group</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
+    <Sheet v-model:open="showCreateDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Create Group</SheetTitle>
+        </SheetHeader>
+        <div class="space-y-4 py-4">
           <div class="space-y-2">
             <label class="text-sm font-medium">Group Name</label>
             <UiInput
@@ -195,33 +183,24 @@ function closeEditDialog() {
           </div>
           <div class="space-y-2">
             <label class="text-sm font-medium">Source URL (optional)</label>
-            <UiInput
-              v-model="groupSourceURL"
-              placeholder="https://example.com/subscription"
-            />
+            <UiInput v-model="groupSourceURL" placeholder="https://example.com/subscription" />
           </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeCreateDialog">
-            Cancel
-          </UiButton>
-          <UiButton
-            :disabled="!groupName.trim() || isCreateSubmitting"
-            @click="handleCreateGroup"
-          >
+        </div>
+        <SheetFooter>
+          <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
+          <UiButton :disabled="!groupName.trim() || isCreateSubmitting" @click="handleCreateGroup">
             {{ isCreateSubmitting ? 'Creating...' : 'Create' }}
           </UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
 
-    <!-- Edit Group Dialog -->
-    <div v-if="showEditDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <UiCard class="w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Edit Group</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
+    <Sheet v-model:open="showEditDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit Group</SheetTitle>
+        </SheetHeader>
+        <div class="space-y-4 py-4">
           <div class="space-y-2">
             <label class="text-sm font-medium">Group Name</label>
             <UiInput
@@ -232,24 +211,16 @@ function closeEditDialog() {
           </div>
           <div class="space-y-2">
             <label class="text-sm font-medium">Source URL (optional)</label>
-            <UiInput
-              v-model="groupSourceURL"
-              placeholder="https://example.com/subscription"
-            />
+            <UiInput v-model="groupSourceURL" placeholder="https://example.com/subscription" />
           </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeEditDialog">
-            Cancel
-          </UiButton>
-          <UiButton
-            :disabled="!groupName.trim() || isEditSubmitting"
-            @click="handleEditGroup"
-          >
+        </div>
+        <SheetFooter>
+          <UiButton variant="outline" @click="closeEditDialog"> Cancel </UiButton>
+          <UiButton :disabled="!groupName.trim() || isEditSubmitting" @click="handleEditGroup">
             {{ isEditSubmitting ? 'Updating...' : 'Update' }}
           </UiButton>
-        </CardFooter>
-      </UiCard>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>

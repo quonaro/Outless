@@ -23,7 +23,7 @@ export function createWsHandler(
   refs: SyncStateRefs,
   queryClient: QueryClient,
   maybeUnsubscribe: () => void,
-  refreshAfterSyncJob: () => void,
+  refreshAfterSyncJob: () => void
 ) {
   return function handleWsMessage(msg: Record<string, unknown>) {
     const t = msg.type
@@ -92,8 +92,10 @@ export function createWsHandler(
       if (msg.group_id && msg.group_id !== groupId) return
       refs.error.value = errMsg
       refs.syncTotal.value = typeof msg.total === 'number' ? msg.total : refs.syncTotal.value
-      refs.syncProcessed.value = typeof msg.processed === 'number' ? msg.processed : refs.syncProcessed.value
-      refs.syncAddedCount.value = typeof msg.added_count === 'number' ? msg.added_count : refs.syncAddedCount.value
+      refs.syncProcessed.value =
+        typeof msg.processed === 'number' ? msg.processed : refs.syncProcessed.value
+      refs.syncAddedCount.value =
+        typeof msg.added_count === 'number' ? msg.added_count : refs.syncAddedCount.value
       refs.isSyncing.value = false
       refreshAfterSyncJob()
       maybeUnsubscribe()
@@ -102,8 +104,10 @@ export function createWsHandler(
     if (t === 'sync_cancelled') {
       if (msg.group_id && msg.group_id !== groupId) return
       refs.syncTotal.value = typeof msg.total === 'number' ? msg.total : refs.syncTotal.value
-      refs.syncProcessed.value = typeof msg.processed === 'number' ? msg.processed : refs.syncProcessed.value
-      refs.syncAddedCount.value = typeof msg.added_count === 'number' ? msg.added_count : refs.syncAddedCount.value
+      refs.syncProcessed.value =
+        typeof msg.processed === 'number' ? msg.processed : refs.syncProcessed.value
+      refs.syncAddedCount.value =
+        typeof msg.added_count === 'number' ? msg.added_count : refs.syncAddedCount.value
       refs.isCancelled.value = true
       refs.isSyncing.value = false
       refreshAfterSyncJob()
@@ -111,4 +115,3 @@ export function createWsHandler(
     }
   }
 }
-

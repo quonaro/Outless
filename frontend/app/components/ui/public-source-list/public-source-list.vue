@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import type { PublicSource, CreatePublicSource, UpdatePublicSource } from '~/utils/schemas/public-source'
-import { fetchPublicSources, createPublicSource, updatePublicSource, deletePublicSource, syncPublicSource } from '~/utils/services/public-source'
+import type {
+  PublicSource,
+  CreatePublicSource,
+  UpdatePublicSource,
+} from '~/utils/schemas/public-source'
+import {
+  fetchPublicSources,
+  createPublicSource,
+  updatePublicSource,
+  deletePublicSource,
+  syncPublicSource,
+} from '~/utils/services/public-source'
 import { fetchGroups } from '~/utils/services/group'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
@@ -68,30 +78,42 @@ const syncMutation = useMutation({
 function handleCreateSource() {
   if (!sourceUrl.value.trim() || !sourceGroupId.value || isCreateSubmitting.value) return
   isCreateSubmitting.value = true
-  createMutation.mutate({
-    url: sourceUrl.value,
-    group_id: sourceGroupId.value,
-  }, {
-    onSettled: () => {
-      isCreateSubmitting.value = false
-    },
-  })
-}
-
-function handleEditSource() {
-  if (!selectedSource.value || !sourceUrl.value.trim() || !sourceGroupId.value || isEditSubmitting.value) return
-  isEditSubmitting.value = true
-  updateMutation.mutate({
-    id: selectedSource.value.id,
-    data: {
+  createMutation.mutate(
+    {
       url: sourceUrl.value,
       group_id: sourceGroupId.value,
     },
-  }, {
-    onSettled: () => {
-      isEditSubmitting.value = false
+    {
+      onSettled: () => {
+        isCreateSubmitting.value = false
+      },
+    }
+  )
+}
+
+function handleEditSource() {
+  if (
+    !selectedSource.value ||
+    !sourceUrl.value.trim() ||
+    !sourceGroupId.value ||
+    isEditSubmitting.value
+  )
+    return
+  isEditSubmitting.value = true
+  updateMutation.mutate(
+    {
+      id: selectedSource.value.id,
+      data: {
+        url: sourceUrl.value,
+        group_id: sourceGroupId.value,
+      },
     },
-  })
+    {
+      onSettled: () => {
+        isEditSubmitting.value = false
+      },
+    }
+  )
 }
 
 function handleDeleteSource(source: PublicSource) {
@@ -147,28 +169,32 @@ function resetEditForm() {
 <template>
   <div class="space-y-4">
     <div class="flex justify-end items-center">
-      <UiButton @click="openCreateDialog">
-        Add Source
-      </UiButton>
+      <UiButton @click="openCreateDialog"> Add Source </UiButton>
     </div>
 
     <div v-if="isLoading" class="text-center text-muted-foreground py-8">
       Loading public sources...
     </div>
-    <div v-else-if="!sources || sources.length === 0" class="text-center text-muted-foreground py-8">
+    <div
+      v-else-if="!sources || sources.length === 0"
+      class="text-center text-muted-foreground py-8"
+    >
       No public sources found
     </div>
-    
+
     <UiCard v-for="source in sources" :key="source.id" class="p-4">
       <CardContent class="p-0">
         <div class="flex items-center justify-between">
           <div class="flex-1">
             <h3 class="font-semibold text-lg truncate">{{ source.url }}</h3>
             <p class="text-muted-foreground text-sm mt-1">
-              Group: {{ groups?.find(g => g.id === source.group_id)?.name || source.group_id }}
+              Group: {{ groups?.find((g) => g.id === source.group_id)?.name || source.group_id }}
             </p>
             <p class="text-muted-foreground text-sm">
-              Last fetched: {{ source.last_fetched_at ? new Date(source.last_fetched_at).toLocaleString() : 'Never' }}
+              Last fetched:
+              {{
+                source.last_fetched_at ? new Date(source.last_fetched_at).toLocaleString() : 'Never'
+              }}
             </p>
           </div>
           <div class="flex gap-2">
@@ -180,13 +206,7 @@ function resetEditForm() {
             >
               Sync
             </UiButton>
-            <UiButton
-              variant="outline"
-              size="sm"
-              @click="openEditDialog(source)"
-            >
-              Edit
-            </UiButton>
+            <UiButton variant="outline" size="sm" @click="openEditDialog(source)"> Edit </UiButton>
             <UiButton
               variant="destructive"
               size="sm"
@@ -201,81 +221,71 @@ function resetEditForm() {
     </UiCard>
 
     <UiCard v-if="showCreateDialog" class="mx-auto w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Add Public Source</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div class="space-y-2">
-            <label class="text-sm font-medium">URL</label>
-            <UiInput
-              v-model="sourceUrl"
-              placeholder="https://example.com/subscription"
-              @keyup.enter="handleCreateSource"
-            />
-          </div>
-          <div class="space-y-2">
-            <label class="text-sm font-medium">Group</label>
-            <select
-              v-model="sourceGroupId"
-              class="w-full px-3 py-2 border rounded-md bg-background"
-            >
-              <option value="">Select a group</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeCreateDialog">
-            Cancel
-          </UiButton>
-          <UiButton
-            :disabled="!sourceUrl.trim() || !sourceGroupId || isCreateSubmitting"
-            @click="handleCreateSource"
-          >
-            {{ isCreateSubmitting ? 'Adding...' : 'Add' }}
-          </UiButton>
-        </CardFooter>
+      <CardHeader>
+        <CardTitle>Add Public Source</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <div class="space-y-2">
+          <label class="text-sm font-medium">URL</label>
+          <UiInput
+            v-model="sourceUrl"
+            placeholder="https://example.com/subscription"
+            @keyup.enter="handleCreateSource"
+          />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium">Group</label>
+          <select v-model="sourceGroupId" class="w-full px-3 py-2 border rounded-md bg-background">
+            <option value="">Select a group</option>
+            <option v-for="group in groups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </option>
+          </select>
+        </div>
+      </CardContent>
+      <CardFooter class="flex justify-end gap-2">
+        <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
+        <UiButton
+          :disabled="!sourceUrl.trim() || !sourceGroupId || isCreateSubmitting"
+          @click="handleCreateSource"
+        >
+          {{ isCreateSubmitting ? 'Adding...' : 'Add' }}
+        </UiButton>
+      </CardFooter>
     </UiCard>
 
     <UiCard v-if="showEditDialog" class="mx-auto w-full max-w-md p-6">
-        <CardHeader>
-          <CardTitle>Edit Public Source</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div class="space-y-2">
-            <label class="text-sm font-medium">URL</label>
-            <UiInput
-              v-model="sourceUrl"
-              placeholder="https://example.com/subscription"
-              @keyup.enter="handleEditSource"
-            />
-          </div>
-          <div class="space-y-2">
-            <label class="text-sm font-medium">Group</label>
-            <select
-              v-model="sourceGroupId"
-              class="w-full px-3 py-2 border rounded-md bg-background"
-            >
-              <option value="">Select a group</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </div>
-        </CardContent>
-        <CardFooter class="flex justify-end gap-2">
-          <UiButton variant="outline" @click="closeEditDialog">
-            Cancel
-          </UiButton>
-          <UiButton
-            :disabled="!sourceUrl.trim() || !sourceGroupId || isEditSubmitting"
-            @click="handleEditSource"
-          >
-            {{ isEditSubmitting ? 'Updating...' : 'Update' }}
-          </UiButton>
-        </CardFooter>
+      <CardHeader>
+        <CardTitle>Edit Public Source</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <div class="space-y-2">
+          <label class="text-sm font-medium">URL</label>
+          <UiInput
+            v-model="sourceUrl"
+            placeholder="https://example.com/subscription"
+            @keyup.enter="handleEditSource"
+          />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium">Group</label>
+          <select v-model="sourceGroupId" class="w-full px-3 py-2 border rounded-md bg-background">
+            <option value="">Select a group</option>
+            <option v-for="group in groups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </option>
+          </select>
+        </div>
+      </CardContent>
+      <CardFooter class="flex justify-end gap-2">
+        <UiButton variant="outline" @click="closeEditDialog"> Cancel </UiButton>
+        <UiButton
+          :disabled="!sourceUrl.trim() || !sourceGroupId || isEditSubmitting"
+          @click="handleEditSource"
+        >
+          {{ isEditSubmitting ? 'Updating...' : 'Update' }}
+        </UiButton>
+      </CardFooter>
     </UiCard>
   </div>
 </template>

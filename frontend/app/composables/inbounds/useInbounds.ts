@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/vue-query'
-import { fetchInbounds, createInbound, updateInbound, deleteInbound } from '~/utils/services/inbound'
+import {
+  fetchInbounds,
+  createInbound,
+  updateInbound,
+  deleteInbound,
+} from '~/utils/services/inbound'
 import type { Inbound, CreateInbound, UpdateInbound } from '~/utils/schemas/inbound'
 
 export function useInbounds(options?: UseQueryOptions<Inbound[], Error>) {

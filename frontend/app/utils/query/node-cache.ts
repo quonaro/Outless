@@ -7,7 +7,10 @@ type NodePatch = {
 }
 
 function isNodeArray(value: unknown): value is Node[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'object' && item !== null && 'id' in item)
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === 'object' && item !== null && 'id' in item)
+  )
 }
 
 function applyPatch(node: Node, patch: NodePatch): Node {
@@ -39,7 +42,9 @@ export function patchNodeInCacheData(oldData: unknown, patch: NodePatch): unknow
 }
 
 export function patchNodeInAllNodeQueries(queryClient: QueryClient, patch: NodePatch) {
-  queryClient.setQueriesData({ queryKey: ['nodes'] }, (oldData) => patchNodeInCacheData(oldData, patch))
+  queryClient.setQueriesData({ queryKey: ['nodes'] }, (oldData) =>
+    patchNodeInCacheData(oldData, patch)
+  )
 }
 
 function mergeNodePatch(prev: NodePatch | undefined, next: NodePatch): NodePatch {
@@ -73,14 +78,14 @@ function patchManyInCacheData(oldData: unknown, patches: Map<string, NodePatch>)
         ...page,
         nodes: Array.isArray(page.nodes)
           ? (() => {
-            const seen = new Map<string, Node>()
-            for (const node of page.nodes) {
-              if (!seen.has(node.id)) {
-                seen.set(node.id, applyPatchesToNode(node, patches))
+              const seen = new Map<string, Node>()
+              for (const node of page.nodes) {
+                if (!seen.has(node.id)) {
+                  seen.set(node.id, applyPatchesToNode(node, patches))
+                }
               }
-            }
-            return Array.from(seen.values())
-          })()
+              return Array.from(seen.values())
+            })()
           : page.nodes,
       })),
     }
@@ -116,4 +121,3 @@ export function schedulePatchNodeInAllNodeQueries(queryClient: QueryClient, patc
   if (patchBatchRaf != null) return
   patchBatchRaf = requestAnimationFrame(flushPatchBatch)
 }
-

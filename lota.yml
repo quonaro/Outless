@@ -35,6 +35,17 @@ dev:
     echo "Dev mode started. Frontend: http://localhost:41221, API: http://localhost:41220"
     echo "Press Ctrl+C to stop."
 
+frontend-dev:
+  desc: Run frontend dev server with hot reload
+  script: |
+    cd "$FRONTEND_DIR"
+    pnpm dev
+
+backend-dev:
+  desc: Run Go backend with hot reload via air
+  script: |
+    air
+
 lint:
   backend:
     desc: Run golangci-lint on the backend

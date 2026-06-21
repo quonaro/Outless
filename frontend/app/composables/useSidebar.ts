@@ -1,3 +1,7 @@
+import { ref } from 'vue'
+
+const isMobileOpen = ref(false)
+
 export function useSidebar() {
   const isExpanded = useState('sidebar_isExpanded', () => true)
   const activeItem = useState('sidebar_activeItem', () => 'dashboard')
@@ -25,13 +29,24 @@ export function useSidebar() {
     return openMenus.value.has(menuId)
   }
 
+  const toggleMobile = () => {
+    isMobileOpen.value = !isMobileOpen.value
+  }
+
+  const closeMobile = () => {
+    isMobileOpen.value = false
+  }
+
   return {
     isExpanded: readonly(isExpanded),
     activeItem: readonly(activeItem),
     openMenus: readonly(openMenus),
+    isMobileOpen: readonly(isMobileOpen),
     toggle,
     setActive,
     toggleMenu,
     isMenuOpen,
+    toggleMobile,
+    closeMobile,
   }
 }

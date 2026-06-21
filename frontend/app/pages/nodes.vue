@@ -8,10 +8,12 @@ import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import UiCard from '~/components/ui/card/card.vue'
-import CardHeader from '~/components/ui/card/CardHeader.vue'
-import CardTitle from '~/components/ui/card/CardTitle.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import CardFooter from '~/components/ui/card/CardFooter.vue'
+import Sheet from '~/components/ui/sheet/Sheet.vue'
+import SheetContent from '~/components/ui/sheet/SheetContent.vue'
+import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
+import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
+import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 import GroupAccordion from '~/components/GroupAccordion.vue'
 import { useInfiniteNodes } from '~/composables/nodes/useInfiniteNodes'
 import { useGroups } from '~/composables/groups/useGroups'
@@ -254,6 +256,11 @@ function handleAddNode(groupId: string) {
   showCreateNodeDialog.value = true
 }
 
+function closeCreateNodeDialog() {
+  showCreateNodeDialog.value = false
+  createNodeErrorMessage.value = ''
+}
+
 const movingNodeIDs = ref<Set<string>>(new Set())
 
 function handleMoveNode(payload: { node: Node; targetGroupId: string }) {
@@ -473,7 +480,7 @@ onBeforeUnmount(() => {
             v-model="search"
             name="node-search"
             placeholder="Search by URL, ID, country, group..."
-            class="max-w-md"
+            class="w-full sm:max-w-md"
           />
         </div>
 
@@ -495,8 +502,8 @@ onBeforeUnmount(() => {
         <div v-else class="space-y-2">
           <UiCard v-for="node in filteredFlatNodes" :key="node.id" class="px-3 py-2">
             <CardContent class="p-0">
-              <div class="flex items-center justify-between gap-2">
-                <div class="max-w-[52%] min-w-0">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0 flex-1">
                   <div class="group relative min-w-0">
                     <p class="truncate text-sm font-medium">{{ node.url }}</p>
                     <div
@@ -515,7 +522,7 @@ onBeforeUnmount(() => {
                     >
                   </p>
                 </div>
-                <div class="flex shrink-0 flex-nowrap gap-1">
+                <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap">
                   <UiButton
                     variant="outline"
                     size="sm"
@@ -548,13 +555,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div
-        v-if="showCreateGroupDialog"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      >
-        <UiCard class="w-full max-w-md p-6">
-          <CardHeader><CardTitle>Create Group</CardTitle></CardHeader>
-          <CardContent class="space-y-4">
+      <Sheet v-model:open="showCreateGroupDialog">
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Create Group</SheetTitle>
+          </SheetHeader>
+          <div class="space-y-4 py-4">
             <div class="space-y-2">
               <label class="text-sm font-medium" for="create-group-name">Name</label>
               <UiInput
@@ -602,8 +608,8 @@ onBeforeUnmount(() => {
                 Maximum number of nodes to return in subscriptions
               </p>
             </div>
-          </CardContent>
-          <CardFooter class="flex justify-end gap-2">
+          </div>
+          <SheetFooter>
             <UiButton variant="outline" @click="showCreateGroupDialog = false">Cancel</UiButton>
             <UiButton
               :disabled="!groupNameInput.trim() || isCreateGroupSubmitting"
@@ -611,17 +617,16 @@ onBeforeUnmount(() => {
             >
               {{ isCreateGroupSubmitting ? 'Creating...' : 'Create' }}
             </UiButton>
-          </CardFooter>
-        </UiCard>
-      </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-      <div
-        v-if="showCreateNodeDialog"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      >
-        <UiCard class="w-full max-w-md p-6">
-          <CardHeader><CardTitle>Create Node</CardTitle></CardHeader>
-          <CardContent class="space-y-4">
+      <Sheet v-model:open="showCreateNodeDialog">
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Create Node</SheetTitle>
+          </SheetHeader>
+          <div class="space-y-4 py-4">
             <div class="space-y-2">
               <label class="text-sm font-medium" for="create-node-url">VLESS URL</label>
               <UiInput
@@ -649,31 +654,25 @@ onBeforeUnmount(() => {
             <p v-if="createNodeErrorMessage" class="text-sm text-red-600 dark:text-red-400">
               {{ createNodeErrorMessage }}
             </p>
-          </CardContent>
-          <CardFooter class="flex justify-end gap-2">
-            <UiButton
-              variant="outline"
-              @click="showCreateNodeDialog = false; createNodeErrorMessage = ''"
-            >
-              Cancel
-            </UiButton>
+          </div>
+          <SheetFooter>
+            <UiButton variant="outline" @click="closeCreateNodeDialog"> Cancel </UiButton>
             <UiButton
               :disabled="!nodeURLInput.trim() || isCreateNodeSubmitting"
               @click="submitCreateNode"
             >
               {{ isCreateNodeSubmitting ? 'Creating...' : 'Create' }}
             </UiButton>
-          </CardFooter>
-        </UiCard>
-      </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-      <div
-        v-if="bulkMoveDialogOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      >
-        <UiCard class="w-full max-w-md p-6">
-          <CardHeader><CardTitle>Move selected nodes</CardTitle></CardHeader>
-          <CardContent class="space-y-4">
+      <Sheet v-model:open="bulkMoveDialogOpen">
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Move selected nodes</SheetTitle>
+          </SheetHeader>
+          <div class="space-y-4 py-4">
             <p class="text-sm text-muted-foreground">
               Move {{ selectedNodeIDs.size }} selected nodes to another group.
             </p>
@@ -690,13 +689,13 @@ onBeforeUnmount(() => {
                 </option>
               </select>
             </div>
-          </CardContent>
-          <CardFooter class="flex justify-end gap-2">
+          </div>
+          <SheetFooter>
             <UiButton variant="outline" @click="bulkMoveDialogOpen = false">Cancel</UiButton>
             <UiButton :disabled="!bulkMoveTargetGroupId" @click="handleBulkMove">Move</UiButton>
-          </CardFooter>
-        </UiCard>
-      </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </ClientOnly>
   </UiPageLayout>
 </template>

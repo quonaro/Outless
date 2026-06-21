@@ -7,12 +7,9 @@ export interface UpdateNodePayload extends UpdateNode {
   id: string
 }
 
-export function useUpdateNode(
-  options?: UseMutationOptions<void, Error, UpdateNodePayload>,
-) {
+export function useUpdateNode(options?: UseMutationOptions<void, Error, UpdateNodePayload>) {
   return useMutation({
-    mutationFn: ({ id, ...rest }: UpdateNodePayload) =>
-      updateNode(id, rest),
+    mutationFn: ({ id, ...rest }: UpdateNodePayload) => updateNode(id, rest),
     onSuccess: () => {
       toast.success('Node updated successfully')
     },

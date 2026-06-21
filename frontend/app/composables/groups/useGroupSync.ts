@@ -6,11 +6,7 @@ import type {
   GroupSyncStateEvent,
   GroupSyncDoneEvent,
 } from '~/utils/services/group'
-import {
-  ensureSSEConnected,
-  sendSSECommand,
-  subscribeGroupSyncChannel,
-} from '~/composables/useSSE'
+import { ensureSSEConnected, sendSSECommand, subscribeGroupSyncChannel } from '~/composables/useSSE'
 
 export interface SyncNodeStatus {
   node_id: string
@@ -126,7 +122,8 @@ export function useGroupSync(groupId: string) {
       syncError.value = errMsg
       syncTotal.value = typeof msg.total === 'number' ? msg.total : syncTotal.value
       syncProcessed.value = typeof msg.processed === 'number' ? msg.processed : syncProcessed.value
-      syncAddedCount.value = typeof msg.added_count === 'number' ? msg.added_count : syncAddedCount.value
+      syncAddedCount.value =
+        typeof msg.added_count === 'number' ? msg.added_count : syncAddedCount.value
       isSyncing.value = false
       toast.error('Sync failed', {
         description: errMsg,
@@ -139,7 +136,8 @@ export function useGroupSync(groupId: string) {
       if (msg.group_id && msg.group_id !== groupId) return
       syncTotal.value = typeof msg.total === 'number' ? msg.total : syncTotal.value
       syncProcessed.value = typeof msg.processed === 'number' ? msg.processed : syncProcessed.value
-      syncAddedCount.value = typeof msg.added_count === 'number' ? msg.added_count : syncAddedCount.value
+      syncAddedCount.value =
+        typeof msg.added_count === 'number' ? msg.added_count : syncAddedCount.value
       isCancelled.value = true
       isSyncing.value = false
       toast.warning('Sync cancelled')

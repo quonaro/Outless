@@ -26,13 +26,11 @@ export default defineNuxtPlugin((nuxtApp) => {
 
     const config = useRuntimeConfig()
     const auth = useAuth()
-    console.log('[PLUGIN] apiBase:', config.public.apiBase, 'token:', !!auth.token.value)
     setSSEQueryClient(queryClient)
     setSSEConfig(config.public.apiBase as string, () => auth.token.value ?? null)
     watch(
       [() => config.public.apiBase, () => auth.token.value],
       () => {
-        console.log('[PLUGIN] watch triggered, token exists:', !!auth.token.value)
         if (auth.token.value) connectSSE()
         else disconnectSSE()
       },
