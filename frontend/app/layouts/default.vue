@@ -35,7 +35,7 @@ watch(
 
 <template>
   <div>
-    <div class="flex min-h-screen bg-background">
+    <div class="flex h-screen bg-background">
       <Sidebar />
       <div class="flex flex-1 flex-col overflow-hidden">
         <!-- Mobile header -->
