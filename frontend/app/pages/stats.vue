@@ -11,7 +11,9 @@ import {
   useTokenTrafficStats,
   useNodeTrafficStats,
   useInboundTrafficStats,
+  useDomainTrafficStats,
 } from '~/composables/stats/useEntityTraffic'
+import LogStream from '~/components/LogStream.vue'
 
 definePageMeta({
   layout: 'default',
@@ -26,6 +28,7 @@ const { data: tokens, isLoading: isTokensLoading } = useTokens()
 const { data: tokenTraffic, isLoading: isTokenTrafficLoading } = useTokenTrafficStats()
 const { data: nodeTraffic, isLoading: isNodeTrafficLoading } = useNodeTrafficStats()
 const { data: inboundTraffic, isLoading: isInboundTrafficLoading } = useInboundTrafficStats()
+const { data: domainTraffic, isLoading: isDomainTrafficLoading } = useDomainTrafficStats()
 
 function formatBytes(v: number): string {
   if (v === 0) return '0 B'
@@ -125,6 +128,24 @@ const tokensWithQuota = computed(() => {
               />
             </CardContent>
           </UiCard>
+        </div>
+
+        <div>
+          <h2 class="text-lg font-semibold mb-3">Per-Domain Traffic (Today)</h2>
+          <UiCard class="p-4">
+            <CardContent class="p-0">
+              <TrafficEntityTable
+                :items="domainTraffic?.items ?? []"
+                :is-loading="isDomainTrafficLoading"
+                empty-text="No domain traffic recorded yet"
+              />
+            </CardContent>
+          </UiCard>
+        </div>
+
+        <div>
+          <h2 class="text-lg font-semibold mb-3">Live Logs</h2>
+          <LogStream />
         </div>
 
         <div>

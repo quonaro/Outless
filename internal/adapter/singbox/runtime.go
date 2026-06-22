@@ -136,11 +136,16 @@ func (r *RuntimeController) TrafficSnapshot() *domain.TrafficSnapshot {
 	connections := make([]domain.TrafficConnection, 0, len(snap.Connections))
 	for _, conn := range snap.Connections {
 		meta := conn.Metadata()
+		connDomain := meta.Metadata.Domain
+		if connDomain == "" {
+			connDomain = meta.Metadata.Destination.Fqdn
+		}
 		connections = append(connections, domain.TrafficConnection{
 			ID:       meta.ID.String(),
 			User:     meta.Metadata.User,
 			NodeID:   parseNodeID(meta.Metadata.User),
 			Inbound:  meta.Metadata.Inbound,
+			Domain:   connDomain,
 			Upload:   meta.Upload.Load(),
 			Download: meta.Download.Load(),
 		})

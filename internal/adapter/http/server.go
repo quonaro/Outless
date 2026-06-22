@@ -43,6 +43,7 @@ type Handlers struct {
 	Admin        *AdminManagementHandler
 	Stats        *StatsHandler
 	Traffic      *TrafficHandler
+	LogStream    http.Handler
 }
 
 // NewServer builds HTTP server with injected handlers.
@@ -66,6 +67,10 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	handlers.Admin.Register(humaAPI)
 	handlers.Stats.Register(humaAPI)
 	handlers.Traffic.Register(humaAPI)
+
+	if handlers.LogStream != nil {
+		apiMux.HandleFunc("/v1/events/logs", handlers.LogStream.ServeHTTP)
+	}
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	rateLimitMiddleware := NewRateLimitMiddleware(logger)

@@ -56,6 +56,7 @@ func (h *StatsHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/stats/traffic/tokens", h.GetTokenTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/nodes", h.GetNodeTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/inbounds", h.GetInboundTrafficStats)
+	huma.Get(api, "/v1/stats/traffic/domains", h.GetDomainTrafficStats)
 }
 
 type TrafficStatsOutput struct {
@@ -182,6 +183,8 @@ func (h *StatsHandler) GetNodeTrafficStats(ctx context.Context, _ *struct{}) (*E
 }
 
 // GetInboundTrafficStats returns per-inbound traffic for the current day.
+//
+//nolint:dupl
 func (h *StatsHandler) GetInboundTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -212,6 +215,48 @@ func (h *StatsHandler) GetInboundTrafficStats(ctx context.Context, _ *struct{}) 
 		}
 		out.Body = append(out.Body, TrafficEntityItem{
 			ID:            u.InboundTag,
+			Name:          name,
+			UploadBytes:   u.UploadBytes,
+			DownloadBytes: u.DownloadBytes,
+			TotalBytes:    u.UploadBytes + u.DownloadBytes,
+		})
+	}
+	return out, nil
+}
+
+// GetDomainTrafficStats returns per-domain traffic for the current day.
+//
+//nolint:dupl
+func (h *StatsHandler) GetDomainTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
+	now := time.Now().UTC()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	usageList, err := h.trafficRepo.ListDomainUsage(ctx, "day", dayStart, 1000)
+	if err != nil {
+		h.logger.Error("failed to list domain usage", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch domain traffic")
+	}
+
+	tokens, err := h.tokenRepo.List(ctx)
+	if err != nil {
+		h.logger.Error("failed to list tokens", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch tokens")
+	}
+
+	tokenName := make(map[string]string, len(tokens))
+	for _, t := range tokens {
+		tokenName[t.ID] = t.Owner
+	}
+
+	out := &EntityTrafficOutput{}
+	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	for _, u := range usageList {
+		name := tokenName[u.TokenID]
+		if name == "" {
+			name = u.TokenID
+		}
+		out.Body = append(out.Body, TrafficEntityItem{
+			ID:            u.Domain,
 			Name:          name,
 			UploadBytes:   u.UploadBytes,
 			DownloadBytes: u.DownloadBytes,

@@ -92,6 +92,7 @@ type TrafficConnection struct {
 	User     string
 	NodeID   string
 	Inbound  string
+	Domain   string
 	Upload   int64
 	Download int64
 }
@@ -137,6 +138,17 @@ type InboundUsage struct {
 	UpdatedAt     time.Time
 }
 
+// DomainUsage aggregates per-domain traffic for a specific period.
+type DomainUsage struct {
+	TokenID       string
+	Domain        string
+	PeriodStart   time.Time
+	PeriodType    string
+	UploadBytes   int64
+	DownloadBytes int64
+	UpdatedAt     time.Time
+}
+
 // TrafficRepository persists per-token traffic usage aggregates.
 type TrafficRepository interface {
 	RecordUsage(ctx context.Context, usage TokenUsage) error
@@ -152,6 +164,10 @@ type TrafficRepository interface {
 	RecordInboundUsage(ctx context.Context, usage InboundUsage) error
 	GetInboundUsage(ctx context.Context, inboundTag string, periodType string, periodStart time.Time) (InboundUsage, error)
 	ListInboundUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]InboundUsage, error)
+
+	RecordDomainUsage(ctx context.Context, usage DomainUsage) error
+	GetDomainUsage(ctx context.Context, tokenID string, domain string, periodType string, periodStart time.Time) (DomainUsage, error)
+	ListDomainUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]DomainUsage, error)
 
 	ListTokenUsageForPeriod(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]TokenUsage, error)
 }

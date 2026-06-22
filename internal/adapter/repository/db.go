@@ -31,6 +31,7 @@ func NewDB(path string) (*gorm.DB, error) {
 		&tokenUsageModel{},
 		&nodeUsageModel{},
 		&inboundUsageModel{},
+		&domainUsageModel{},
 	); err != nil {
 		// AutoMigrate handles new columns (is_self) automatically.
 		return nil, fmt.Errorf("running sqlite migrations: %w", err)

@@ -112,7 +112,7 @@ func (s *TrafficCollector) collect(ctx context.Context) error {
 		s.lastSeen = make(map[string]connectionState)
 	}
 
-	currentIDs, tokenDeltas, nodeDeltas, inboundDeltas := s.aggregateDeltas(snap)
+	currentIDs, tokenDeltas, nodeDeltas, inboundDeltas, domainDeltas := s.aggregateDeltas(snap)
 
 	// Remove closed connections from lastSeen.
 	for id := range s.lastSeen {
@@ -128,6 +128,7 @@ func (s *TrafficCollector) collect(ctx context.Context) error {
 	s.persistTokenDeltas(ctx, now, tokenDeltas)
 	s.persistNodeDeltas(ctx, now, nodeDeltas)
 	s.persistInboundDeltas(ctx, now, inboundDeltas)
+	s.persistDomainDeltas(ctx, now, domainDeltas)
 
 	// Enforce quotas.
 	if err := s.enforceQuotas(ctx, now); err != nil {
@@ -137,13 +138,19 @@ func (s *TrafficCollector) collect(ctx context.Context) error {
 	return nil
 }
 
+type domainDeltaKey struct {
+	tokenID string
+	domain  string
+}
+
 func (s *TrafficCollector) aggregateDeltas(
 	snap *domain.TrafficSnapshot,
-) (map[string]struct{}, map[string]delta, map[string]delta, map[string]delta) {
+) (map[string]struct{}, map[string]delta, map[string]delta, map[string]delta, map[domainDeltaKey]delta) {
 	currentIDs := make(map[string]struct{}, len(snap.Connections))
 	tokenDeltas := make(map[string]delta)
 	nodeDeltas := make(map[string]delta)
 	inboundDeltas := make(map[string]delta)
+	domainDeltas := make(map[domainDeltaKey]delta)
 
 	for _, conn := range snap.Connections {
 		currentIDs[conn.ID] = struct{}{}
@@ -162,6 +169,14 @@ func (s *TrafficCollector) aggregateDeltas(
 			st.upload += du
 			st.download += dd
 			tokenDeltas[tokenID] = st
+
+			if conn.Domain != "" {
+				dk := domainDeltaKey{tokenID: tokenID, domain: conn.Domain}
+				dst := domainDeltas[dk]
+				dst.upload += du
+				dst.download += dd
+				domainDeltas[dk] = dst
+			}
 		}
 		if conn.NodeID != "" {
 			st := nodeDeltas[conn.NodeID]
@@ -182,7 +197,7 @@ func (s *TrafficCollector) aggregateDeltas(
 		}
 	}
 
-	return currentIDs, tokenDeltas, nodeDeltas, inboundDeltas
+	return currentIDs, tokenDeltas, nodeDeltas, inboundDeltas, domainDeltas
 }
 
 func (s *TrafficCollector) persistTokenDeltas(
@@ -243,6 +258,62 @@ func (s *TrafficCollector) persistInboundDeltas(
 			s.logger.Error("failed to record monthly inbound usage", slog.String("inbound", id), slog.String("error", err.Error()))
 		}
 	}
+}
+
+func (s *TrafficCollector) persistDomainDeltas(
+	ctx context.Context,
+	now time.Time,
+	deltas map[domainDeltaKey]delta,
+) {
+	for key, d := range deltas {
+		if d.upload == 0 && d.download == 0 {
+			continue
+		}
+		dayStart := periodStart("day", now)
+		if err := s.upsertDomainDelta(
+			ctx, key.tokenID, key.domain, "day", dayStart, d.upload, d.download,
+		); err != nil {
+			s.logger.Error("failed to record daily domain usage",
+				slog.String("token_id", key.tokenID),
+				slog.String("domain", key.domain),
+				slog.String("error", err.Error()),
+			)
+		}
+		monthStart := periodStart("month", now)
+		if err := s.upsertDomainDelta(
+			ctx, key.tokenID, key.domain, "month", monthStart, d.upload, d.download,
+		); err != nil {
+			s.logger.Error("failed to record monthly domain usage",
+				slog.String("token_id", key.tokenID),
+				slog.String("domain", key.domain),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+}
+
+func (s *TrafficCollector) upsertDomainDelta(
+	ctx context.Context,
+	tokenID string,
+	domainName string,
+	periodType string,
+	periodStart int64,
+	uploadDelta int64,
+	downloadDelta int64,
+) error {
+	usage, err := s.trafficRepo.GetDomainUsage(ctx, tokenID, domainName, periodType, time.Unix(0, periodStart).UTC())
+	if err != nil {
+		usage = domain.DomainUsage{
+			TokenID:     tokenID,
+			Domain:      domainName,
+			PeriodType:  periodType,
+			PeriodStart: time.Unix(0, periodStart).UTC(),
+		}
+	}
+	usage.UploadBytes += uploadDelta
+	usage.DownloadBytes += downloadDelta
+	usage.UpdatedAt = time.Now().UTC()
+	return s.trafficRepo.RecordDomainUsage(ctx, usage)
 }
 
 func (s *TrafficCollector) upsertDelta(

@@ -43,6 +43,18 @@ type inboundUsageModel struct {
 
 func (inboundUsageModel) TableName() string { return "inbound_usage" }
 
+type domainUsageModel struct {
+	TokenID       string    `gorm:"column:token_id;primaryKey"`
+	Domain        string    `gorm:"column:domain;primaryKey"`
+	PeriodType    string    `gorm:"column:period_type;primaryKey"`
+	PeriodStart   time.Time `gorm:"column:period_start;primaryKey"`
+	UploadBytes   int64     `gorm:"column:upload_bytes"`
+	DownloadBytes int64     `gorm:"column:download_bytes"`
+	UpdatedAt     time.Time `gorm:"column:updated_at"`
+}
+
+func (domainUsageModel) TableName() string { return "domain_usage" }
+
 // TrafficRepository persists per-token traffic usage aggregates in SQLite.
 type TrafficRepository struct {
 	db *gorm.DB
@@ -302,4 +314,72 @@ func (r *TrafficRepository) ListTokenUsageForPeriod(
 		out = append(out, toDomainTokenUsage(m))
 	}
 	return out, nil
+}
+
+// RecordDomainUsage creates or updates a domain usage record.
+func (r *TrafficRepository) RecordDomainUsage(ctx context.Context, usage domain.DomainUsage) error {
+	model := domainUsageModel{
+		TokenID:       usage.TokenID,
+		Domain:        usage.Domain,
+		PeriodType:    usage.PeriodType,
+		PeriodStart:   usage.PeriodStart.UTC(),
+		UploadBytes:   usage.UploadBytes,
+		DownloadBytes: usage.DownloadBytes,
+		UpdatedAt:     time.Now().UTC(),
+	}
+	err := r.db.WithContext(ctx).Save(&model).Error
+	if err != nil {
+		return fmt.Errorf("recording domain usage: %w", err)
+	}
+	return nil
+}
+
+// GetDomainUsage retrieves a single domain usage record.
+func (r *TrafficRepository) GetDomainUsage(
+	ctx context.Context, tokenID string, domainName string, periodType string, periodStart time.Time,
+) (domain.DomainUsage, error) {
+	var model domainUsageModel
+	err := r.db.WithContext(ctx).
+		Where("token_id = ? AND domain = ? AND period_type = ? AND period_start = ?",
+			tokenID, domainName, periodType, periodStart.UTC()).
+		First(&model).Error
+	if err != nil {
+		return domain.DomainUsage{}, fmt.Errorf("getting domain usage: %w", err)
+	}
+	return toDomainDomainUsage(model), nil
+}
+
+// ListDomainUsage returns top domain usage records for a given period.
+func (r *TrafficRepository) ListDomainUsage(
+	ctx context.Context, periodType string, periodStart time.Time, limit int,
+) ([]domain.DomainUsage, error) {
+	var models []domainUsageModel
+	q := r.db.WithContext(ctx).
+		Where("period_type = ?", periodType).
+		Order("upload_bytes + download_bytes DESC").
+		Limit(limit)
+	if !periodStart.IsZero() {
+		q = q.Where("period_start = ?", periodStart.UTC())
+	}
+	err := q.Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing domain usage: %w", err)
+	}
+	out := make([]domain.DomainUsage, 0, len(models))
+	for _, m := range models {
+		out = append(out, toDomainDomainUsage(m))
+	}
+	return out, nil
+}
+
+func toDomainDomainUsage(model domainUsageModel) domain.DomainUsage {
+	return domain.DomainUsage{
+		TokenID:       model.TokenID,
+		Domain:        model.Domain,
+		PeriodType:    model.PeriodType,
+		PeriodStart:   model.PeriodStart,
+		UploadBytes:   model.UploadBytes,
+		DownloadBytes: model.DownloadBytes,
+		UpdatedAt:     model.UpdatedAt,
+	}
 }
