@@ -13,6 +13,11 @@ useHead({
 
 <template>
   <UiPageLayout title="Settings" description="Configure server and routing options">
-    <UiSettingsPanel />
+    <ClientOnly>
+      <template #fallback>
+        <div class="py-8 text-center text-muted-foreground">Loading settings...</div>
+      </template>
+      <UiSettingsPanel />
+    </ClientOnly>
   </UiPageLayout>
 </template>

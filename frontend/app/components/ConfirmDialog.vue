@@ -1,24 +1,31 @@
 <script setup lang="ts">
 import { useConfirm } from '~/composables/useConfirm'
 import UiButton from '~/components/ui/button/button.vue'
-import Dialog from '~/components/ui/dialog/Dialog.vue'
-import DialogContent from '~/components/ui/dialog/DialogContent.vue'
-import DialogHeader from '~/components/ui/dialog/DialogHeader.vue'
-import DialogTitle from '~/components/ui/dialog/DialogTitle.vue'
-import DialogDescription from '~/components/ui/dialog/DialogDescription.vue'
-import DialogFooter from '~/components/ui/dialog/DialogFooter.vue'
+import Sheet from '~/components/ui/sheet/Sheet.vue'
+import SheetContent from '~/components/ui/sheet/SheetContent.vue'
+import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
+import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
+import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
+import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 
 const { state, onConfirm, onCancel } = useConfirm()
 </script>
 
 <template>
-  <Dialog :open="state.isOpen" @update:open="(v: boolean) => { if (!v) onCancel() }">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{{ state.title }}</DialogTitle>
-        <DialogDescription>{{ state.message }}</DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
+  <Sheet
+    :open="state.isOpen"
+    @update:open="
+      (v: boolean) => {
+        if (!v) onCancel()
+      }
+    "
+  >
+    <SheetContent>
+      <SheetHeader>
+        <SheetTitle>{{ state.title }}</SheetTitle>
+        <SheetDescription>{{ state.message }}</SheetDescription>
+      </SheetHeader>
+      <SheetFooter>
         <UiButton variant="outline" @click="onCancel">
           {{ state.cancelLabel }}
         </UiButton>
@@ -28,7 +35,7 @@ const { state, onConfirm, onCancel } = useConfirm()
         >
           {{ state.confirmLabel }}
         </UiButton>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>
