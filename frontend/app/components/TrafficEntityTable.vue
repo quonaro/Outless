@@ -6,6 +6,9 @@ const props = defineProps<{
   items: TrafficEntityItem[]
   isLoading: boolean
   emptyText?: string
+  nameIcon?: unknown
+  rowIcon?: unknown
+  iconColor?: string
 }>()
 
 function formatBytes(v: number): string {
@@ -32,7 +35,16 @@ const sortedItems = computed(() => {
       <table class="w-full text-sm">
         <thead class="bg-muted/50">
           <tr>
-            <th class="px-4 py-2 text-left font-medium">Name</th>
+            <th class="px-4 py-2 text-left font-medium">
+              <div class="flex items-center gap-1.5">
+                <component
+                  :is="nameIcon"
+                  v-if="nameIcon"
+                  :class="['h-4 w-4', iconColor ?? 'text-muted-foreground']"
+                />
+                Name
+              </div>
+            </th>
             <th class="px-4 py-2 text-right font-medium">Upload</th>
             <th class="px-4 py-2 text-right font-medium">Download</th>
             <th class="px-4 py-2 text-right font-medium">Total</th>
@@ -40,7 +52,16 @@ const sortedItems = computed(() => {
         </thead>
         <tbody>
           <tr v-for="item in sortedItems" :key="item.id" class="border-t">
-            <td class="px-4 py-2 truncate max-w-xs">{{ item.name || item.id }}</td>
+            <td class="px-4 py-2 truncate max-w-xs">
+              <div class="flex items-center gap-2">
+                <component
+                  :is="rowIcon"
+                  v-if="rowIcon"
+                  :class="['h-4 w-4 flex-shrink-0', iconColor ?? 'text-muted-foreground']"
+                />
+                {{ item.name || item.id }}
+              </div>
+            </td>
             <td class="px-4 py-2 text-right">{{ formatBytes(item.upload_bytes) }}</td>
             <td class="px-4 py-2 text-right">{{ formatBytes(item.download_bytes) }}</td>
             <td class="px-4 py-2 text-right font-medium">{{ formatBytes(item.total_bytes) }}</td>

@@ -69,7 +69,7 @@ const options = {
 </script>
 
 <template>
-  <div class="h-64">
-    <Bar :data="chartData" :options="options" />
+  <div class="h-full flex flex-col">
+    <Bar :data="chartData" :options="options" class="flex-1 min-h-0" />
   </div>
 </template>
