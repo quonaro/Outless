@@ -45,32 +45,12 @@ export async function deleteGroup(id: string): Promise<void> {
   })
 }
 
-export interface GroupSyncNodeEvent {
-  group_id?: string
-  node_id: string
-  url: string
-  status: 'importing' | 'done' | 'error'
-  processed?: number
-  total?: number
-  added_total?: number
-  error?: string
+export async function syncGroup(id: string): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/groups/${id}/sync`, { method: 'POST' })
 }
 
-export interface GroupSyncDoneEvent {
-  synced_at: string
-  processed?: number
-  total?: number
-  added_count?: number
-  group_id?: string
-}
-
-export interface GroupSyncStateEvent {
-  group_id?: string
-  running: boolean
-  processed: number
-  total: number
-  nodes: GroupSyncNodeEvent[]
-  error?: string
-  synced_at?: string
-  added_count?: number
+export async function cancelGroupSync(id: string): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/groups/${id}/sync/cancel`, { method: 'POST' })
 }

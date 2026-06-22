@@ -37,18 +37,10 @@ const props = withDefaults(
     group: Group
     search: string
     isSyncing: boolean
-    isCancelled: boolean
-    syncError: string
-    syncProgressPercent: number
-    syncProcessedCount: number
-    syncTotalCount: number
-    syncInterrupted: boolean
-    syncAddedCount: number
     deletingIds: Set<string>
     movingIds: Set<string>
     selectedIds: Set<string>
     allGroups: Group[]
-    syncNodeError: (nodeId: string) => string
     editingGroup: boolean
     deletingGroup: boolean
   }>(),
@@ -283,34 +275,7 @@ function handleDuplicateNode() {
         </div>
       </div>
     </summary>
-    <div
-      v-if="props.isSyncing || props.syncInterrupted"
-      class="flex items-center gap-2 border-b border-border/80 bg-muted/40 px-4 py-2.5"
-    >
-      <span class="text-xs font-medium text-muted-foreground">{{
-        props.isSyncing ? 'Load' : 'Load interrupted'
-      }}</span>
-      <span
-        class="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-xs tabular-nums text-primary"
-      >
-        {{ props.syncProgressPercent }}% · {{ props.syncProcessedCount }}/{{ props.syncTotalCount }}
-      </span>
-      <span
-        class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700"
-      >
-        +{{ props.syncAddedCount }} new
-      </span>
-    </div>
-
     <CardContent class="border-t px-0 py-0">
-      <div v-if="props.isCancelled" class="flex flex-wrap items-center gap-2 px-4 pt-3">
-        <p class="text-xs text-amber-600">Sync cancelled</p>
-      </div>
-
-      <p v-if="props.syncError" class="px-4 pt-2 text-xs text-red-500">
-        {{ props.syncError }}
-      </p>
-
       <div
         ref="scrollRoot"
         class="max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain rounded-md border border-border/60 bg-muted/20 px-4 py-3 pr-2 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.45)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-600/60 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500/80"
@@ -336,11 +301,6 @@ function handleDuplicateNode() {
                   </div>
                   <p class="text-xs text-muted-foreground">
                     {{ node.id }}
-                  </p>
-                  <p v-if="props.syncNodeError(node.id)" class="mt-1 text-xs">
-                    <span class="ml-2 text-red-600">
-                      {{ props.syncNodeError(node.id) }}
-                    </span>
                   </p>
                 </div>
                 <div

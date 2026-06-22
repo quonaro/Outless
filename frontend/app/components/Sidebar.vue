@@ -3,7 +3,6 @@ import { LayoutDashboard, Key, Globe, Settings, LogOut, Server, X } from 'lucide
 
 import { useSidebar } from '~/composables/useSidebar'
 import { useAuth } from '~/composables/useAuth'
-import { useSSEStatus } from '~/composables/useSSE'
 import logoImage from '~/assets/img/logo-d-a.webp'
 import ThemeToggle from './ThemeToggle.vue'
 
@@ -12,7 +11,6 @@ defineOptions({ name: 'AppSidebar' })
 const sidebar = useSidebar()
 const auth = useAuth()
 const route = useRoute()
-const { isBackendAvailable, isConnecting } = useSSEStatus()
 
 const navItems = [
   {
@@ -78,18 +76,7 @@ const handleCloseMobile = () => {
       <div class="flex items-center justify-between border-b border-border p-4">
         <div class="flex items-center gap-3">
           <img :src="logoImage" alt="Outless Logo" class="h-10 w-10 flex-shrink-0" />
-          <span class="font-bold text-lg text-foreground">
-            Outless
-            <ClientOnly>
-              <span
-                class="ml-2 inline-block h-2.5 w-2.5 rounded-full"
-                :class="isBackendAvailable ? 'bg-emerald-500' : 'bg-red-500'"
-              />
-              <template #fallback>
-                <span class="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
-              </template>
-            </ClientOnly>
-          </span>
+          <span class="font-bold text-lg text-foreground"> Outless </span>
         </div>
         <button
           class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -144,28 +131,7 @@ const handleCloseMobile = () => {
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <img :src="logoImage" alt="Outless Logo" class="h-12 w-12 flex-shrink-0" />
-          <span v-if="sidebar.isExpanded" class="font-bold text-lg text-foreground">
-            Outless
-            <ClientOnly>
-              <span
-                class="ml-2 inline-block h-2.5 w-2.5 rounded-full"
-                :class="isBackendAvailable ? 'bg-emerald-500' : 'bg-red-500'"
-                :title="
-                  isBackendAvailable
-                    ? 'Backend available'
-                    : isConnecting
-                      ? 'Connecting to backend...'
-                      : 'Backend unavailable'
-                "
-              />
-              <template #fallback>
-                <span
-                  class="ml-2 inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/40"
-                  title="Checking backend connection..."
-                />
-              </template>
-            </ClientOnly>
-          </span>
+          <span v-if="sidebar.isExpanded" class="font-bold text-lg text-foreground"> Outless </span>
         </div>
         <ThemeToggle />
       </div>
