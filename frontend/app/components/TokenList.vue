@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* eslint-disable max-lines */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { CreateToken, IssuedToken, Token } from '~/utils/schemas/token'
@@ -63,6 +63,70 @@ const editOwnerInput = ref('')
 const editGroupIdsInput = ref<string[]>([])
 const editInboundIdsInput = ref<string[]>([])
 const editExpiresInInput = ref(defaultExpiresIn)
+
+const issuedUrlRef = ref<HTMLPreElement>()
+const selectedUrlRef = ref<HTMLPreElement>()
+
+function useAutoScroll(elRef: typeof issuedUrlRef) {
+  let rafId: number | null = null
+
+  function start() {
+    const el = elRef.value
+    if (!el) return
+    const maxScroll = el.scrollWidth - el.clientWidth
+    if (maxScroll <= 0) return
+
+    let direction = 1
+    let pos = 0
+    const speed = 0.2
+
+    function step() {
+      if (!el) return
+      pos += direction * speed
+      if (pos >= maxScroll) {
+        pos = maxScroll
+        direction = -1
+      } else if (pos <= 0) {
+        pos = 0
+        direction = 1
+      }
+      el.scrollLeft = pos
+      rafId = requestAnimationFrame(step)
+    }
+
+    rafId = requestAnimationFrame(step)
+  }
+
+  function stop() {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId)
+      rafId = null
+    }
+    const el = elRef.value
+    if (el) el.scrollLeft = 0
+  }
+
+  return { start, stop }
+}
+
+const issuedScroll = useAutoScroll(issuedUrlRef)
+const selectedScroll = useAutoScroll(selectedUrlRef)
+
+watch(showIssuedDialog, (open) => {
+  if (open) {
+    setTimeout(() => issuedScroll.start(), 100)
+  } else {
+    issuedScroll.stop()
+  }
+})
+
+watch(showAccessURLDialog, (open) => {
+  if (open) {
+    setTimeout(() => selectedScroll.start(), 100)
+  } else {
+    selectedScroll.stop()
+  }
+})
 
 const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tokens'] })
 
@@ -221,7 +285,12 @@ function resolveAccessURL(token: Pick<Token, 'access_url'>): string {
     return token.access_url
   }
   const path = token.access_url.startsWith('/') ? token.access_url : `/${token.access_url}`
-  return `${apiBase}${path}`
+  let base = apiBase
+  if (base.startsWith('/')) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    base = origin + base
+  }
+  return `${base}${path}`
 }
 
 async function copyText(value: string) {
@@ -669,9 +738,11 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
           <p class="text-sm text-muted-foreground">
             Copy and share this subscription URL. Users can import it directly in VLESS clients.
           </p>
-          <pre class="max-h-40 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">{{
-            issuedAccessURL
-          }}</pre>
+          <pre
+            ref="issuedUrlRef"
+            class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+            >{{ issuedAccessURL }}</pre
+          >
         </div>
         <SheetFooter>
           <UiButton variant="outline" @click="copyText(issuedAccessURL)">Copy URL</UiButton>
@@ -687,9 +758,11 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
           <SheetDescription>Subscription URL for the selected token.</SheetDescription>
         </SheetHeader>
         <div v-if="selectedAccessURL" class="py-4">
-          <pre class="overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">{{
-            selectedAccessURL
-          }}</pre>
+          <pre
+            ref="selectedUrlRef"
+            class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+            >{{ selectedAccessURL }}</pre
+          >
         </div>
         <SheetFooter>
           <UiButton variant="outline" @click="copyText(selectedAccessURL)">Copy</UiButton>
@@ -699,3 +772,13 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
     </Sheet>
   </div>
 </template>
+
+<style scoped>
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+</style>
