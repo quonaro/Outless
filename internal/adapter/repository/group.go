@@ -12,14 +12,12 @@ import (
 )
 
 type groupModel struct {
-	ID            string     `gorm:"column:id;primaryKey"`
-	Name          string     `gorm:"column:name"`
-	SourceURL     *string    `gorm:"column:source_url"`
-	TotalNodes    int64      `gorm:"column:total_nodes"`
-	RandomEnabled bool       `gorm:"column:random_enabled"`
-	RandomLimit   *int64     `gorm:"column:random_limit"`
-	LastSyncedAt  *time.Time `gorm:"column:last_synced_at"`
-	CreatedAt     time.Time  `gorm:"column:created_at"`
+	ID            string    `gorm:"column:id;primaryKey"`
+	Name          string    `gorm:"column:name"`
+	TotalNodes    int64     `gorm:"column:total_nodes"`
+	RandomEnabled bool      `gorm:"column:random_enabled"`
+	RandomLimit   *int64    `gorm:"column:random_limit"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
 }
 
 func (groupModel) TableName() string { return "groups" }
@@ -39,10 +37,8 @@ func (r *GroupRepository) Create(ctx context.Context, group domain.Group) error 
 	model := groupModel{
 		ID:            group.ID,
 		Name:          group.Name,
-		SourceURL:     nullableGroupString(group.SourceURL),
 		RandomEnabled: group.RandomEnabled,
 		RandomLimit:   nullableGroupInt(group.RandomLimit),
-		LastSyncedAt:  group.LastSyncedAt,
 		CreatedAt:     group.CreatedAt,
 	}
 	if !model.RandomEnabled && model.RandomLimit != nil {
@@ -70,10 +66,8 @@ func (r *GroupRepository) FindByID(ctx context.Context, id string) (domain.Group
 	return domain.Group{
 		ID:            model.ID,
 		Name:          model.Name,
-		SourceURL:     derefGroupString(model.SourceURL),
 		RandomEnabled: model.RandomEnabled,
 		RandomLimit:   derefGroupInt(model.RandomLimit),
-		LastSyncedAt:  model.LastSyncedAt,
 		CreatedAt:     model.CreatedAt,
 	}, nil
 }
@@ -83,8 +77,8 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 	err := r.db.WithContext(ctx).
 		Model(&groupModel{}).
 		Select(
-			"groups.id", "groups.name", "groups.source_url", "groups.random_enabled",
-			"groups.random_limit", "groups.last_synced_at", "groups.created_at",
+			"groups.id", "groups.name", "groups.random_enabled",
+			"groups.random_limit", "groups.created_at",
 			"COUNT(nodes.id) AS total_nodes",
 		).
 		Joins("LEFT JOIN nodes ON nodes.group_id = groups.id").
@@ -99,11 +93,9 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 		groups = append(groups, domain.Group{
 			ID:            model.ID,
 			Name:          model.Name,
-			SourceURL:     derefGroupString(model.SourceURL),
 			TotalNodes:    int(model.TotalNodes),
 			RandomEnabled: model.RandomEnabled,
 			RandomLimit:   derefGroupInt(model.RandomLimit),
-			LastSyncedAt:  model.LastSyncedAt,
 			CreatedAt:     model.CreatedAt,
 		})
 	}
@@ -113,10 +105,8 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error {
 	updates := map[string]any{
 		"name":           group.Name,
-		"source_url":     nullableGroupString(group.SourceURL),
 		"random_enabled": group.RandomEnabled,
 		"random_limit":   nullableGroupInt(group.RandomLimit),
-		"last_synced_at": group.LastSyncedAt,
 	}
 	if !group.RandomEnabled && group.RandomLimit != nil {
 		updates["random_enabled"] = true
@@ -132,17 +122,6 @@ func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error 
 	return nil
 }
 
-func (r *GroupRepository) UpdateSyncedAt(ctx context.Context, id string, syncedAt time.Time) error {
-	result := r.db.WithContext(ctx).Model(&groupModel{}).Where("id = ?", id).Update("last_synced_at", syncedAt.UTC())
-	if result.Error != nil {
-		return fmt.Errorf("updating group sync timestamp: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("group not found: %w", domain.ErrGroupNotFound)
-	}
-	return nil
-}
-
 func (r *GroupRepository) Delete(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&groupModel{})
 	if result.Error != nil {
@@ -153,20 +132,6 @@ func (r *GroupRepository) Delete(ctx context.Context, id string) error {
 	}
 	r.logger.Info("group deleted", slog.String("id", id))
 	return nil
-}
-
-func nullableGroupString(v string) *string {
-	if v == "" {
-		return nil
-	}
-	return &v
-}
-
-func derefGroupString(v *string) string {
-	if v == nil {
-		return ""
-	}
-	return *v
 }
 
 func nullableGroupInt(v *int) *int64 {

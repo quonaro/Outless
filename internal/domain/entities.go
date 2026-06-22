@@ -13,6 +13,7 @@ type Node struct {
 	URL     string
 	GroupID string
 	Country string
+	IsSelf  bool
 }
 
 // Token describes subscription access token metadata.
@@ -33,11 +34,9 @@ type Token struct {
 type Group struct {
 	ID            string
 	Name          string
-	SourceURL     string
 	TotalNodes    int
 	RandomEnabled bool
 	RandomLimit   *int
-	LastSyncedAt  *time.Time
 	CreatedAt     time.Time
 }
 

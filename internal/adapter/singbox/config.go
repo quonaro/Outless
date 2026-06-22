@@ -233,11 +233,20 @@ func routeUserTo(authUser, outbound string) option.Rule {
 	}
 }
 
-// buildOutbounds creates one VLESS outbound per exit node from its VLESS URL.
+// buildOutbounds creates one outbound per exit node.
+// Self-nodes use a direct outbound; others use VLESS.
 func buildOutbounds(nodes []domain.Node, logger *slog.Logger) ([]option.Outbound, error) {
 	outbounds := make([]option.Outbound, 0, len(nodes))
 
 	for _, node := range nodes {
+		if node.IsSelf {
+			outbounds = append(outbounds, option.Outbound{
+				Type: C.TypeDirect,
+				Tag:  outboundTag(node.ID),
+			})
+			continue
+		}
+
 		parsed, err := vless.ParseURL(node.URL)
 		if err != nil {
 			if logger != nil {

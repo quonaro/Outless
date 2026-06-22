@@ -36,7 +36,6 @@ const props = withDefaults(
   defineProps<{
     group: Group
     search: string
-    isSyncing: boolean
     deletingIds: Set<string>
     movingIds: Set<string>
     selectedIds: Set<string>
@@ -48,14 +47,11 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  startSync: []
-  cancelSync: []
   removeNode: [node: Node]
   editGroup: [
     group: {
       id: string
       name: string
-      source_url: string
       random_enabled: boolean
       random_limit: number | null
     },
@@ -77,7 +73,6 @@ const accordionOpen = ref(false)
 const editDialogOpen = ref(false)
 const deleteDialogOpen = ref(false)
 const editName = ref('')
-const editSourceUrl = ref('')
 const editRandomEnabled = ref(false)
 const editRandomLimit = ref<string>('')
 const canSaveEdit = computed(() => editName.value.trim().length > 0 && !props.editingGroup)
@@ -176,7 +171,6 @@ watch(accordionOpen, (value) => {
 
 function openEditDialog() {
   editName.value = props.group.name
-  editSourceUrl.value = props.group.source_url ?? ''
   editRandomEnabled.value = props.group.random_enabled ?? false
   editRandomLimit.value = props.group.random_limit?.toString() ?? ''
   editDialogOpen.value = true
@@ -186,7 +180,6 @@ function confirmEdit() {
   emit('editGroup', {
     id: props.group.id,
     name: editName.value.trim(),
-    source_url: editSourceUrl.value?.trim() || '',
     random_enabled: editRandomEnabled.value,
     random_limit: editRandomLimit.value ? parseInt(editRandomLimit.value) : null,
   })
@@ -233,14 +226,6 @@ function handleDuplicateNode() {
             {{ props.group.name }}
             <span class="text-muted-foreground">({{ props.group.total_nodes }})</span>
           </p>
-          <div class="flex items-center gap-2 text-xs text-muted-foreground">
-            <p class="truncate min-w-0">
-              {{ props.group.source_url || 'Manual group' }}
-            </p>
-            <span v-if="props.group.last_synced_at" class="shrink-0">
-              · Last sync: {{ new Date(props.group.last_synced_at).toLocaleString() }}</span
-            >
-          </div>
         </div>
         <div class="flex shrink-0 items-center gap-1">
           <UiButton
@@ -292,8 +277,19 @@ function handleDuplicateNode() {
                 />
                 <div class="min-w-0 flex-1">
                   <div class="group relative min-w-0">
-                    <p class="truncate text-sm font-medium">{{ node.url }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="truncate text-sm font-medium">
+                        {{ node.is_self ? 'Current Machine' : node.url }}
+                      </p>
+                      <span
+                        v-if="node.is_self"
+                        class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      >
+                        Self
+                      </span>
+                    </div>
                     <div
+                      v-if="!node.is_self"
                       class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-[min(90vw,40rem)] overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
                     >
                       {{ node.url }}
@@ -361,20 +357,12 @@ function handleDuplicateNode() {
     <SheetContent>
       <SheetHeader>
         <SheetTitle>Edit Group</SheetTitle>
-        <SheetDescription> Change the group name and public URL. </SheetDescription>
+        <SheetDescription> Change the group name. </SheetDescription>
       </SheetHeader>
       <div class="space-y-4 py-4">
         <div class="space-y-2">
           <UiLabel for="edit-name">Name</UiLabel>
           <UiInput id="edit-name" v-model="editName" placeholder="Group name" />
-        </div>
-        <div class="space-y-2">
-          <UiLabel for="edit-source-url">Public URL</UiLabel>
-          <UiInput
-            id="edit-source-url"
-            v-model="editSourceUrl"
-            placeholder="https://example.com/nodes.txt"
-          />
         </div>
         <div class="flex items-center gap-2">
           <input

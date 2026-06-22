@@ -59,11 +59,11 @@ const search = ref('')
 const showCreateGroupDialog = ref(false)
 const showCreateNodeDialog = ref(false)
 const groupNameInput = ref('')
-const groupSourceURLInput = ref('')
 const groupRandomEnabledInput = ref(false)
 const groupRandomLimitInput = ref<string>('')
 const nodeURLInput = ref('')
 const nodeGroupIDInput = ref('')
+const nodeIsSelfInput = ref(false)
 const createNodeErrorMessage = ref('')
 const isCreateGroupSubmitting = ref(false)
 const isCreateNodeSubmitting = ref(false)
@@ -73,24 +73,19 @@ const bulkMoveDialogOpen = ref(false)
 const bulkMoveTargetGroupId = ref('')
 
 const createGroupMutation = useMutation({
-  mutationFn: (payload: {
-    name: string
-    source_url: string
-    random_enabled: boolean
-    random_limit: number | null
-  }) => createGroup(payload),
+  mutationFn: (payload: { name: string; random_enabled: boolean; random_limit: number | null }) =>
+    createGroup(payload),
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['groups'] })
     showCreateGroupDialog.value = false
     groupNameInput.value = ''
-    groupSourceURLInput.value = ''
     groupRandomEnabledInput.value = false
     groupRandomLimitInput.value = ''
   },
 })
 
 const createNodeMutation = useMutation({
-  mutationFn: (payload: { url: string; group_id: string }) => createNode(payload),
+  mutationFn: (payload: { url: string; group_id: string; is_self: boolean }) => createNode(payload),
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['nodes'] })
     queryClient.invalidateQueries({ queryKey: ['groups'] })
@@ -131,13 +126,11 @@ const filteredFlatNodes = computed<Node[]>(() => {
 
 function submitCreateGroup() {
   const name = groupNameInput.value.trim()
-  const sourceURL = groupSourceURLInput.value.trim()
   if (!name || isCreateGroupSubmitting.value) return
   isCreateGroupSubmitting.value = true
   createGroupMutation.mutate(
     {
       name,
-      source_url: sourceURL,
       random_enabled: groupRandomEnabledInput.value,
       random_limit: (() => {
         if (!groupRandomLimitInput.value) return null
@@ -156,14 +149,15 @@ function submitCreateGroup() {
 function submitCreateNode() {
   const url = nodeURLInput.value.trim()
   const groupId = nodeGroupIDInput.value.trim()
-  if (!url || !groupId || isCreateNodeSubmitting.value) {
+  const isSelf = nodeIsSelfInput.value
+  if ((!isSelf && !url) || !groupId || isCreateNodeSubmitting.value) {
     createNodeErrorMessage.value = 'Please select a group.'
     return
   }
   createNodeErrorMessage.value = ''
   isCreateNodeSubmitting.value = true
   createNodeMutation.mutate(
-    { url, group_id: groupId },
+    { url: isSelf ? '' : url, group_id: groupId, is_self: isSelf },
     {
       onError: (error) => {
         createNodeErrorMessage.value = resolveCreateNodeErrorMessage(error)
@@ -195,11 +189,13 @@ function resolveCreateNodeErrorMessage(error: unknown): string {
 
 function handleAddNode(groupId: string) {
   nodeGroupIDInput.value = groupId
+  nodeIsSelfInput.value = false
   showCreateNodeDialog.value = true
 }
 
 function closeCreateNodeDialog() {
   showCreateNodeDialog.value = false
+  nodeIsSelfInput.value = false
   createNodeErrorMessage.value = ''
 }
 
@@ -270,7 +266,7 @@ function handleBulkDelete() {
 }
 
 function handleDuplicateNode(node: Node) {
-  createNode({ url: node.url, group_id: node.group_id }).then(() => {
+  createNode({ url: node.url, group_id: node.group_id, is_self: node.is_self }).then(() => {
     queryClient.invalidateQueries({ queryKey: ['nodes'] })
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   })
@@ -400,8 +396,19 @@ onBeforeUnmount(() => {
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div class="min-w-0 flex-1">
                   <div class="group relative min-w-0">
-                    <p class="truncate text-sm font-medium">{{ node.url }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="truncate text-sm font-medium">
+                        {{ node.is_self ? 'Current Machine' : node.url }}
+                      </p>
+                      <span
+                        v-if="node.is_self"
+                        class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      >
+                        Self
+                      </span>
+                    </div>
                     <div
+                      v-if="!node.is_self"
                       class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-[min(90vw,40rem)] overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
                     >
                       {{ node.url }}
@@ -462,17 +469,6 @@ onBeforeUnmount(() => {
                 @keyup.enter="submitCreateGroup"
               />
             </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium" for="create-group-source-url"
-                >Source URL (optional)</label
-              >
-              <UiInput
-                id="create-group-source-url"
-                v-model="groupSourceURLInput"
-                name="create-group-source-url"
-                placeholder="https://example.com/subscription"
-              />
-            </div>
             <div class="flex items-center gap-2">
               <input
                 id="create-group-random-enabled"
@@ -519,7 +515,18 @@ onBeforeUnmount(() => {
             <SheetDescription>Add a new VLESS node to a group.</SheetDescription>
           </SheetHeader>
           <div class="space-y-4 py-4">
-            <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <input
+                id="create-node-is-self"
+                v-model="nodeIsSelfInput"
+                type="checkbox"
+                class="h-4 w-4 rounded border-input"
+              />
+              <label for="create-node-is-self" class="text-sm font-medium"
+                >Use Current Machine</label
+              >
+            </div>
+            <div v-if="!nodeIsSelfInput" class="space-y-2">
               <label class="text-sm font-medium" for="create-node-url">VLESS URL</label>
               <UiInput
                 id="create-node-url"
@@ -551,7 +558,11 @@ onBeforeUnmount(() => {
           <SheetFooter>
             <UiButton variant="outline" @click="closeCreateNodeDialog"> Cancel </UiButton>
             <UiButton
-              :disabled="!nodeURLInput.trim() || !nodeGroupIDInput.trim() || isCreateNodeSubmitting"
+              :disabled="
+                (!nodeIsSelfInput && !nodeURLInput.trim()) ||
+                !nodeGroupIDInput.trim() ||
+                isCreateNodeSubmitting
+              "
               @click="submitCreateNode"
             >
               {{ isCreateNodeSubmitting ? 'Creating...' : 'Create' }}

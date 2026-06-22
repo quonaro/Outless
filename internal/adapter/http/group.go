@@ -37,7 +37,6 @@ func NewGroupManagementHandler(
 type CreateGroupInput struct {
 	Body struct {
 		Name          string `json:"name" required:"true" maxLength:"100"`
-		SourceURL     string `json:"source_url"`
 		RandomEnabled bool   `json:"random_enabled"`
 		RandomLimit   *int   `json:"random_limit"`
 	}
@@ -45,13 +44,11 @@ type CreateGroupInput struct {
 
 type CreateGroupOutput struct {
 	Body struct {
-		ID            string     `json:"id"`
-		Name          string     `json:"name"`
-		SourceURL     string     `json:"source_url"`
-		RandomEnabled bool       `json:"random_enabled"`
-		RandomLimit   *int       `json:"random_limit"`
-		LastSyncedAt  *time.Time `json:"last_synced_at"`
-		CreatedAt     time.Time  `json:"created_at"`
+		ID            string    `json:"id"`
+		Name          string    `json:"name"`
+		RandomEnabled bool      `json:"random_enabled"`
+		RandomLimit   *int      `json:"random_limit"`
+		CreatedAt     time.Time `json:"created_at"`
 	}
 }
 
@@ -63,7 +60,6 @@ type UpdateGroupInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
 		Name          string `json:"name" required:"true" maxLength:"100"`
-		SourceURL     string `json:"source_url"`
 		RandomEnabled bool   `json:"random_enabled"`
 		RandomLimit   *int   `json:"random_limit"`
 	}
@@ -74,14 +70,12 @@ type DeleteGroupInput struct {
 }
 
 type GroupItem struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	SourceURL     string     `json:"source_url"`
-	TotalNodes    int        `json:"total_nodes"`
-	RandomEnabled bool       `json:"random_enabled"`
-	RandomLimit   *int       `json:"random_limit"`
-	LastSyncedAt  *time.Time `json:"last_synced_at"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	TotalNodes    int       `json:"total_nodes"`
+	RandomEnabled bool      `json:"random_enabled"`
+	RandomLimit   *int      `json:"random_limit"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (h *GroupManagementHandler) Register(api huma.API) {
@@ -106,7 +100,6 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	group := domain.Group{
 		ID:            id,
 		Name:          input.Body.Name,
-		SourceURL:     strings.TrimSpace(input.Body.SourceURL),
 		RandomEnabled: input.Body.RandomEnabled,
 		RandomLimit:   input.Body.RandomLimit,
 		CreatedAt:     time.Now().UTC(),
@@ -123,10 +116,8 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	out := &CreateGroupOutput{}
 	out.Body.ID = id
 	out.Body.Name = group.Name
-	out.Body.SourceURL = group.SourceURL
 	out.Body.RandomEnabled = group.RandomEnabled
 	out.Body.RandomLimit = group.RandomLimit
-	out.Body.LastSyncedAt = group.LastSyncedAt
 	out.Body.CreatedAt = group.CreatedAt
 
 	return out, nil
@@ -145,11 +136,9 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 		response = append(response, GroupItem{
 			ID:            g.ID,
 			Name:          g.Name,
-			SourceURL:     g.SourceURL,
 			TotalNodes:    g.TotalNodes,
 			RandomEnabled: g.RandomEnabled,
 			RandomLimit:   g.RandomLimit,
-			LastSyncedAt:  g.LastSyncedAt,
 			CreatedAt:     g.CreatedAt,
 		})
 	}
@@ -176,7 +165,6 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	}
 
 	group.Name = input.Body.Name
-	group.SourceURL = strings.TrimSpace(input.Body.SourceURL)
 	group.RandomEnabled = input.Body.RandomEnabled
 	group.RandomLimit = input.Body.RandomLimit
 

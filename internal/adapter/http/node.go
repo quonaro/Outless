@@ -33,8 +33,9 @@ func NewNodeManagementHandler(
 
 type CreateNodeInput struct {
 	Body struct {
-		URL     string `json:"url" required:"true"`
+		URL     string `json:"url"`
 		GroupID string `json:"group_id" required:"true"`
+		IsSelf  bool   `json:"is_self"`
 	}
 }
 
@@ -43,6 +44,7 @@ type CreateNodeOutput struct {
 		ID      string `json:"id"`
 		URL     string `json:"url"`
 		GroupID string `json:"group_id"`
+		IsSelf  bool   `json:"is_self"`
 	}
 }
 
@@ -85,6 +87,7 @@ type NodeItem struct {
 	URL     string `json:"url"`
 	GroupID string `json:"group_id"`
 	Country string `json:"country"`
+	IsSelf  bool   `json:"is_self"`
 }
 
 func (h *NodeManagementHandler) Register(api huma.API) {
@@ -96,8 +99,8 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 }
 
 func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNodeInput) (*CreateNodeOutput, error) {
-	if input.Body.URL == "" {
-		return nil, huma.Error400BadRequest("url is required")
+	if !input.Body.IsSelf && input.Body.URL == "" {
+		return nil, huma.Error400BadRequest("url is required when is_self is false")
 	}
 
 	if input.Body.GroupID == "" {
@@ -113,12 +116,27 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		return nil, huma.Error500InternalServerError("failed to validate group")
 	}
 
+	if input.Body.IsSelf {
+		exists, err := h.nodeRepo.HasSelfNode(ctx)
+		if err != nil {
+			h.logger.Error("failed to check self node", slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate self node")
+		}
+		if exists {
+			return nil, huma.Error409Conflict("self node already exists")
+		}
+	}
+
 	nodeID := generateNodeID(input.Body.URL, input.Body.GroupID)
+	if input.Body.IsSelf {
+		nodeID = "self_" + input.Body.GroupID
+	}
 
 	node := domain.Node{
 		ID:      nodeID,
 		URL:     input.Body.URL,
 		GroupID: input.Body.GroupID,
+		IsSelf:  input.Body.IsSelf,
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {
@@ -132,6 +150,7 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	out.Body.ID = nodeID
 	out.Body.URL = input.Body.URL
 	out.Body.GroupID = input.Body.GroupID
+	out.Body.IsSelf = input.Body.IsSelf
 
 	return out, nil
 }
@@ -188,6 +207,7 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 			URL:     n.URL,
 			GroupID: n.GroupID,
 			Country: domain.NormalizeCountryCode(n.Country),
+			IsSelf:  n.IsSelf,
 		})
 	}
 
@@ -262,6 +282,7 @@ func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput
 			URL:     node.URL,
 			GroupID: node.GroupID,
 			Country: domain.NormalizeCountryCode(node.Country),
+			IsSelf:  node.IsSelf,
 		},
 	}, nil
 }

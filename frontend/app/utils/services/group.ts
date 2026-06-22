@@ -44,13 +44,3 @@ export async function deleteGroup(id: string): Promise<void> {
     method: 'DELETE',
   })
 }
-
-export async function syncGroup(id: string): Promise<void> {
-  const { $api } = useNuxtApp()
-  await $api(`/v1/groups/${id}/sync`, { method: 'POST' })
-}
-
-export async function cancelGroupSync(id: string): Promise<void> {
-  const { $api } = useNuxtApp()
-  await $api(`/v1/groups/${id}/sync/cancel`, { method: 'POST' })
-}

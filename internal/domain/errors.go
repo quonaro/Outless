@@ -28,3 +28,6 @@ var ErrInboundNotFound = errors.New("inbound not found")
 
 // ErrDuplicateNode is returned when attempting to create a node that already exists.
 var ErrDuplicateNode = errors.New("duplicate node")
+
+// ErrSelfNodeAlreadyExists is returned when a self-node already exists.
+var ErrSelfNodeAlreadyExists = errors.New("self node already exists")

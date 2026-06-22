@@ -5,11 +5,13 @@ export const NodeSchema = z.object({
   url: z.string(),
   group_id: z.string(),
   country: z.string(),
+  is_self: z.boolean().optional().default(false),
 })
 
 export const CreateNodeSchema = z.object({
-  url: z.string().min(1),
+  url: z.string(),
   group_id: z.string().min(1),
+  is_self: z.boolean().optional().default(false),
 })
 
 export const UpdateNodeSchema = z.object({

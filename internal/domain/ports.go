@@ -21,6 +21,7 @@ type NodeRepository interface {
 	ListByGroup(ctx context.Context, groupID string) ([]Node, error)
 	Update(ctx context.Context, node Node) error
 	Delete(ctx context.Context, id string) error
+	HasSelfNode(ctx context.Context) (bool, error)
 }
 
 // TokenRepository provides secure operations for subscription tokens.
@@ -55,7 +56,6 @@ type GroupRepository interface {
 	FindByID(ctx context.Context, id string) (Group, error)
 	List(ctx context.Context) ([]Group, error)
 	Update(ctx context.Context, group Group) error
-	UpdateSyncedAt(ctx context.Context, id string, syncedAt time.Time) error
 	Delete(ctx context.Context, id string) error
 }
 

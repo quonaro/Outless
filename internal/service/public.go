@@ -17,9 +17,6 @@ import (
 	"outless/shared/vless"
 )
 
-// syncLoadBatchSize limits rows per INSERT for Load to keep queries and WS fan-out bounded.
-const syncLoadBatchSize = 500
-
 // PublicService manages public VLESS sources import.
 type PublicService struct {
 	nodeRepo   domain.NodeRepository
@@ -127,110 +124,6 @@ func (s *PublicService) ImportAll(ctx context.Context) error {
 
 	s.logger.Info("public sources import completed", slog.Int("sources_processed", total))
 	return nil
-}
-
-// SyncGroup loads nodes for a group source URL and reports progress events.
-//
-//nolint:gocognit,gocyclo,funlen
-func (s *PublicService) SyncGroup(ctx context.Context, groupID string, onTotal func(int), onEvent func(SyncEvent)) (SyncResult, error) {
-	group, err := s.groupRepo.FindByID(ctx, groupID)
-	if err != nil {
-		return SyncResult{}, fmt.Errorf("finding group: %w", err)
-	}
-	if strings.TrimSpace(group.SourceURL) == "" {
-		return SyncResult{}, fmt.Errorf("group has no source url")
-	}
-
-	content, err := s.fetchSource(ctx, group.SourceURL)
-	if err != nil {
-		return SyncResult{}, fmt.Errorf("fetching source %s: %w", group.SourceURL, err)
-	}
-
-	vlessURLs := s.parseVLESSLines(content)
-	uniqueURLs := make([]string, 0, len(vlessURLs))
-	seen := make(map[string]struct{}, len(vlessURLs))
-	for _, raw := range vlessURLs {
-		k := strings.TrimSpace(raw)
-		if k == "" {
-			continue
-		}
-		if _, ok := seen[k]; ok {
-			continue
-		}
-		seen[k] = struct{}{}
-		uniqueURLs = append(uniqueURLs, k)
-	}
-	if onTotal != nil {
-		onTotal(len(uniqueURLs))
-	}
-
-	addedTotal := 0
-	for start := 0; start < len(uniqueURLs); start += syncLoadBatchSize {
-		if err = ctx.Err(); err != nil {
-			return SyncResult{}, err
-		}
-		end := start + syncLoadBatchSize
-		if end > len(uniqueURLs) {
-			end = len(uniqueURLs)
-		}
-		chunk := uniqueURLs[start:end]
-
-		nodes := make([]domain.Node, len(chunk))
-		for i, rawURL := range chunk {
-			nodes[i] = domain.Node{
-				ID:      s.generateNodeID(rawURL, groupID),
-				URL:     rawURL,
-				GroupID: groupID,
-			}
-		}
-
-		if onEvent != nil {
-			for _, rawURL := range chunk {
-				onEvent(SyncEvent{NodeID: s.generateNodeID(rawURL, groupID), URL: rawURL, Status: SyncNodeStatusImporting})
-			}
-		}
-
-		insertedIDs, bulkErr := s.nodeRepo.BulkCreateIfAbsent(ctx, nodes)
-		if bulkErr != nil {
-			err = bulkErr
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return SyncResult{}, err
-			}
-			for _, rawURL := range chunk {
-				nodeID := s.generateNodeID(rawURL, groupID)
-				if onEvent != nil {
-					onEvent(SyncEvent{NodeID: nodeID, URL: rawURL, Status: SyncNodeStatusError, AddedTotal: addedTotal, Error: err.Error()})
-				}
-			}
-			continue
-		}
-
-		inserted := make(map[string]struct{}, len(insertedIDs))
-		for _, id := range insertedIDs {
-			inserted[id] = struct{}{}
-		}
-
-		for _, rawURL := range chunk {
-			nodeID := s.generateNodeID(rawURL, groupID)
-			if _, ok := inserted[nodeID]; ok {
-				addedTotal++
-			}
-			if onEvent != nil {
-				onEvent(SyncEvent{NodeID: nodeID, URL: rawURL, Status: SyncNodeStatusDone, AddedTotal: addedTotal})
-			}
-		}
-	}
-
-	if err != nil {
-		return SyncResult{}, fmt.Errorf("bulk import failed: %w", err)
-	}
-
-	syncedAt := time.Now().UTC()
-	if err = s.groupRepo.UpdateSyncedAt(ctx, groupID, syncedAt); err != nil {
-		return SyncResult{}, fmt.Errorf("updating group sync timestamp: %w", err)
-	}
-
-	return SyncResult{SyncedAt: syncedAt, AddedCount: addedTotal}, nil
 }
 
 // EnsurePublicGroup creates the "Public" group if it doesn't exist.

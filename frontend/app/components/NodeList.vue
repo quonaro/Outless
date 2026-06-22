@@ -26,6 +26,7 @@ const showEditDialog = ref(false)
 const selectedNode = ref<Node | null>(null)
 const nodeUrl = ref('')
 const nodeGroupId = ref('')
+const isSelfNode = ref(false)
 const filterGroupId = ref<string>('')
 const isCreateSubmitting = ref(false)
 const isEditSubmitting = ref(false)
@@ -98,6 +99,7 @@ const groupNameById = computed<Record<string, string>>(() => {
 function resetForm() {
   nodeUrl.value = ''
   nodeGroupId.value = ''
+  isSelfNode.value = false
   selectedNode.value = null
   isCreateSubmitting.value = false
   isEditSubmitting.value = false
@@ -131,10 +133,12 @@ function closeEditDialog() {
 }
 
 function handleCreate() {
-  if (!nodeUrl.value.trim() || !nodeGroupId.value.trim() || isCreateSubmitting.value) return
+  if (!isSelfNode.value && !nodeUrl.value.trim()) return
+  if (!nodeGroupId.value.trim() || isCreateSubmitting.value) return
   const payload: CreateNode = {
-    url: nodeUrl.value.trim(),
+    url: isSelfNode.value ? '' : nodeUrl.value.trim(),
     group_id: nodeGroupId.value.trim(),
+    is_self: isSelfNode.value,
   }
   isCreateSubmitting.value = true
   createMutation.mutate(payload, {
@@ -191,9 +195,17 @@ function handleDelete(node: Node) {
       <CardContent class="p-0">
         <div class="flex items-start justify-between gap-4">
           <div class="max-w-[52%] min-w-0 space-y-1">
-            <p class="truncate font-mono text-sm" :title="node.url">
-              {{ node.url }}
-            </p>
+            <div class="flex items-center gap-2">
+              <p class="truncate font-mono text-sm" :title="node.url">
+                {{ node.is_self ? 'Current Machine' : node.url }}
+              </p>
+              <span
+                v-if="node.is_self"
+                class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+              >
+                Self
+              </span>
+            </div>
             <p class="text-xs text-muted-foreground">
               Group:
               <span class="font-medium">
@@ -234,7 +246,16 @@ function handleDelete(node: Node) {
           <CardTitle>Add Node</CardTitle>
         </CardHeader>
         <CardContent class="space-y-4">
-          <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <input
+              id="isSelf"
+              v-model="isSelfNode"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300"
+            />
+            <label for="isSelf" class="text-sm font-medium">Use Current Machine</label>
+          </div>
+          <div v-if="!isSelfNode" class="space-y-2">
             <label class="text-sm font-medium">VLESS URL</label>
             <UiInput
               v-model="nodeUrl"
@@ -259,7 +280,9 @@ function handleDelete(node: Node) {
         <CardFooter class="flex justify-end gap-2">
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
           <UiButton
-            :disabled="!nodeUrl.trim() || !nodeGroupId.trim() || isCreateSubmitting"
+            :disabled="
+              (!isSelfNode && !nodeUrl.trim()) || !nodeGroupId.trim() || isCreateSubmitting
+            "
             @click="handleCreate"
           >
             {{ isCreateSubmitting ? 'Adding...' : 'Add' }}

@@ -18,6 +18,7 @@ type nodeModel struct {
 	URL       string    `gorm:"column:url"`
 	GroupID   *string   `gorm:"column:group_id;index"`
 	Country   string    `gorm:"column:country"`
+	IsSelf    bool      `gorm:"column:is_self;index"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
@@ -35,7 +36,7 @@ func NewNodeRepository(db *gorm.DB, logger *slog.Logger) *NodeRepository {
 }
 
 func (r *NodeRepository) toDomain(m nodeModel) domain.Node {
-	return domain.Node{ID: m.ID, URL: m.URL, GroupID: derefString(m.GroupID), Country: m.Country}
+	return domain.Node{ID: m.ID, URL: m.URL, GroupID: derefString(m.GroupID), Country: m.Country, IsSelf: m.IsSelf}
 }
 
 // IterateNodes streams nodes from storage using Go iterators.
@@ -43,7 +44,7 @@ func (r *NodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.Node
 	return func(yield func(domain.Node, error) bool) {
 		models := make([]nodeModel, 0, 256)
 		if err := r.db.WithContext(ctx).
-			Select("id", "url", "group_id", "country").
+			Select("id", "url", "group_id", "country", "is_self").
 			Find(&models).Error; err != nil {
 			yield(domain.Node{}, fmt.Errorf("querying nodes: %w", err))
 			return
@@ -101,6 +102,7 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
+		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
@@ -120,6 +122,7 @@ func (r *NodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
+		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
 	}
 	tx := r.db.WithContext(ctx).
@@ -169,6 +172,7 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 			URL:       n.URL,
 			GroupID:   nullableString(n.GroupID),
 			Country:   n.Country,
+			IsSelf:    n.IsSelf,
 			CreatedAt: now,
 		})
 		inserted = append(inserted, n.ID)
@@ -195,6 +199,7 @@ func (r *NodeRepository) Upsert(ctx context.Context, node domain.Node) error {
 		URL:       node.URL,
 		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
+		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
 	}
 	err := r.db.WithContext(ctx).
@@ -284,7 +289,7 @@ func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	result := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Where("id = ?", node.ID).
-		Updates(map[string]any{"url": node.URL, "group_id": nullableString(node.GroupID)})
+		Updates(map[string]any{"url": node.URL, "group_id": nullableString(node.GroupID), "is_self": node.IsSelf})
 	if result.Error != nil {
 		return fmt.Errorf("updating node: %w", result.Error)
 	}
@@ -293,6 +298,15 @@ func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	}
 	r.logger.Debug("node updated", slog.String("node_id", node.ID))
 	return nil
+}
+
+// HasSelfNode reports whether a self-node already exists.
+func (r *NodeRepository) HasSelfNode(ctx context.Context) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&nodeModel{}).Where("is_self = ?", true).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("checking self node: %w", err)
+	}
+	return count > 0, nil
 }
 
 // Delete removes a node by ID.
