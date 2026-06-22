@@ -18,14 +18,16 @@ import (
 )
 
 type tokenModel struct {
-	ID        string    `gorm:"column:id;primaryKey"`
-	Owner     string    `gorm:"column:owner"`
-	GroupID   *string   `gorm:"column:group_id"`
-	TokenHash string    `gorm:"column:token_hash;index"`
-	UUID      string    `gorm:"column:uuid"`
-	IsActive  bool      `gorm:"column:is_active"`
-	ExpiresAt time.Time `gorm:"column:expires_at"`
-	CreatedAt time.Time `gorm:"column:created_at"`
+	ID          string    `gorm:"column:id;primaryKey"`
+	Owner       string    `gorm:"column:owner"`
+	GroupID     *string   `gorm:"column:group_id"`
+	TokenHash   string    `gorm:"column:token_hash;index"`
+	UUID        string    `gorm:"column:uuid"`
+	IsActive    bool      `gorm:"column:is_active"`
+	QuotaBytes  *int64    `gorm:"column:quota_bytes"`
+	QuotaPeriod string    `gorm:"column:quota_period"`
+	ExpiresAt   time.Time `gorm:"column:expires_at"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
 }
 
 func (tokenModel) TableName() string { return "tokens" }
@@ -64,6 +66,8 @@ func (r *TokenRepository) IssueToken(
 	groupIDs []string,
 	inboundIDs []string,
 	expiresAt time.Time,
+	quotaBytes *int64,
+	quotaPeriod string,
 ) (domain.Token, string, error) {
 	if strings.TrimSpace(owner) == "" {
 		return domain.Token{}, "", fmt.Errorf("owner is required")
@@ -94,14 +98,16 @@ func (r *TokenRepository) IssueToken(
 	}
 
 	model := tokenModel{
-		ID:        tokenID,
-		Owner:     owner,
-		GroupID:   nullableString(legacyGroupID),
-		TokenHash: tokenHash(plainToken),
-		UUID:      tokenUUID,
-		IsActive:  true,
-		ExpiresAt: expiresAt.UTC(),
-		CreatedAt: now,
+		ID:          tokenID,
+		Owner:       owner,
+		GroupID:     nullableString(legacyGroupID),
+		TokenHash:   tokenHash(plainToken),
+		UUID:        tokenUUID,
+		IsActive:    true,
+		QuotaBytes:  quotaBytes,
+		QuotaPeriod: quotaPeriod,
+		ExpiresAt:   expiresAt.UTC(),
+		CreatedAt:   now,
 	}
 
 	txErr := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -348,7 +354,7 @@ func (r *TokenRepository) CleanupExpired(ctx context.Context, cutoff time.Time) 
 	return deleted, nil
 }
 
-// Update modifies token owner, group IDs, inbound IDs, and expiration.
+// Update modifies token owner, group IDs, inbound IDs, expiration and quota.
 func (r *TokenRepository) Update(
 	ctx context.Context,
 	id string,
@@ -356,6 +362,8 @@ func (r *TokenRepository) Update(
 	groupIDs []string,
 	inboundIDs []string,
 	expiresAt time.Time,
+	quotaBytes *int64,
+	quotaPeriod string,
 ) error {
 	if strings.TrimSpace(owner) == "" {
 		return fmt.Errorf("owner is required")
@@ -374,9 +382,11 @@ func (r *TokenRepository) Update(
 		result := tx.Model(&tokenModel{}).
 			Where("id = ?", id).
 			Updates(map[string]any{
-				"owner":      owner,
-				"group_id":   nullableString(legacyGroupID),
-				"expires_at": expiresAt.UTC(),
+				"owner":        owner,
+				"group_id":     nullableString(legacyGroupID),
+				"expires_at":   expiresAt.UTC(),
+				"quota_bytes":  quotaBytes,
+				"quota_period": quotaPeriod,
 			})
 		if result.Error != nil {
 			return fmt.Errorf("updating token: %w", result.Error)
@@ -408,6 +418,29 @@ func (r *TokenRepository) Update(
 		return txErr
 	}
 	r.logger.Info("token updated", slog.String("id", id), slog.String("owner", owner))
+	return nil
+}
+
+// SetQuota updates only the quota fields for a token.
+func (r *TokenRepository) SetQuota(
+	ctx context.Context,
+	id string,
+	quotaBytes *int64,
+	quotaPeriod string,
+) error {
+	result := r.db.WithContext(ctx).Model(&tokenModel{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"quota_bytes":  quotaBytes,
+			"quota_period": quotaPeriod,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("setting token quota: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+	}
+	r.logger.Info("token quota updated", slog.String("id", id))
 	return nil
 }
 
@@ -456,15 +489,17 @@ func toDomainToken(model tokenModel, groupIDs []string, inboundIDs []string) dom
 		primaryGroupID = groupIDs[0]
 	}
 	return domain.Token{
-		ID:         model.ID,
-		Owner:      model.Owner,
-		GroupID:    primaryGroupID,
-		GroupIDs:   groupIDs,
-		InboundIDs: uniqueNonEmpty(inboundIDs),
-		UUID:       model.UUID,
-		IsActive:   model.IsActive,
-		ExpiresAt:  model.ExpiresAt,
-		CreatedAt:  model.CreatedAt,
+		ID:          model.ID,
+		Owner:       model.Owner,
+		GroupID:     primaryGroupID,
+		GroupIDs:    groupIDs,
+		InboundIDs:  uniqueNonEmpty(inboundIDs),
+		UUID:        model.UUID,
+		IsActive:    model.IsActive,
+		QuotaBytes:  model.QuotaBytes,
+		QuotaPeriod: model.QuotaPeriod,
+		ExpiresAt:   model.ExpiresAt,
+		CreatedAt:   model.CreatedAt,
 	}
 }
 

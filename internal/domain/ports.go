@@ -26,7 +26,11 @@ type NodeRepository interface {
 
 // TokenRepository provides secure operations for subscription tokens.
 type TokenRepository interface {
-	IssueToken(ctx context.Context, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) (Token, string, error)
+	IssueToken(
+		ctx context.Context, owner string, groupIDs []string,
+		inboundIDs []string, expiresAt time.Time,
+		quotaBytes *int64, quotaPeriod string,
+	) (Token, string, error)
 	ValidateToken(ctx context.Context, token string, at time.Time) (bool, error)
 	GetTokenGroupID(ctx context.Context, token string, at time.Time) (string, error)
 	GetTokenByPlain(ctx context.Context, token string, at time.Time) (Token, error)
@@ -36,7 +40,12 @@ type TokenRepository interface {
 	Deactivate(ctx context.Context, id string) error
 	Activate(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
-	Update(ctx context.Context, id string, owner string, groupIDs []string, inboundIDs []string, expiresAt time.Time) error
+	Update(
+		ctx context.Context, id string, owner string,
+		groupIDs []string, inboundIDs []string,
+		expiresAt time.Time, quotaBytes *int64, quotaPeriod string,
+	) error
+	SetQuota(ctx context.Context, id string, quotaBytes *int64, quotaPeriod string) error
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
@@ -77,6 +86,23 @@ type InboundRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// TrafficConnection holds per-connection counters extracted from the runtime.
+type TrafficConnection struct {
+	ID       string
+	User     string
+	NodeID   string
+	Inbound  string
+	Upload   int64
+	Download int64
+}
+
+// TrafficSnapshot holds a point-in-time view of runtime traffic counters.
+type TrafficSnapshot struct {
+	UploadTotal   int64
+	DownloadTotal int64
+	Connections   []TrafficConnection
+}
+
 // RuntimeController abstracts how the embedded sing-box runtime is started,
 // reloaded and stopped. Reload semantics are debounced close+recreate because
 // sing-box has no in-place graceful reload.
@@ -88,4 +114,44 @@ type RuntimeController interface {
 	RemoveUser(email string) error
 	RemoveRulesForUser(email string) error
 	ForceSync() error
+	TrafficSnapshot() *TrafficSnapshot
+}
+
+// NodeUsage aggregates per-node traffic for a specific period.
+type NodeUsage struct {
+	NodeID        string
+	PeriodStart   time.Time
+	PeriodType    string
+	UploadBytes   int64
+	DownloadBytes int64
+	UpdatedAt     time.Time
+}
+
+// InboundUsage aggregates per-inbound traffic for a specific period.
+type InboundUsage struct {
+	InboundTag    string
+	PeriodStart   time.Time
+	PeriodType    string
+	UploadBytes   int64
+	DownloadBytes int64
+	UpdatedAt     time.Time
+}
+
+// TrafficRepository persists per-token traffic usage aggregates.
+type TrafficRepository interface {
+	RecordUsage(ctx context.Context, usage TokenUsage) error
+	GetUsage(ctx context.Context, tokenID string, periodType string, periodStart time.Time) (TokenUsage, error)
+	ListUsageByToken(ctx context.Context, tokenID string, periodType string, limit int) ([]TokenUsage, error)
+	ResetAllForPeriod(ctx context.Context, periodType string, periodStart time.Time) error
+	GetAggregateForPeriod(ctx context.Context, periodType string, periodStart time.Time) (upload int64, download int64, err error)
+
+	RecordNodeUsage(ctx context.Context, usage NodeUsage) error
+	GetNodeUsage(ctx context.Context, nodeID string, periodType string, periodStart time.Time) (NodeUsage, error)
+	ListNodeUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]NodeUsage, error)
+
+	RecordInboundUsage(ctx context.Context, usage InboundUsage) error
+	GetInboundUsage(ctx context.Context, inboundTag string, periodType string, periodStart time.Time) (InboundUsage, error)
+	ListInboundUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]InboundUsage, error)
+
+	ListTokenUsageForPeriod(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]TokenUsage, error)
 }

@@ -97,6 +97,12 @@ func GenerateOptions(
 			Rules: rules,
 			Final: tagBlock,
 		},
+		Experimental: &option.ExperimentalOptions{
+			ClashAPI: &option.ClashAPIOptions{
+				// ExternalController left empty -> no HTTP listener,
+				// but traffic manager is still created internally.
+			},
+		},
 	}
 
 	if logger != nil {

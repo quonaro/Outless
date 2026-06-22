@@ -42,6 +42,7 @@ type Handlers struct {
 	Settings     *SettingsHandler
 	Admin        *AdminManagementHandler
 	Stats        *StatsHandler
+	Traffic      *TrafficHandler
 }
 
 // NewServer builds HTTP server with injected handlers.
@@ -64,6 +65,7 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	handlers.Settings.Register(humaAPI)
 	handlers.Admin.Register(humaAPI)
 	handlers.Stats.Register(humaAPI)
+	handlers.Traffic.Register(humaAPI)
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	rateLimitMiddleware := NewRateLimitMiddleware(logger)

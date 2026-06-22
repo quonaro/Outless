@@ -49,25 +49,29 @@ func NewTokenManagementHandler(
 
 type CreateTokenInput struct {
 	Body struct {
-		Owner      string   `json:"owner" required:"true" maxLength:"64"`
-		GroupIDs   []string `json:"group_ids"`
-		InboundIDs []string `json:"inbound_ids"`
-		ExpiresIn  string   `json:"expires_in" example:"24h"`
+		Owner       string   `json:"owner" required:"true" maxLength:"64"`
+		GroupIDs    []string `json:"group_ids"`
+		InboundIDs  []string `json:"inbound_ids"`
+		ExpiresIn   string   `json:"expires_in" example:"24h"`
+		QuotaBytes  *int64   `json:"quota_bytes"`
+		QuotaPeriod string   `json:"quota_period" example:"month"`
 	}
 }
 
 type CreateTokenOutput struct {
 	Body struct {
-		ID         string    `json:"id"`
-		Token      string    `json:"token"`
-		AccessURL  string    `json:"access_url"`
-		Owner      string    `json:"owner"`
-		GroupID    string    `json:"group_id"`
-		GroupIDs   []string  `json:"group_ids"`
-		InboundIDs []string  `json:"inbound_ids"`
-		IsActive   bool      `json:"is_active"`
-		ExpiresAt  time.Time `json:"expires_at"`
-		CreatedAt  time.Time `json:"created_at"`
+		ID          string    `json:"id"`
+		Token       string    `json:"token"`
+		AccessURL   string    `json:"access_url"`
+		Owner       string    `json:"owner"`
+		GroupID     string    `json:"group_id"`
+		GroupIDs    []string  `json:"group_ids"`
+		InboundIDs  []string  `json:"inbound_ids"`
+		IsActive    bool      `json:"is_active"`
+		QuotaBytes  *int64    `json:"quota_bytes"`
+		QuotaPeriod string    `json:"quota_period"`
+		ExpiresAt   time.Time `json:"expires_at"`
+		CreatedAt   time.Time `json:"created_at"`
 	}
 }
 
@@ -82,23 +86,27 @@ type DeleteTokenInput struct {
 type UpdateTokenInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		Owner      string   `json:"owner" required:"true" maxLength:"64"`
-		GroupIDs   []string `json:"group_ids"`
-		InboundIDs []string `json:"inbound_ids"`
-		ExpiresIn  string   `json:"expires_in" example:"24h"`
+		Owner       string   `json:"owner" required:"true" maxLength:"64"`
+		GroupIDs    []string `json:"group_ids"`
+		InboundIDs  []string `json:"inbound_ids"`
+		ExpiresIn   string   `json:"expires_in" example:"24h"`
+		QuotaBytes  *int64   `json:"quota_bytes"`
+		QuotaPeriod string   `json:"quota_period" example:"month"`
 	}
 }
 
 type TokenItem struct {
-	ID         string    `json:"id"`
-	Owner      string    `json:"owner"`
-	GroupID    string    `json:"group_id"`
-	GroupIDs   []string  `json:"group_ids"`
-	InboundIDs []string  `json:"inbound_ids"`
-	AccessURL  string    `json:"access_url"`
-	IsActive   bool      `json:"is_active"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Owner       string    `json:"owner"`
+	GroupID     string    `json:"group_id"`
+	GroupIDs    []string  `json:"group_ids"`
+	InboundIDs  []string  `json:"inbound_ids"`
+	AccessURL   string    `json:"access_url"`
+	IsActive    bool      `json:"is_active"`
+	QuotaBytes  *int64    `json:"quota_bytes"`
+	QuotaPeriod string    `json:"quota_period"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func (h *TokenManagementHandler) Register(api huma.API) {
@@ -150,7 +158,10 @@ func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateT
 	}
 
 	expiresAt := time.Now().UTC().Add(expiresIn)
-	token, plainToken, err := h.tokenRepo.IssueToken(ctx, input.Body.Owner, groupIDs, inboundIDs, expiresAt)
+	token, plainToken, err := h.tokenRepo.IssueToken(
+		ctx, input.Body.Owner, groupIDs, inboundIDs, expiresAt,
+		input.Body.QuotaBytes, input.Body.QuotaPeriod,
+	)
 	if err != nil {
 		h.logger.Error("failed to issue token", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create token")
@@ -165,6 +176,8 @@ func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateT
 	out.Body.GroupIDs = token.GroupIDs
 	out.Body.InboundIDs = token.InboundIDs
 	out.Body.IsActive = token.IsActive
+	out.Body.QuotaBytes = token.QuotaBytes
+	out.Body.QuotaPeriod = token.QuotaPeriod
 	out.Body.ExpiresAt = token.ExpiresAt
 	out.Body.CreatedAt = token.CreatedAt
 
@@ -182,14 +195,16 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 
 	for _, t := range tokens {
 		response = append(response, TokenItem{
-			ID:         t.ID,
-			Owner:      t.Owner,
-			GroupID:    t.GroupID,
-			GroupIDs:   t.GroupIDs,
-			InboundIDs: t.InboundIDs,
-			IsActive:   t.IsActive,
-			ExpiresAt:  t.ExpiresAt,
-			CreatedAt:  t.CreatedAt,
+			ID:          t.ID,
+			Owner:       t.Owner,
+			GroupID:     t.GroupID,
+			GroupIDs:    t.GroupIDs,
+			InboundIDs:  t.InboundIDs,
+			IsActive:    t.IsActive,
+			QuotaBytes:  t.QuotaBytes,
+			QuotaPeriod: t.QuotaPeriod,
+			ExpiresAt:   t.ExpiresAt,
+			CreatedAt:   t.CreatedAt,
 		})
 	}
 
@@ -335,7 +350,10 @@ func (h *TokenManagementHandler) UpdateToken(ctx context.Context, input *UpdateT
 	}
 
 	expiresAt := time.Now().UTC().Add(expiresIn)
-	if err := h.tokenRepo.Update(ctx, input.ID, input.Body.Owner, groupIDs, inboundIDs, expiresAt); err != nil {
+	if err := h.tokenRepo.Update(
+		ctx, input.ID, input.Body.Owner, groupIDs, inboundIDs, expiresAt,
+		input.Body.QuotaBytes, input.Body.QuotaPeriod,
+	); err != nil {
 		h.logger.Error("failed to update token", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update token")
 	}

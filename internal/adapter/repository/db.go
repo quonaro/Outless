@@ -28,6 +28,9 @@ func NewDB(path string) (*gorm.DB, error) {
 		&publicSourceModel{},
 		&adminModel{},
 		&inboundModel{},
+		&tokenUsageModel{},
+		&nodeUsageModel{},
+		&inboundUsageModel{},
 	); err != nil {
 		// AutoMigrate handles new columns (is_self) automatically.
 		return nil, fmt.Errorf("running sqlite migrations: %w", err)

@@ -31,3 +31,6 @@ var ErrDuplicateNode = errors.New("duplicate node")
 
 // ErrSelfNodeAlreadyExists is returned when a self-node already exists.
 var ErrSelfNodeAlreadyExists = errors.New("self node already exists")
+
+// ErrQuotaExceeded is returned when a token's traffic quota is exhausted.
+var ErrQuotaExceeded = errors.New("quota exceeded")

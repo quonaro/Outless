@@ -19,15 +19,27 @@ type Node struct {
 // Token describes subscription access token metadata.
 // UUID is the per-token identifier used as a VLESS user id on the hub inbound.
 type Token struct {
-	ID         string
-	Owner      string
-	GroupID    string
-	GroupIDs   []string
-	InboundIDs []string
-	UUID       string
-	IsActive   bool
-	ExpiresAt  time.Time
-	CreatedAt  time.Time
+	ID          string
+	Owner       string
+	GroupID     string
+	GroupIDs    []string
+	InboundIDs  []string
+	UUID        string
+	IsActive    bool
+	QuotaBytes  *int64
+	QuotaPeriod string
+	ExpiresAt   time.Time
+	CreatedAt   time.Time
+}
+
+// TokenUsage aggregates per-token traffic for a specific period.
+type TokenUsage struct {
+	TokenID       string
+	PeriodStart   time.Time
+	PeriodType    string
+	UploadBytes   int64
+	DownloadBytes int64
+	UpdatedAt     time.Time
 }
 
 // Group represents a collection of nodes and tokens for access control.

@@ -58,11 +58,15 @@ const ownerInput = ref('')
 const groupIdsInput = ref<string[]>([])
 const inboundIdsInput = ref<string[]>([])
 const expiresInInput = ref(defaultExpiresIn)
+const quotaBytesInput = ref<number | undefined>(undefined)
+const quotaPeriodInput = ref('')
 
 const editOwnerInput = ref('')
 const editGroupIdsInput = ref<string[]>([])
 const editInboundIdsInput = ref<string[]>([])
 const editExpiresInInput = ref(defaultExpiresIn)
+const editQuotaBytesInput = ref<number | undefined>(undefined)
+const editQuotaPeriodInput = ref('')
 
 const issuedUrlRef = ref<HTMLPreElement>()
 const selectedUrlRef = ref<HTMLPreElement>()
@@ -212,6 +216,8 @@ function resetForm() {
   groupIdsInput.value = []
   inboundIdsInput.value = []
   expiresInInput.value = defaultExpiresIn
+  quotaBytesInput.value = undefined
+  quotaPeriodInput.value = ''
   isIssueSubmitting.value = false
 }
 
@@ -240,6 +246,8 @@ function handleCreate() {
     group_ids: groupIdsInput.value,
     inbound_ids: inboundIdsInput.value,
     expires_in: expiresInInput.value,
+    quota_bytes: quotaBytesInput.value,
+    quota_period: quotaPeriodInput.value,
   }
   isIssueSubmitting.value = true
   createMutation.mutate(payload, {
@@ -291,6 +299,15 @@ function resolveAccessURL(token: Pick<Token, 'access_url'>): string {
     base = origin + base
   }
   return `${base}${path}`
+}
+
+function formatBytes(v: number): string {
+  if (v === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.max(0, Math.floor(Math.log10(v) / 3))
+  const unit = units[Math.min(i, units.length - 1)]
+  const scaled = v / Math.pow(1000, Math.min(i, units.length - 1))
+  return `${scaled.toFixed(2)} ${unit}`
 }
 
 async function copyText(value: string) {
@@ -414,6 +431,8 @@ function openEditDialog(token: Token) {
       : []
   editInboundIdsInput.value = token.inbound_ids ?? []
   editExpiresInInput.value = defaultExpiresIn
+  editQuotaBytesInput.value = token.quota_bytes ?? undefined
+  editQuotaPeriodInput.value = token.quota_period ?? ''
   isEditSubmitting.value = false
   showEditDialog.value = true
 }
@@ -426,6 +445,8 @@ function closeEditDialog() {
   editGroupIdsInput.value = []
   editInboundIdsInput.value = []
   editExpiresInInput.value = defaultExpiresIn
+  editQuotaBytesInput.value = undefined
+  editQuotaPeriodInput.value = ''
   isEditSubmitting.value = false
 }
 
@@ -442,6 +463,8 @@ function handleEdit() {
     group_ids: editGroupIdsInput.value,
     inbound_ids: editInboundIdsInput.value,
     expires_in: editExpiresInInput.value,
+    quota_bytes: editQuotaBytesInput.value,
+    quota_period: editQuotaPeriodInput.value,
   }
   isEditSubmitting.value = true
   updateMutation.mutate(
@@ -504,6 +527,9 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
             <p class="text-sm text-muted-foreground">
               Inbounds:
               <span class="font-medium">{{ tokenInboundLabels(token) }}</span>
+            </p>
+            <p v-if="token.quota_bytes && token.quota_period" class="text-sm text-muted-foreground">
+              Quota: {{ formatBytes(token.quota_bytes) }} / {{ token.quota_period }}
             </p>
             <p class="text-sm text-muted-foreground">
               Expires: {{ new Date(token.expires_at).toLocaleString() }} · Created:
@@ -636,6 +662,27 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               </option>
             </select>
           </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Quota (bytes)</label>
+              <UiInput
+                v-model.number="quotaBytesInput"
+                type="number"
+                placeholder="e.g. 1073741824"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Quota Period</label>
+              <select
+                v-model="quotaPeriodInput"
+                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">None</option>
+                <option value="day">Day</option>
+                <option value="month">Month</option>
+              </select>
+            </div>
+          </div>
         </div>
         <SheetFooter>
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
@@ -717,6 +764,27 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
                 {{ opt.label }}
               </option>
             </select>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Quota (bytes)</label>
+              <UiInput
+                v-model.number="editQuotaBytesInput"
+                type="number"
+                placeholder="e.g. 1073741824"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Quota Period</label>
+              <select
+                v-model="editQuotaPeriodInput"
+                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">None</option>
+                <option value="day">Day</option>
+                <option value="month">Month</option>
+              </select>
+            </div>
           </div>
         </div>
         <SheetFooter>

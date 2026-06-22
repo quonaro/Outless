@@ -5,13 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"outless/internal/domain"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/experimental/clashapi"
+	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
 )
+
+// Compile-time check that RuntimeController implements domain.RuntimeController.
+var _ domain.RuntimeController = (*RuntimeController)(nil)
 
 // RuntimeController manages an embedded sing-box instance. Because sing-box has
 // no in-place graceful reload, Reload performs a debounced close+recreate.
@@ -23,11 +29,12 @@ type RuntimeController struct {
 	singboxLogLevel string
 	debounce        time.Duration
 
-	mu       sync.Mutex
-	instance *box.Box
-	baseCtx  context.Context
-	timer    *time.Timer
-	started  bool
+	mu             sync.Mutex
+	instance       *box.Box
+	trafficManager *trafficontrol.Manager
+	baseCtx        context.Context
+	timer          *time.Timer
+	started        bool
 }
 
 // NewRuntimeController creates an embedded sing-box runtime controller.
@@ -116,6 +123,36 @@ func (r *RuntimeController) RemoveUser(string) error { return r.Reload() }
 // RemoveRulesForUser triggers a reload; rules are regenerated from the database.
 func (r *RuntimeController) RemoveRulesForUser(string) error { return r.Reload() }
 
+// TrafficSnapshot returns a point-in-time view of current traffic counters.
+func (r *RuntimeController) TrafficSnapshot() *domain.TrafficSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.trafficManager == nil {
+		return nil
+	}
+
+	snap := r.trafficManager.Snapshot()
+	connections := make([]domain.TrafficConnection, 0, len(snap.Connections))
+	for _, conn := range snap.Connections {
+		meta := conn.Metadata()
+		connections = append(connections, domain.TrafficConnection{
+			ID:       meta.ID.String(),
+			User:     meta.Metadata.User,
+			NodeID:   parseNodeID(meta.Metadata.User),
+			Inbound:  meta.Metadata.Inbound,
+			Upload:   meta.Upload.Load(),
+			Download: meta.Download.Load(),
+		})
+	}
+
+	return &domain.TrafficSnapshot{
+		UploadTotal:   snap.Upload,
+		DownloadTotal: snap.Download,
+		Connections:   connections,
+	}
+}
+
 // Stop closes the running sing-box instance.
 func (r *RuntimeController) Stop() {
 	r.mu.Lock()
@@ -181,6 +218,10 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 		return fmt.Errorf("starting sing-box instance: %w", err)
 	}
 
+	if clashSrv, ok := instance.Router().ClashServer().(*clashapi.Server); ok && clashSrv != nil {
+		r.trafficManager = clashSrv.TrafficManager()
+	}
+
 	r.instance = instance
 	return nil
 }
@@ -190,4 +231,15 @@ func (r *RuntimeController) closeLocked() {
 		_ = r.instance.Close()
 		r.instance = nil
 	}
+	r.trafficManager = nil
+}
+
+// parseNodeID extracts node identifier from a sing-box inbound user name.
+// Expected format: "t-<tokenID>-n-<nodeID>".
+func parseNodeID(user string) string {
+	parts := strings.Split(user, "-")
+	if len(parts) < 4 || parts[0] != "t" || parts[2] != "n" {
+		return ""
+	}
+	return parts[3]
 }

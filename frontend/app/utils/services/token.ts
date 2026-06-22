@@ -12,6 +12,15 @@ interface ListTokensResponse {
   tokens: unknown[]
 }
 
+const TrafficItemSchema = z.object({
+  period_start: z.string(),
+  upload_bytes: z.number(),
+  download_bytes: z.number(),
+  total_bytes: z.number(),
+})
+
+export type TrafficItem = z.infer<typeof TrafficItemSchema>
+
 export async function fetchTokens(): Promise<Token[]> {
   const { $api } = useNuxtApp()
   const data = await $api<ListTokensResponse | unknown[]>('/v1/tokens')
@@ -55,4 +64,27 @@ export async function updateToken(id: string, token: UpdateToken): Promise<void>
     method: 'PUT',
     body: token,
   })
+}
+
+export async function updateTokenQuota(
+  id: string,
+  quota: { quota_bytes: number | null; quota_period: string }
+): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/tokens/${id}/quota`, {
+    method: 'PATCH',
+    body: quota,
+  })
+}
+
+export async function fetchTokenTraffic(
+  id: string,
+  period: 'day' | 'month' = 'day',
+  limit = 30
+): Promise<TrafficItem[]> {
+  const { $api } = useNuxtApp()
+  const data = await $api<unknown[]>(`/v1/tokens/${id}/traffic`, {
+    query: { period, limit },
+  })
+  return z.array(TrafficItemSchema).parse(data)
 }

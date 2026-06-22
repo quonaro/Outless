@@ -8,6 +8,8 @@ export const TokenSchema = z.object({
   inbound_ids: z.array(z.string()).optional().default([]),
   access_url: z.string().optional().default(''),
   is_active: z.boolean(),
+  quota_bytes: z.number().nullable().optional(),
+  quota_period: z.string().optional(),
   expires_at: z.string(),
   created_at: z.string(),
 })
@@ -17,6 +19,8 @@ export const CreateTokenSchema = z.object({
   group_ids: z.array(z.string()).optional().default([]),
   inbound_ids: z.array(z.string()).optional().default([]),
   expires_in: z.string().min(1),
+  quota_bytes: z.number().nullable().optional(),
+  quota_period: z.string().optional(),
 })
 
 export const UpdateTokenSchema = z.object({
@@ -24,6 +28,8 @@ export const UpdateTokenSchema = z.object({
   group_ids: z.array(z.string()).optional().default([]),
   inbound_ids: z.array(z.string()).optional().default([]),
   expires_in: z.string().min(1),
+  quota_bytes: z.number().nullable().optional(),
+  quota_period: z.string().optional(),
 })
 
 export const IssuedTokenSchema = TokenSchema.extend({

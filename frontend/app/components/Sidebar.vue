@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { LayoutDashboard, Key, Globe, Settings, LogOut, Server, X } from 'lucide-vue-next'
+import {
+  LayoutDashboard,
+  BarChart3,
+  Key,
+  Globe,
+  Settings,
+  LogOut,
+  Server,
+  X,
+} from 'lucide-vue-next'
 
 import { useSidebar } from '~/composables/useSidebar'
 import { useAuth } from '~/composables/useAuth'
@@ -19,6 +28,13 @@ const navItems = [
     icon: LayoutDashboard,
     path: '/dashboard',
     iconColor: 'text-emerald-500',
+  },
+  {
+    id: 'stats',
+    label: 'Stats',
+    icon: BarChart3,
+    path: '/stats',
+    iconColor: 'text-blue-500',
   },
   { id: 'tokens', label: 'Tokens', icon: Key, path: '/tokens', iconColor: 'text-amber-500' },
   { id: 'nodes', label: 'Nodes', icon: Globe, path: '/nodes', iconColor: 'text-sky-500' },
