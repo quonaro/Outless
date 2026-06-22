@@ -6,11 +6,10 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-args_bin = []
-bin = "./tmp/main"
+args_bin = ["server", "run"]
+entrypoint = ["./tmp/main"]
 cmd = "CGO_ENABLED=0 go build -trimpath -tags \"with_reality_server with_utls\" -ldflags='-s -w' -o ./tmp/main ./cmd/outless"
 delay = 1000
-entrypoint = ["./tmp/main", "run"]
 exclude_dir = ["assets", "tmp", "vendor", "testdata", "frontend", "web/dist"]
 exclude_file = []
 exclude_regex = ["_test.go"]
