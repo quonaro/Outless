@@ -10,7 +10,11 @@ export function useLogStream(maxLines = 200) {
     if (eventSource) return
 
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    eventSource = new EventSource(`${base}/api/v1/events/logs`)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    const url = token
+      ? `${base}/api/v1/events/logs?access_token=${encodeURIComponent(token)}`
+      : `${base}/api/v1/events/logs`
+    eventSource = new EventSource(url)
     eventSource.onopen = () => {
       isConnected.value = true
     }

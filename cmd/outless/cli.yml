@@ -1,0 +1,48 @@
+server:
+  desc: Server management
+  color: green
+  inherit_color: true
+  run:
+    desc: Run the Outless server
+    native: true
+  status:
+    native: true
+
+admin:
+  desc: Admin commands
+  color: cyan
+  inherit_color: true
+  reset-password:
+    desc: Reset admin password
+
+    native: true
+    args:
+      - "username:str"
+      - "password:str"
+
+config:
+  desc: Configuration commands
+  color: blue
+  inherit_color: true
+  show:
+    desc: Display current configuration
+    native: true
+    args:
+      - "with-secrets:bool=false"
+  validate:
+    desc: Validate configuration without starting server
+    native: true
+
+db:
+  desc: Database commands
+  color: yellow
+  inherit_color: true
+  backup:
+    desc: Create a tar.gz backup of the database
+    native: true
+
+version:
+  desc: Show version
+  color: white
+  inherit_color: true
+  native: true

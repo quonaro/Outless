@@ -24,6 +24,7 @@ run:
   parallel: false
   script: |
     ./outless
+  color: red
 
 dev:
   desc: Run frontend and backend in dev mode with hot reload

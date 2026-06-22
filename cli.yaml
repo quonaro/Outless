@@ -1,0 +1,11 @@
+app:
+    shutdown_gracetime: 10s
+    http_port: 41220
+    external_host: ""
+    singbox_log_level: ""
+    log_level: info
+    disable_docs: false
+jwt:
+    secret: 1481895b5e2f98ea82e7ad33bd912e0446a1cf26a4914693dc38e173e8467c52
+    expiry: 24h0m0s
+database: /var/lib/outless/outless.db

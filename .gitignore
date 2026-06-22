@@ -1,10 +1,13 @@
 # Binaries
-outless
+
+/outless
 outless_*
 *.exe
 *.dll
 *.so
 *.dylib
+
+
 
 # Test and build artifacts
 *.test
@@ -37,3 +40,4 @@ frontend/.nuxt/
 frontend/.output/
 frontend/dist/
 frontend/dist
+
