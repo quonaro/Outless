@@ -16,6 +16,7 @@ import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 
 const queryClient = useQueryClient()
+const { confirm } = useConfirm()
 
 const { data: groups, isLoading } = useQuery({
   queryKey: ['groups'],
@@ -87,8 +88,13 @@ function handleEditGroup() {
   )
 }
 
-function handleDeleteGroup(group: Group) {
-  if (!confirm(`Are you sure you want to delete group "${group.name}"?`)) return
+async function handleDeleteGroup(group: Group) {
+  const ok = await confirm({
+    title: 'Delete group',
+    message: `Are you sure you want to delete group "${group.name}"?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   deleteMutation.mutate(group.id)
 }
 

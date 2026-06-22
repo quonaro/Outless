@@ -22,6 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const queryClient = useQueryClient()
+const { confirm } = useConfirm()
 const deletingNodeIDs = ref<Set<string>>(new Set())
 const movingNodeIDs = ref<Set<string>>(new Set())
 const deletingGroupIDs = ref<Set<string>>(new Set())
@@ -61,8 +62,13 @@ const editGroupMutation = useMutation({
   }) => updateGroup(id, { name, random_enabled, random_limit }),
   onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
 })
-function removeNode(node: Node) {
-  if (!confirm(`Delete node ${node.id}?`)) return
+async function removeNode(node: Node) {
+  const ok = await confirm({
+    title: 'Delete node',
+    message: `Delete node ${node.id}?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   const next = new Set(deletingNodeIDs.value)
   next.add(node.id)
   deletingNodeIDs.value = next

@@ -82,6 +82,7 @@ func (h *BroadcastHandler) Handle(ctx context.Context, r slog.Record) error {
 	if len(attrs) > 0 {
 		line += " | " + strings.Join(attrs, " | ")
 	}
+	line = strings.ReplaceAll(line, "\n", " ")
 	h.output.Broadcast(line)
 	return h.wrap.Handle(ctx, r)
 }

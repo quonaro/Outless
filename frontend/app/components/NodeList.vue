@@ -17,6 +17,7 @@ import CardContent from '~/components/ui/card/CardContent.vue'
 import CardFooter from '~/components/ui/card/CardFooter.vue'
 
 const queryClient = useQueryClient()
+const { confirm } = useConfirm()
 
 const { data: nodes, isLoading } = useNodes()
 const { data: groups } = useGroups()
@@ -171,8 +172,13 @@ function handleUpdate() {
   )
 }
 
-function handleDelete(node: Node) {
-  if (!confirm(`Delete node ${node.url}?`)) return
+async function handleDelete(node: Node) {
+  const ok = await confirm({
+    title: 'Delete node',
+    message: `Delete node ${node.url}?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   deleteMutation.mutate(node.id)
 }
 </script>

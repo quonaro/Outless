@@ -39,6 +39,7 @@ const defaultExpiresIn = EXPIRES_IN_OPTIONS[2]?.value ?? '720h'
 const { data: tokens, isLoading } = useTokens()
 const { data: groups } = useGroups()
 const { data: inbounds } = useInbounds()
+const { confirm } = useConfirm()
 
 const showCreateDialog = ref(false)
 const showIssuedDialog = ref(false)
@@ -257,8 +258,13 @@ function handleCreate() {
   })
 }
 
-function handleDeactivate(token: Token) {
-  if (!confirm(`Deactivate token for ${token.owner}?`)) return
+async function handleDeactivate(token: Token) {
+  const ok = await confirm({
+    title: 'Deactivate token',
+    message: `Deactivate token for ${token.owner}?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   pendingDeactivateId.value = token.id
   deleteMutation.mutate(token.id, {
     onSettled: () => {
@@ -267,8 +273,12 @@ function handleDeactivate(token: Token) {
   })
 }
 
-function handleActivate(token: Token) {
-  if (!confirm(`Activate token for ${token.owner}?`)) return
+async function handleActivate(token: Token) {
+  const ok = await confirm({
+    title: 'Activate token',
+    message: `Activate token for ${token.owner}?`,
+  })
+  if (!ok) return
   pendingActivateId.value = token.id
   activateMutation.mutate(token.id, {
     onSettled: () => {
@@ -277,8 +287,13 @@ function handleActivate(token: Token) {
   })
 }
 
-function handleRemove(token: Token) {
-  if (!confirm(`Remove token for ${token.owner}? This action cannot be undone.`)) return
+async function handleRemove(token: Token) {
+  const ok = await confirm({
+    title: 'Remove token',
+    message: `Remove token for ${token.owner}? This action cannot be undone.`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   pendingRemoveId.value = token.id
   removeMutation.mutate(token.id, {
     onSettled: () => {

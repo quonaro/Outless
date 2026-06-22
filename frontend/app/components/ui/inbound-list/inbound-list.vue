@@ -24,6 +24,7 @@ import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 import TemplateBuilder from '~/components/TemplateBuilder.vue'
 
 const { data: inbounds, isLoading } = useInbounds()
+const { confirm } = useConfirm()
 const createMutation = useCreateInbound()
 const updateMutation = useUpdateInbound()
 const deleteMutation = useDeleteInbound()
@@ -183,8 +184,13 @@ function handleUpdate() {
   )
 }
 
-function handleDelete(inbound: Inbound) {
-  if (!confirm(`Are you sure you want to delete inbound "${inbound.name}"?`)) return
+async function handleDelete(inbound: Inbound) {
+  const ok = await confirm({
+    title: 'Delete inbound',
+    message: `Are you sure you want to delete inbound "${inbound.name}"?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   deleteMutation.mutate(inbound.id, {
     onSuccess: () => toast.success('Inbound deleted'),
   })

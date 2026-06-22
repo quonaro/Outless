@@ -17,6 +17,8 @@ import {
   ShieldCheck,
   ShieldX,
   LayoutGrid,
+  Copy,
+  Trash2,
 } from 'lucide-vue-next'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiCard from '~/components/ui/card/card.vue'
@@ -59,6 +61,14 @@ function formatBytes(v: number): string {
   const unit = units[Math.min(i, units.length - 1)]
   const scaled = v / Math.pow(1000, Math.min(i, units.length - 1))
   return `${scaled.toFixed(2)} ${unit}`
+}
+
+function copyLogs() {
+  navigator.clipboard.writeText(logLines.value.join('\n'))
+}
+
+function clearLogs() {
+  logLines.value = []
 }
 
 interface StatCard {
@@ -185,14 +195,32 @@ const tokensWithQuota = computed(() => {
               </div>
             </div>
             <div class="flex-1 flex flex-col min-h-0">
-              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Terminal class="h-5 w-5 text-green-500" />
-                Live Logs
-                <span
-                  class="inline-block w-2 h-2 rounded-full ml-1"
-                  :class="isLogConnected ? 'bg-green-500' : 'bg-red-500'"
-                />
-              </h2>
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                  <Terminal class="h-5 w-5 text-green-500" />
+                  Live Logs
+                  <span
+                    class="inline-block w-2 h-2 rounded-full ml-1"
+                    :class="isLogConnected ? 'bg-green-500' : 'bg-red-500'"
+                  />
+                </h2>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Copy logs"
+                    @click="copyLogs"
+                  >
+                    <Copy class="h-4 w-4" />
+                  </button>
+                  <button
+                    class="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Clear logs"
+                    @click="clearLogs"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
               <LogStream :lines="logLines" class="flex-1 min-h-0" />
             </div>
           </div>
@@ -241,144 +269,152 @@ const tokensWithQuota = computed(() => {
           </div>
         </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Key class="h-5 w-5 text-amber-500" />
-            Per-Token Traffic (Today)
-          </h2>
-          <UiCard class="p-4">
-            <CardContent class="p-0">
-              <TrafficEntityTable
-                :items="tokenTraffic?.items ?? []"
-                :is-loading="isTokenTrafficLoading"
-                empty-text="No token traffic recorded yet"
-                :name-icon="Key"
-                :row-icon="Key"
-                icon-color="text-amber-500"
-              />
-            </CardContent>
-          </UiCard>
-        </div>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+          <div class="space-y-8">
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Key class="h-5 w-5 text-amber-500" />
+                Per-Token Traffic (Today)
+              </h2>
+              <UiCard class="p-4">
+                <CardContent class="p-0">
+                  <TrafficEntityTable
+                    :items="tokenTraffic?.items ?? []"
+                    :is-loading="isTokenTrafficLoading"
+                    empty-text="No token traffic recorded yet"
+                    :name-icon="Key"
+                    :row-icon="Key"
+                    icon-color="text-amber-500"
+                  />
+                </CardContent>
+              </UiCard>
+            </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Server class="h-5 w-5 text-sky-500" />
-            Per-Node Traffic (Today)
-          </h2>
-          <UiCard class="p-4">
-            <CardContent class="p-0">
-              <TrafficEntityTable
-                :items="nodeTraffic?.items ?? []"
-                :is-loading="isNodeTrafficLoading"
-                empty-text="No node traffic recorded yet"
-                :name-icon="Server"
-                :row-icon="Server"
-                icon-color="text-sky-500"
-              />
-            </CardContent>
-          </UiCard>
-        </div>
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <ArrowLeftRight class="h-5 w-5 text-violet-500" />
+                Per-Inbound Traffic (Today)
+              </h2>
+              <UiCard class="p-4">
+                <CardContent class="p-0">
+                  <TrafficEntityTable
+                    :items="inboundTraffic?.items ?? []"
+                    :is-loading="isInboundTrafficLoading"
+                    empty-text="No inbound traffic recorded yet"
+                    :name-icon="ArrowLeftRight"
+                    :row-icon="ArrowLeftRight"
+                    icon-color="text-violet-500"
+                  />
+                </CardContent>
+              </UiCard>
+            </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <ArrowLeftRight class="h-5 w-5 text-violet-500" />
-            Per-Inbound Traffic (Today)
-          </h2>
-          <UiCard class="p-4">
-            <CardContent class="p-0">
-              <TrafficEntityTable
-                :items="inboundTraffic?.items ?? []"
-                :is-loading="isInboundTrafficLoading"
-                empty-text="No inbound traffic recorded yet"
-                :name-icon="ArrowLeftRight"
-                :row-icon="ArrowLeftRight"
-                icon-color="text-violet-500"
-              />
-            </CardContent>
-          </UiCard>
-        </div>
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Gauge class="h-5 w-5 text-rose-500" />
+                Tokens with Quota
+              </h2>
+              <UiCard class="p-4">
+                <CardContent class="p-0">
+                  <div v-if="isTokensLoading" class="py-4 text-center text-muted-foreground">
+                    Loading tokens...
+                  </div>
+                  <div
+                    v-else-if="tokensWithQuota.length === 0"
+                    class="py-4 text-center text-muted-foreground"
+                  >
+                    No tokens have quotas configured
+                  </div>
+                  <div v-else class="overflow-x-auto rounded-md border">
+                    <table class="w-full text-sm">
+                      <thead class="bg-muted/50">
+                        <tr>
+                          <th class="px-4 py-2 text-left font-medium">Owner</th>
+                          <th class="px-4 py-2 text-left font-medium">Quota</th>
+                          <th class="px-4 py-2 text-left font-medium">Period</th>
+                          <th class="px-4 py-2 text-left font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="token in tokensWithQuota" :key="token.id" class="border-t">
+                          <td class="px-4 py-2">
+                            <div class="flex items-center gap-2">
+                              <KeyRound class="h-4 w-4 text-muted-foreground" />
+                              {{ token.owner }}
+                            </div>
+                          </td>
+                          <td class="px-4 py-2">{{ formatBytes(token.quota_bytes ?? 0) }}</td>
+                          <td class="px-4 py-2 capitalize">{{ token.quota_period }}</td>
+                          <td class="px-4 py-2">
+                            <div class="flex items-center gap-1.5">
+                              <component
+                                :is="token.is_active ? ShieldCheck : ShieldX"
+                                :class="
+                                  token.is_active
+                                    ? 'h-4 w-4 text-green-600'
+                                    : 'h-4 w-4 text-red-600'
+                                "
+                              />
+                              <span
+                                class="rounded-full px-2 py-0.5 text-xs font-medium uppercase"
+                                :class="
+                                  token.is_active
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-red-100 text-red-700'
+                                "
+                              >
+                                {{ token.is_active ? 'Active' : 'Inactive' }}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </UiCard>
+            </div>
+          </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Globe class="h-5 w-5 text-emerald-500" />
-            Per-Domain Traffic (Today)
-          </h2>
-          <UiCard class="p-4">
-            <CardContent class="p-0">
-              <TrafficEntityTable
-                :items="domainTraffic?.items ?? []"
-                :is-loading="isDomainTrafficLoading"
-                empty-text="No domain traffic recorded yet"
-                :name-icon="Globe"
-                :row-icon="Globe"
-                icon-color="text-emerald-500"
-              />
-            </CardContent>
-          </UiCard>
-        </div>
+          <div class="space-y-8">
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Server class="h-5 w-5 text-sky-500" />
+                Per-Node Traffic (Today)
+              </h2>
+              <UiCard class="p-4">
+                <CardContent class="p-0">
+                  <TrafficEntityTable
+                    :items="nodeTraffic?.items ?? []"
+                    :is-loading="isNodeTrafficLoading"
+                    empty-text="No node traffic recorded yet"
+                    :name-icon="Server"
+                    :row-icon="Server"
+                    icon-color="text-sky-500"
+                  />
+                </CardContent>
+              </UiCard>
+            </div>
 
-        <div>
-          <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Gauge class="h-5 w-5 text-rose-500" />
-            Tokens with Quota
-          </h2>
-          <UiCard class="p-4">
-            <CardContent class="p-0">
-              <div v-if="isTokensLoading" class="py-4 text-center text-muted-foreground">
-                Loading tokens...
-              </div>
-              <div
-                v-else-if="tokensWithQuota.length === 0"
-                class="py-4 text-center text-muted-foreground"
-              >
-                No tokens have quotas configured
-              </div>
-              <div v-else class="overflow-x-auto rounded-md border">
-                <table class="w-full text-sm">
-                  <thead class="bg-muted/50">
-                    <tr>
-                      <th class="px-4 py-2 text-left font-medium">Owner</th>
-                      <th class="px-4 py-2 text-left font-medium">Quota</th>
-                      <th class="px-4 py-2 text-left font-medium">Period</th>
-                      <th class="px-4 py-2 text-left font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="token in tokensWithQuota" :key="token.id" class="border-t">
-                      <td class="px-4 py-2">
-                        <div class="flex items-center gap-2">
-                          <KeyRound class="h-4 w-4 text-muted-foreground" />
-                          {{ token.owner }}
-                        </div>
-                      </td>
-                      <td class="px-4 py-2">{{ formatBytes(token.quota_bytes ?? 0) }}</td>
-                      <td class="px-4 py-2 capitalize">{{ token.quota_period }}</td>
-                      <td class="px-4 py-2">
-                        <div class="flex items-center gap-1.5">
-                          <component
-                            :is="token.is_active ? ShieldCheck : ShieldX"
-                            :class="
-                              token.is_active ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-red-600'
-                            "
-                          />
-                          <span
-                            class="rounded-full px-2 py-0.5 text-xs font-medium uppercase"
-                            :class="
-                              token.is_active
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-red-100 text-red-700'
-                            "
-                          >
-                            {{ token.is_active ? 'Active' : 'Inactive' }}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </UiCard>
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Globe class="h-5 w-5 text-emerald-500" />
+                Per-Domain Traffic (Today)
+              </h2>
+              <UiCard class="p-4">
+                <CardContent class="p-0">
+                  <TrafficEntityTable
+                    :items="domainTraffic?.items ?? []"
+                    :is-loading="isDomainTrafficLoading"
+                    empty-text="No domain traffic recorded yet"
+                    :name-icon="Globe"
+                    :row-icon="Globe"
+                    icon-color="text-emerald-500"
+                  />
+                </CardContent>
+              </UiCard>
+            </div>
+          </div>
         </div>
       </div>
     </ClientOnly>

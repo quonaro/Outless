@@ -29,6 +29,7 @@ useHead({
 type ViewMode = 'grouped' | 'flat'
 
 const queryClient = useQueryClient()
+const { confirm } = useConfirm()
 const viewMode = ref<ViewMode>('grouped')
 
 const {
@@ -256,8 +257,13 @@ function handleBulkMove() {
     })
 }
 
-function handleBulkDelete() {
-  if (!confirm(`Delete ${selectedNodeIDs.value.size} selected nodes?`)) return
+async function handleBulkDelete() {
+  const ok = await confirm({
+    title: 'Bulk delete',
+    message: `Delete ${selectedNodeIDs.value.size} selected nodes?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   const promises = Array.from(selectedNodeIDs.value).map((nodeId) => deleteNode(nodeId))
   Promise.all(promises)
     .then(() => {
@@ -277,8 +283,13 @@ function handleDuplicateNode(node: Node) {
   })
 }
 
-function removeNode(node: Node) {
-  if (!confirm(`Delete node ${node.id}?`)) return
+async function removeNode(node: Node) {
+  const ok = await confirm({
+    title: 'Delete node',
+    message: `Delete node ${node.id}?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   const next = new Set(deletingNodeIDs.value)
   next.add(node.id)
   deletingNodeIDs.value = next

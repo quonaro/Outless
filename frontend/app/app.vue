@@ -11,4 +11,5 @@ useTheme()
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
+  <ConfirmDialog />
 </template>

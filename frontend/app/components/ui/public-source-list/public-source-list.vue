@@ -23,6 +23,7 @@ import CardContent from '~/components/ui/card/CardContent.vue'
 import CardFooter from '~/components/ui/card/CardFooter.vue'
 
 const queryClient = useQueryClient()
+const { confirm } = useConfirm()
 
 const { data: sources, isLoading } = useQuery({
   queryKey: ['public-sources'],
@@ -116,8 +117,13 @@ function handleEditSource() {
   )
 }
 
-function handleDeleteSource(source: PublicSource) {
-  if (!confirm(`Are you sure you want to delete source "${source.url}"?`)) return
+async function handleDeleteSource(source: PublicSource) {
+  const ok = await confirm({
+    title: 'Delete source',
+    message: `Are you sure you want to delete source "${source.url}"?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
   deleteMutation.mutate(source.id)
 }
 
