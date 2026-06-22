@@ -45,7 +45,7 @@ type Handlers struct {
 }
 
 // NewServer builds HTTP server with injected handlers.
-func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, sse *SSEHandler, handlers Handlers) *Server {
+func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, handlers Handlers) *Server {
 	apiMux := http.NewServeMux()
 	humaCfg := huma.DefaultConfig("Outless API", "0.1.0")
 	if cfg.DisableDocs {
@@ -64,10 +64,6 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	handlers.Settings.Register(humaAPI)
 	handlers.Admin.Register(humaAPI)
 	handlers.Stats.Register(humaAPI)
-
-	if sse != nil {
-		sse.RegisterSSERoutes(apiMux)
-	}
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	rateLimitMiddleware := NewRateLimitMiddleware(logger)

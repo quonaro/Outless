@@ -16,7 +16,6 @@ import (
 type GroupManagementHandler struct {
 	groupRepo           domain.GroupRepository
 	nodeRepo            domain.NodeRepository
-	realtime            *SSEHandler
 	subscriptionService *service.SubscriptionService
 	logger              *slog.Logger
 }
@@ -24,14 +23,12 @@ type GroupManagementHandler struct {
 func NewGroupManagementHandler(
 	groupRepo domain.GroupRepository,
 	nodeRepo domain.NodeRepository,
-	realtime *SSEHandler,
 	subscriptionService *service.SubscriptionService,
 	logger *slog.Logger,
 ) *GroupManagementHandler {
 	return &GroupManagementHandler{
 		groupRepo:           groupRepo,
 		nodeRepo:            nodeRepo,
-		realtime:            realtime,
 		subscriptionService: subscriptionService,
 		logger:              logger,
 	}
@@ -123,10 +120,6 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 		h.logger.Error("failed to create group", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create group")
 	}
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(false, true)
-	}
-
 	out := &CreateGroupOutput{}
 	out.Body.ID = id
 	out.Body.Name = group.Name
@@ -197,9 +190,6 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	if h.subscriptionService != nil {
 		h.subscriptionService.InvalidateGroupCache()
 	}
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(false, true)
-	}
 
 	return nil, nil
 }
@@ -211,9 +201,6 @@ func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteG
 	}
 	if h.subscriptionService != nil {
 		h.subscriptionService.InvalidateGroupCache()
-	}
-	if h.realtime != nil {
-		h.realtime.NotifyInvalidate(true, true)
 	}
 
 	return nil, nil
