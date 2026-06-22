@@ -88,6 +88,11 @@ const visibleNodes = computed<Node[]>(() => {
   return list.filter((n) => n.group_id === filterGroupId.value)
 })
 
+const hasSelfNode = computed<boolean>(() => {
+  const list = nodes.value ?? []
+  return list.some((node) => node.is_self)
+})
+
 const groupNameById = computed<Record<string, string>>(() => {
   const map: Record<string, string> = {}
   for (const group of groups.value ?? []) {
@@ -251,10 +256,14 @@ function handleDelete(node: Node) {
               id="isSelf"
               v-model="isSelfNode"
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300"
+              :disabled="hasSelfNode"
+              class="h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <label for="isSelf" class="text-sm font-medium">Use Current Machine</label>
           </div>
+          <p v-if="hasSelfNode" class="text-xs text-muted-foreground">
+            Current machine is already added.
+          </p>
           <div v-if="!isSelfNode" class="space-y-2">
             <label class="text-sm font-medium">VLESS URL</label>
             <UiInput

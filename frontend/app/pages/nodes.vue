@@ -56,6 +56,11 @@ const infiniteNodesFlat = computed<Node[]>(
 
 const search = ref('')
 
+const hasSelfNode = computed<boolean>(() => {
+  const list = infiniteNodesFlat.value
+  return list.some((node) => node.is_self)
+})
+
 const showCreateGroupDialog = ref(false)
 const showCreateNodeDialog = ref(false)
 const groupNameInput = ref('')
@@ -172,7 +177,7 @@ function submitCreateNode() {
 function resolveCreateNodeErrorMessage(error: unknown): string {
   const statusCode = Number((error as { statusCode?: unknown })?.statusCode)
   if (statusCode === 409) {
-    return 'Node with this URL already exists.'
+    return 'A node with this identifier already exists.'
   }
 
   const data = (error as { data?: unknown })?.data as
@@ -520,12 +525,16 @@ onBeforeUnmount(() => {
                 id="create-node-is-self"
                 v-model="nodeIsSelfInput"
                 type="checkbox"
-                class="h-4 w-4 rounded border-input"
+                :disabled="hasSelfNode"
+                class="h-4 w-4 rounded border-input disabled:cursor-not-allowed disabled:opacity-50"
               />
               <label for="create-node-is-self" class="text-sm font-medium"
                 >Use Current Machine</label
               >
             </div>
+            <p v-if="hasSelfNode" class="text-xs text-muted-foreground">
+              Current machine is already added.
+            </p>
             <div v-if="!nodeIsSelfInput" class="space-y-2">
               <label class="text-sm font-medium" for="create-node-url">VLESS URL</label>
               <UiInput
