@@ -30,7 +30,7 @@ import {
 } from '~/components/ui/sheet'
 import UiInput from '~/components/ui/input/input.vue'
 import UiLabel from '~/components/ui/label/label.vue'
-import { ArrowRight, Copy, MoreHorizontal, Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { ArrowRight, MoreHorizontal, Plus, Pencil, Tags, Trash2 } from 'lucide-vue-next'
 
 const props = withDefaults(
   defineProps<{
@@ -63,9 +63,9 @@ const emit = defineEmits<{
   bulkMove: [targetGroupId: string]
   bulkDelete: []
   duplicateNode: [node: Node]
+  updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
 
-const copiedNodeIDs = ref<Set<string>>(new Set())
 const moveNodeDialogOpen = ref(false)
 const moveNodeTarget = ref<Node | null>(null)
 const moveTargetGroupId = ref('')
@@ -140,18 +140,6 @@ onBeforeUnmount(() => {
   listObserver = null
 })
 
-async function copyNodeURL(node: Node) {
-  await navigator.clipboard.writeText(node.url)
-  const next = new Set(copiedNodeIDs.value)
-  next.add(node.id)
-  copiedNodeIDs.value = next
-  setTimeout(() => {
-    const current = new Set(copiedNodeIDs.value)
-    current.delete(node.id)
-    copiedNodeIDs.value = current
-  }, 1200)
-}
-
 const emptyMessage = computed(() => {
   if (isLoading.value && allNodesInGroup.value.length === 0) return 'Loading nodes…'
   if (allNodesInGroup.value.length === 0) return 'No nodes in this group'
@@ -214,6 +202,24 @@ function handleDuplicateNode() {
   moveNodeDialogOpen.value = false
   moveNodeTarget.value = null
   moveTargetGroupId.value = ''
+}
+
+const editGroupsDialogOpen = ref(false)
+const editGroupsTarget = ref<Node | null>(null)
+const editGroupsSelected = ref<string[]>([])
+
+function openEditGroupsDialog(node: Node) {
+  editGroupsTarget.value = node
+  editGroupsSelected.value = [...node.group_ids]
+  editGroupsDialogOpen.value = true
+}
+
+function confirmEditGroups() {
+  if (!editGroupsTarget.value) return
+  emit('updateNodeGroups', editGroupsTarget.value.id, editGroupsSelected.value)
+  editGroupsDialogOpen.value = false
+  editGroupsTarget.value = null
+  editGroupsSelected.value = []
 }
 </script>
 
@@ -316,9 +322,9 @@ function handleDuplicateNode() {
                         <ArrowRight class="mr-2 h-3.5 w-3.5" />
                         Move
                       </DropdownMenuItem>
-                      <DropdownMenuItem @click.prevent="copyNodeURL(node)">
-                        <Copy class="mr-2 h-3.5 w-3.5" />
-                        Copy
+                      <DropdownMenuItem @click.prevent="openEditGroupsDialog(node)">
+                        <Tags class="mr-2 h-3.5 w-3.5" />
+                        Groups
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         class="text-destructive focus:text-destructive"
@@ -438,6 +444,36 @@ function handleDuplicateNode() {
         <UiButton variant="outline" @click="handleDuplicateNode">Duplicate</UiButton>
         <UiButton variant="outline" @click="moveNodeDialogOpen = false">Cancel</UiButton>
         <UiButton @click="confirmMoveNode">Move</UiButton>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog :open="editGroupsDialogOpen" @update:open="editGroupsDialogOpen = $event">
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Edit groups</DialogTitle>
+        <DialogDescription> Select groups this node belongs to. </DialogDescription>
+      </DialogHeader>
+      <div class="py-4">
+        <div class="max-h-60 overflow-y-auto space-y-2">
+          <label
+            v-for="g in props.allGroups"
+            :key="g.id"
+            class="flex items-center gap-2 text-sm cursor-pointer"
+          >
+            <input
+              v-model="editGroupsSelected"
+              type="checkbox"
+              :value="g.id"
+              class="h-4 w-4 rounded border-input"
+            />
+            <span>{{ g.name }}</span>
+          </label>
+        </div>
+      </div>
+      <DialogFooter>
+        <UiButton variant="outline" @click="editGroupsDialogOpen = false">Cancel</UiButton>
+        <UiButton @click="confirmEditGroups">Save</UiButton>
       </DialogFooter>
     </DialogContent>
   </Dialog>

@@ -77,6 +77,7 @@ const deletingNodeIDs = ref<Set<string>>(new Set())
 const selectedNodeIDs = ref<Set<string>>(new Set())
 const bulkMoveDialogOpen = ref(false)
 const bulkMoveTargetGroupId = ref('')
+const editingNodeGroupIDs = ref<Set<string>>(new Set())
 
 const createGroupMutation = useMutation({
   mutationFn: (payload: { name: string; random_enabled: boolean; random_limit: number | null }) =>
@@ -110,8 +111,6 @@ const deleteNodeMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   },
 })
-
-const copiedNodeIDs = ref<Set<string>>(new Set())
 
 const groupNameByID = computed<Record<string, string>>(() => {
   const map: Record<string, string> = {}
@@ -287,6 +286,25 @@ function handleDuplicateNode(node: Node) {
   })
 }
 
+function handleUpdateNodeGroups(nodeId: string, groupIds: string[]) {
+  const next = new Set(editingNodeGroupIDs.value)
+  next.add(nodeId)
+  editingNodeGroupIDs.value = next
+  updateNode(nodeId, { group_ids: groupIds })
+    .then(() => {
+      queryClient.invalidateQueries({ queryKey: ['nodes'] })
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+    })
+    .catch((err: Error) => {
+      toast.error('Failed to update groups', { description: err.message })
+    })
+    .finally(() => {
+      const current = new Set(editingNodeGroupIDs.value)
+      current.delete(nodeId)
+      editingNodeGroupIDs.value = current
+    })
+}
+
 async function removeNode(node: Node) {
   const ok = await confirm({
     title: 'Delete node',
@@ -304,18 +322,6 @@ async function removeNode(node: Node) {
       deletingNodeIDs.value = current
     },
   })
-}
-
-async function copyNodeURL(node: Node) {
-  await navigator.clipboard.writeText(node.url)
-  const next = new Set(copiedNodeIDs.value)
-  next.add(node.id)
-  copiedNodeIDs.value = next
-  setTimeout(() => {
-    const current = new Set(copiedNodeIDs.value)
-    current.delete(node.id)
-    copiedNodeIDs.value = current
-  }, 1200)
 }
 
 function maybeLoadMore() {
@@ -412,6 +418,7 @@ onBeforeUnmount(() => {
           @move-node="handleMoveNode"
           @toggle-selection="handleToggleSelection"
           @duplicate-node="handleDuplicateNode"
+          @update-node-groups="handleUpdateNodeGroups"
         />
 
         <div v-else class="space-y-2">
@@ -448,14 +455,6 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
                 <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap">
-                  <UiButton
-                    variant="outline"
-                    size="sm"
-                    class="whitespace-nowrap"
-                    @click="copyNodeURL(node)"
-                  >
-                    {{ copiedNodeIDs.has(node.id) ? 'Copied' : 'Copy' }}
-                  </UiButton>
                   <UiButton
                     variant="destructive"
                     size="sm"

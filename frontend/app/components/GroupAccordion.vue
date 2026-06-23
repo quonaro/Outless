@@ -19,6 +19,7 @@ const emit = defineEmits<{
   moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
   duplicateNode: [node: Node]
+  updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
 
 const queryClient = useQueryClient()
@@ -143,6 +144,7 @@ function handleDeleteGroup(groupId: string) {
       @move-node="handleMoveNode"
       @toggle-selection="emit('toggleSelection', $event)"
       @duplicate-node="emit('duplicateNode', $event)"
+      @update-node-groups="(nodeId, groupIds) => emit('updateNodeGroups', nodeId, groupIds)"
       @remove-node="removeNode"
       @edit-group="handleEditGroup"
       @delete-group="handleDeleteGroup"
