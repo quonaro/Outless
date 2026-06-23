@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -14,20 +15,23 @@ import (
 )
 
 type NodeManagementHandler struct {
-	nodeRepo  domain.NodeRepository
-	groupRepo domain.GroupRepository
-	logger    *slog.Logger
+	nodeRepo    domain.NodeRepository
+	groupRepo   domain.GroupRepository
+	inboundRepo domain.InboundRepository
+	logger      *slog.Logger
 }
 
 func NewNodeManagementHandler(
 	nodeRepo domain.NodeRepository,
 	groupRepo domain.GroupRepository,
+	inboundRepo domain.InboundRepository,
 	logger *slog.Logger,
 ) *NodeManagementHandler {
 	return &NodeManagementHandler{
-		nodeRepo:  nodeRepo,
-		groupRepo: groupRepo,
-		logger:    logger,
+		nodeRepo:    nodeRepo,
+		groupRepo:   groupRepo,
+		inboundRepo: inboundRepo,
+		logger:      logger,
 	}
 }
 
@@ -199,17 +203,7 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 		nodes = nodes[:limit]
 	}
 
-	response := make([]NodeItem, 0, len(nodes))
-
-	for _, n := range nodes {
-		response = append(response, NodeItem{
-			ID:      n.ID,
-			URL:     n.URL,
-			GroupID: n.GroupID,
-			Country: domain.NormalizeCountryCode(n.Country),
-			IsSelf:  n.IsSelf,
-		})
-	}
+	response, hasMore := h.buildNodeItems(ctx, nodes, limit, offset)
 
 	out := &ListNodesOutput{}
 	out.Body.Nodes = response
@@ -220,6 +214,52 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 	}
 
 	return out, nil
+}
+
+func (h *NodeManagementHandler) buildNodeItems(
+	ctx context.Context,
+	nodes []domain.Node,
+	limit int,
+	offset int,
+) ([]NodeItem, bool) {
+	response := make([]NodeItem, 0, len(nodes))
+	var hasSelf bool
+	for _, n := range nodes {
+		if n.IsSelf {
+			hasSelf = true
+		}
+		response = append(response, NodeItem{
+			ID:      n.ID,
+			URL:     n.URL,
+			GroupID: n.GroupID,
+			Country: domain.NormalizeCountryCode(n.Country),
+			IsSelf:  n.IsSelf,
+		})
+	}
+
+	// Inject a virtual self-node when none exists in storage so the
+	// fallback hub is visible in the UI.
+	if !hasSelf && offset == 0 {
+		inbounds, err := h.inboundRepo.List(ctx)
+		if err != nil {
+			h.logger.Error("failed to list inbounds for self node", slog.String("error", err.Error()))
+		} else if len(inbounds) > 0 {
+			ib := inbounds[0]
+			response = append([]NodeItem{{
+				ID:      "self",
+				URL:     fmt.Sprintf("vless://self@%s:%d", ib.Address, ib.Port),
+				GroupID: "",
+				Country: "",
+				IsSelf:  true,
+			}}, response...)
+		}
+	}
+
+	if len(response) > limit {
+		response = response[:limit]
+		return response, true
+	}
+	return response, false
 }
 
 func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNodeInput) (*struct{}, error) {

@@ -53,8 +53,8 @@ type CreateTokenInput struct {
 		GroupIDs    []string `json:"group_ids"`
 		InboundIDs  []string `json:"inbound_ids"`
 		ExpiresIn   string   `json:"expires_in" example:"24h"`
-		QuotaBytes  *int64   `json:"quota_bytes"`
-		QuotaPeriod string   `json:"quota_period" example:"month"`
+		QuotaBytes  *int64   `json:"quota_bytes,omitempty"`
+		QuotaPeriod string   `json:"quota_period,omitempty" example:"month"`
 	}
 }
 
@@ -68,7 +68,7 @@ type CreateTokenOutput struct {
 		GroupIDs    []string  `json:"group_ids"`
 		InboundIDs  []string  `json:"inbound_ids"`
 		IsActive    bool      `json:"is_active"`
-		QuotaBytes  *int64    `json:"quota_bytes"`
+		QuotaBytes  *int64    `json:"quota_bytes,omitempty"`
 		QuotaPeriod string    `json:"quota_period"`
 		ExpiresAt   time.Time `json:"expires_at"`
 		CreatedAt   time.Time `json:"created_at"`
@@ -90,8 +90,8 @@ type UpdateTokenInput struct {
 		GroupIDs    []string `json:"group_ids"`
 		InboundIDs  []string `json:"inbound_ids"`
 		ExpiresIn   string   `json:"expires_in" example:"24h"`
-		QuotaBytes  *int64   `json:"quota_bytes"`
-		QuotaPeriod string   `json:"quota_period" example:"month"`
+		QuotaBytes  *int64   `json:"quota_bytes,omitempty"`
+		QuotaPeriod string   `json:"quota_period,omitempty" example:"month"`
 	}
 }
 
@@ -103,7 +103,7 @@ type TokenItem struct {
 	InboundIDs  []string  `json:"inbound_ids"`
 	AccessURL   string    `json:"access_url"`
 	IsActive    bool      `json:"is_active"`
-	QuotaBytes  *int64    `json:"quota_bytes"`
+	QuotaBytes  *int64    `json:"quota_bytes,omitempty"`
 	QuotaPeriod string    `json:"quota_period"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	CreatedAt   time.Time `json:"created_at"`

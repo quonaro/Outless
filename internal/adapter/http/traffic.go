@@ -51,8 +51,8 @@ type TrafficListOutput struct {
 type QuotaUpdateInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		QuotaBytes  *int64 `json:"quota_bytes"`
-		QuotaPeriod string `json:"quota_period" enum:"day,month," example:"month"`
+		QuotaBytes  *int64 `json:"quota_bytes,omitempty"`
+		QuotaPeriod string `json:"quota_period,omitempty" enum:"day,month," example:"month"`
 	}
 }
 

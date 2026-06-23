@@ -5,6 +5,7 @@ import { toast } from 'vue-sonner'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { CreateToken, IssuedToken, Token } from '~/utils/schemas/token'
 import { EXPIRES_IN_OPTIONS } from '~/utils/schemas/token'
+import { formatBytes, parseByteSize, bytesToSize, periodLabel } from '~/utils/bytes'
 import { useTokens } from '~/composables/tokens/useTokens'
 import { useCreateToken } from '~/composables/tokens/useCreateToken'
 import { useDeleteToken } from '~/composables/tokens/useDeleteToken'
@@ -59,14 +60,16 @@ const ownerInput = ref('')
 const groupIdsInput = ref<string[]>([])
 const inboundIdsInput = ref<string[]>([])
 const expiresInInput = ref(defaultExpiresIn)
-const quotaBytesInput = ref<number | undefined>(undefined)
+const quotaValueInput = ref<number | undefined>(undefined)
+const quotaUnitInput = ref<'MB' | 'GB'>('GB')
 const quotaPeriodInput = ref('')
 
 const editOwnerInput = ref('')
 const editGroupIdsInput = ref<string[]>([])
 const editInboundIdsInput = ref<string[]>([])
 const editExpiresInInput = ref(defaultExpiresIn)
-const editQuotaBytesInput = ref<number | undefined>(undefined)
+const editQuotaValueInput = ref<number | undefined>(undefined)
+const editQuotaUnitInput = ref<'MB' | 'GB'>('GB')
 const editQuotaPeriodInput = ref('')
 
 const issuedUrlRef = ref<HTMLPreElement>()
@@ -217,7 +220,8 @@ function resetForm() {
   groupIdsInput.value = []
   inboundIdsInput.value = []
   expiresInInput.value = defaultExpiresIn
-  quotaBytesInput.value = undefined
+  quotaValueInput.value = undefined
+  quotaUnitInput.value = 'GB'
   quotaPeriodInput.value = ''
   isIssueSubmitting.value = false
 }
@@ -247,7 +251,10 @@ function handleCreate() {
     group_ids: groupIdsInput.value,
     inbound_ids: inboundIdsInput.value,
     expires_in: expiresInInput.value,
-    quota_bytes: quotaBytesInput.value,
+    quota_bytes:
+      quotaValueInput.value && quotaUnitInput.value
+        ? parseByteSize(quotaValueInput.value, quotaUnitInput.value)
+        : undefined,
     quota_period: quotaPeriodInput.value,
   }
   isIssueSubmitting.value = true
@@ -314,15 +321,6 @@ function resolveAccessURL(token: Pick<Token, 'access_url'>): string {
     base = origin + base
   }
   return `${base}${path}`
-}
-
-function formatBytes(v: number): string {
-  if (v === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.max(0, Math.floor(Math.log10(v) / 3))
-  const unit = units[Math.min(i, units.length - 1)]
-  const scaled = v / Math.pow(1000, Math.min(i, units.length - 1))
-  return `${scaled.toFixed(2)} ${unit}`
 }
 
 async function copyText(value: string) {
@@ -446,7 +444,14 @@ function openEditDialog(token: Token) {
       : []
   editInboundIdsInput.value = token.inbound_ids ?? []
   editExpiresInInput.value = defaultExpiresIn
-  editQuotaBytesInput.value = token.quota_bytes ?? undefined
+  if (token.quota_bytes) {
+    const size = bytesToSize(token.quota_bytes)
+    editQuotaValueInput.value = size.value
+    editQuotaUnitInput.value = size.unit
+  } else {
+    editQuotaValueInput.value = undefined
+    editQuotaUnitInput.value = 'GB'
+  }
   editQuotaPeriodInput.value = token.quota_period ?? ''
   isEditSubmitting.value = false
   showEditDialog.value = true
@@ -460,7 +465,8 @@ function closeEditDialog() {
   editGroupIdsInput.value = []
   editInboundIdsInput.value = []
   editExpiresInInput.value = defaultExpiresIn
-  editQuotaBytesInput.value = undefined
+  editQuotaValueInput.value = undefined
+  editQuotaUnitInput.value = 'GB'
   editQuotaPeriodInput.value = ''
   isEditSubmitting.value = false
 }
@@ -478,7 +484,10 @@ function handleEdit() {
     group_ids: editGroupIdsInput.value,
     inbound_ids: editInboundIdsInput.value,
     expires_in: editExpiresInInput.value,
-    quota_bytes: editQuotaBytesInput.value,
+    quota_bytes:
+      editQuotaValueInput.value && editQuotaUnitInput.value
+        ? parseByteSize(editQuotaValueInput.value, editQuotaUnitInput.value)
+        : undefined,
     quota_period: editQuotaPeriodInput.value,
   }
   isEditSubmitting.value = true
@@ -544,7 +553,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               <span class="font-medium">{{ tokenInboundLabels(token) }}</span>
             </p>
             <p v-if="token.quota_bytes && token.quota_period" class="text-sm text-muted-foreground">
-              Quota: {{ formatBytes(token.quota_bytes) }} / {{ token.quota_period }}
+              Quota: {{ formatBytes(token.quota_bytes) }} / {{ periodLabel(token.quota_period) }}
             </p>
             <p class="text-sm text-muted-foreground">
               Expires: {{ new Date(token.expires_at).toLocaleString() }} · Created:
@@ -679,23 +688,56 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium">Quota (bytes)</label>
-              <UiInput
-                v-model.number="quotaBytesInput"
-                type="number"
-                placeholder="e.g. 1073741824"
-              />
+              <label class="text-sm font-medium">Quota</label>
+              <UiInput v-model.number="quotaValueInput" type="number" placeholder="e.g. 10" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Quota Period</label>
+              <label class="text-sm font-medium">Unit</label>
               <select
-                v-model="quotaPeriodInput"
+                v-model="quotaUnitInput"
                 class="w-full rounded-md border bg-background px-3 py-2 text-sm"
               >
-                <option value="">None</option>
-                <option value="day">Day</option>
-                <option value="month">Month</option>
+                <option value="MB">MB</option>
+                <option value="GB">GB</option>
               </select>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-medium">Quota Period</label>
+            <div class="flex gap-2">
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  quotaPeriodInput === ''
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="quotaPeriodInput" type="radio" value="" class="sr-only" />
+                No limit
+              </label>
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  quotaPeriodInput === 'day'
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="quotaPeriodInput" type="radio" value="day" class="sr-only" />
+                Daily
+              </label>
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  quotaPeriodInput === 'month'
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="quotaPeriodInput" type="radio" value="month" class="sr-only" />
+                Monthly
+              </label>
             </div>
           </div>
         </div>
@@ -782,23 +824,56 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium">Quota (bytes)</label>
-              <UiInput
-                v-model.number="editQuotaBytesInput"
-                type="number"
-                placeholder="e.g. 1073741824"
-              />
+              <label class="text-sm font-medium">Quota</label>
+              <UiInput v-model.number="editQuotaValueInput" type="number" placeholder="e.g. 10" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Quota Period</label>
+              <label class="text-sm font-medium">Unit</label>
               <select
-                v-model="editQuotaPeriodInput"
+                v-model="editQuotaUnitInput"
                 class="w-full rounded-md border bg-background px-3 py-2 text-sm"
               >
-                <option value="">None</option>
-                <option value="day">Day</option>
-                <option value="month">Month</option>
+                <option value="MB">MB</option>
+                <option value="GB">GB</option>
               </select>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-medium">Quota Period</label>
+            <div class="flex gap-2">
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  editQuotaPeriodInput === ''
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="editQuotaPeriodInput" type="radio" value="" class="sr-only" />
+                No limit
+              </label>
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  editQuotaPeriodInput === 'day'
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="editQuotaPeriodInput" type="radio" value="day" class="sr-only" />
+                Daily
+              </label>
+              <label
+                class="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors"
+                :class="
+                  editQuotaPeriodInput === 'month'
+                    ? 'border-primary bg-primary/10'
+                    : 'bg-background hover:bg-accent'
+                "
+              >
+                <input v-model="editQuotaPeriodInput" type="radio" value="month" class="sr-only" />
+                Monthly
+              </label>
             </div>
           </div>
         </div>

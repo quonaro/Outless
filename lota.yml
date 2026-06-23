@@ -23,7 +23,7 @@ run:
     - build
   parallel: false
   script: |
-    ./outless
+    ./outless server run
   color: red
 
 dev:

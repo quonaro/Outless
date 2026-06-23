@@ -30,6 +30,7 @@ import { useStats } from '~/composables/stats/useStats'
 import { useTrafficStats } from '~/composables/stats/useTrafficStats'
 import { useTokens } from '~/composables/tokens/useTokens'
 import { useLogStream } from '~/composables/stats/useLogStream'
+import { formatBytes, periodLabel } from '~/utils/bytes'
 import {
   useTokenTrafficStats,
   useNodeTrafficStats,
@@ -53,15 +54,6 @@ const { data: tokenTraffic, isLoading: isTokenTrafficLoading } = useTokenTraffic
 const { data: nodeTraffic, isLoading: isNodeTrafficLoading } = useNodeTrafficStats()
 const { data: inboundTraffic, isLoading: isInboundTrafficLoading } = useInboundTrafficStats()
 const { data: domainTraffic, isLoading: isDomainTrafficLoading } = useDomainTrafficStats()
-
-function formatBytes(v: number): string {
-  if (v === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.max(0, Math.floor(Math.log10(v) / 3))
-  const unit = units[Math.min(i, units.length - 1)]
-  const scaled = v / Math.pow(1000, Math.min(i, units.length - 1))
-  return `${scaled.toFixed(2)} ${unit}`
-}
 
 function copyLogs() {
   navigator.clipboard.writeText(logLines.value.join('\n'))
@@ -344,7 +336,7 @@ const tokensWithQuota = computed(() => {
                             </div>
                           </td>
                           <td class="px-4 py-2">{{ formatBytes(token.quota_bytes ?? 0) }}</td>
-                          <td class="px-4 py-2 capitalize">{{ token.quota_period }}</td>
+                          <td class="px-4 py-2">{{ periodLabel(token.quota_period) }}</td>
                           <td class="px-4 py-2">
                             <div class="flex items-center gap-1.5">
                               <component
