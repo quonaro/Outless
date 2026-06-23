@@ -290,7 +290,7 @@ function handleDuplicateNode() {
                     </div>
                     <div
                       v-if="!node.is_self"
-                      class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-[min(90vw,40rem)] overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
+                      class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-full overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
                     >
                       {{ node.url }}
                     </div>

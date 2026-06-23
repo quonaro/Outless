@@ -261,11 +261,6 @@ func (s *SubscriptionService) buildHubURLs(
 		urls = append(urls, s.formatVLESSURL(uuid, remark, hub))
 	}
 
-	if len(urls) == 0 {
-		s.logger.Warn("no accessible nodes for token, using fallback", slog.String("token_id", token.ID))
-		urls = append(urls, s.formatVLESSURL(token.UUID, "Outless", hub))
-	}
-
 	return urls
 }
 
