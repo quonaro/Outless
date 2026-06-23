@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Plus, Copy, Check } from 'lucide-vue-next'
+import { Plus } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { Inbound, CreateInbound } from '~/utils/schemas/inbound'
 import {
@@ -32,8 +32,6 @@ const deleteMutation = useDeleteInbound()
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const selectedInbound = ref<Inbound | null>(null)
-const copiedKeyId = ref<string | null>(null)
-const copiedUrlId = ref<string | null>(null)
 
 type InboundForm = Omit<CreateInbound, 'port'> & { port: string | number }
 
@@ -196,25 +194,6 @@ async function handleDelete(inbound: Inbound) {
   })
 }
 
-function copyPublicKey(inbound: Inbound) {
-  navigator.clipboard.writeText(inbound.public_key)
-  copiedKeyId.value = inbound.id
-  toast.success('Public key copied')
-  setTimeout(() => (copiedKeyId.value = null), 1500)
-}
-
-function subscriptionUrl(inbound: Inbound) {
-  const base = window.location.origin
-  return `${base}/v1/sub/{token}?inbound_id=${inbound.id}`
-}
-
-function copySubscriptionUrl(inbound: Inbound) {
-  navigator.clipboard.writeText(subscriptionUrl(inbound))
-  copiedUrlId.value = inbound.id
-  toast.success('Subscription URL copied')
-  setTimeout(() => (copiedUrlId.value = null), 1500)
-}
-
 async function generatePrivateKey() {
   try {
     const res = await generateKeypair()
@@ -258,14 +237,6 @@ async function generatePrivateKey() {
             </p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <UiButton variant="outline" size="sm" @click="copyPublicKey(inbound)">
-              <component :is="copiedKeyId === inbound.id ? Check : Copy" class="h-4 w-4 mr-1" />
-              Copy Key
-            </UiButton>
-            <UiButton variant="outline" size="sm" @click="copySubscriptionUrl(inbound)">
-              <component :is="copiedUrlId === inbound.id ? Check : Copy" class="h-4 w-4 mr-1" />
-              Copy Sub URL
-            </UiButton>
             <UiButton variant="outline" size="sm" @click="openEditDialog(inbound)"> Edit </UiButton>
             <UiButton
               variant="destructive"
