@@ -193,6 +193,71 @@ func toHubConfig(inbound domain.Inbound) HubConfig {
 	}
 }
 
+func (s *SubscriptionService) buildNodeRemark(
+	node domain.Node,
+	groupLabel string,
+	hub HubConfig,
+	token domain.Token,
+) (string, bool) {
+	if node.IsSelf {
+		if hub.NameTemplate != "" {
+			vlessData := template.VLESSData{
+				Name:       "Self",
+				Host:       s.externalHost,
+				Port:       hub.Port,
+				SNI:        hub.SNI,
+				Security:   "reality",
+				Encryption: "none",
+				Flow:       "xtls-rprx-vision",
+				FP:         hub.Fingerprint,
+			}
+			templateData := template.BuildTemplateData(
+				vlessData,
+				normalizeCountry(node.Country),
+				normalizeCountry(node.Country),
+				groupLabel,
+				token.Owner,
+			)
+			return template.RenderTemplate(hub.NameTemplate, templateData), true
+		}
+		return buildConnectionRemark(groupLabel, "Self", normalizeCountry(node.Country)), true
+	}
+
+	if node.URL == "" {
+		return "", false
+	}
+
+	parsed, err := vless.ParseURL(node.URL)
+	if err != nil {
+		s.logger.Warn("failed to parse VLESS URL", slog.String("node_id", node.ID), slog.String("error", err.Error()))
+		return "", false
+	}
+
+	if hub.NameTemplate != "" {
+		vlessData := template.VLESSData{
+			Name:       parsed.Name,
+			Host:       parsed.Host,
+			Port:       parsed.Port,
+			SNI:        parsed.SNI,
+			Security:   parsed.Security,
+			Encryption: parsed.Encryption,
+			Flow:       parsed.Flow,
+			FP:         parsed.FP,
+		}
+		templateData := template.BuildTemplateData(
+			vlessData,
+			groupLabel,
+			normalizeCountry(node.Country),
+			groupLabel,
+			token.Owner,
+		)
+		return template.RenderTemplate(hub.NameTemplate, templateData), true
+	}
+
+	hostLabel := extractNodeHost(node.URL)
+	return buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country)), true
+}
+
 func (s *SubscriptionService) buildHubURLs(
 	token domain.Token,
 	allNodes []domain.Node,
@@ -222,39 +287,15 @@ func (s *SubscriptionService) buildHubURLs(
 				continue
 			}
 		}
-		if node.URL == "" {
-			continue
-		}
-
-		parsed, err := vless.ParseURL(node.URL)
-		if err != nil {
-			s.logger.Warn("failed to parse VLESS URL", slog.String("node_id", node.ID), slog.String("error", err.Error()))
-			continue
-		}
-
 		primaryGroup := ""
 		if len(node.GroupIDs) > 0 {
 			primaryGroup = node.GroupIDs[0]
 		}
-		var remark string
-		if hub.NameTemplate != "" {
-			groupLabel := resolveGroupLabel(groupNames, primaryGroup)
-			vlessData := template.VLESSData{
-				Name:       parsed.Name,
-				Host:       parsed.Host,
-				Port:       parsed.Port,
-				SNI:        parsed.SNI,
-				Security:   parsed.Security,
-				Encryption: parsed.Encryption,
-				Flow:       parsed.Flow,
-				FP:         parsed.FP,
-			}
-			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, token.Owner)
-			remark = template.RenderTemplate(hub.NameTemplate, templateData)
-		} else {
-			groupLabel := resolveGroupLabel(groupNames, primaryGroup)
-			hostLabel := extractNodeHost(node.URL)
-			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country))
+		groupLabel := resolveGroupLabel(groupNames, primaryGroup)
+
+		remark, ok := s.buildNodeRemark(node, groupLabel, hub, token)
+		if !ok {
+			continue
 		}
 
 		uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
@@ -293,9 +334,6 @@ func (s *SubscriptionService) buildHubURLsWithGroupSettings(
 			if !allowed {
 				continue
 			}
-		}
-		if node.URL == "" {
-			continue
 		}
 		for _, gid := range node.GroupIDs {
 			nodesByGroup[gid] = append(nodesByGroup[gid], node)
