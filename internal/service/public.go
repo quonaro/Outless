@@ -209,7 +209,7 @@ func (s *PublicService) importURLs(ctx context.Context, urls []string, groupID s
 		}
 		nodeID := s.generateNodeID(url, groupID)
 
-		node := domain.Node{ID: nodeID, URL: url, GroupID: groupID}
+		node := domain.Node{ID: nodeID, URL: url, GroupIDs: []string{groupID}}
 		createdNow, err := s.nodeRepo.CreateIfAbsent(ctx, node)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

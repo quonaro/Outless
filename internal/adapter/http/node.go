@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -15,40 +14,37 @@ import (
 )
 
 type NodeManagementHandler struct {
-	nodeRepo    domain.NodeRepository
-	groupRepo   domain.GroupRepository
-	inboundRepo domain.InboundRepository
-	logger      *slog.Logger
+	nodeRepo  domain.NodeRepository
+	groupRepo domain.GroupRepository
+	logger    *slog.Logger
 }
 
 func NewNodeManagementHandler(
 	nodeRepo domain.NodeRepository,
 	groupRepo domain.GroupRepository,
-	inboundRepo domain.InboundRepository,
 	logger *slog.Logger,
 ) *NodeManagementHandler {
 	return &NodeManagementHandler{
-		nodeRepo:    nodeRepo,
-		groupRepo:   groupRepo,
-		inboundRepo: inboundRepo,
-		logger:      logger,
+		nodeRepo:  nodeRepo,
+		groupRepo: groupRepo,
+		logger:    logger,
 	}
 }
 
 type CreateNodeInput struct {
 	Body struct {
-		URL     string `json:"url"`
-		GroupID string `json:"group_id" required:"true"`
-		IsSelf  bool   `json:"is_self"`
+		URL      string   `json:"url"`
+		GroupIDs []string `json:"group_ids" required:"true"`
+		IsSelf   bool     `json:"is_self"`
 	}
 }
 
 type CreateNodeOutput struct {
 	Body struct {
-		ID      string `json:"id"`
-		URL     string `json:"url"`
-		GroupID string `json:"group_id"`
-		IsSelf  bool   `json:"is_self"`
+		ID       string   `json:"id"`
+		URL      string   `json:"url"`
+		GroupIDs []string `json:"group_ids"`
+		IsSelf   bool     `json:"is_self"`
 	}
 }
 
@@ -69,8 +65,8 @@ type ListNodesInput struct {
 type UpdateNodeInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		URL     string `json:"url,omitempty"`
-		GroupID string `json:"group_id,omitempty"`
+		URL      string   `json:"url,omitempty"`
+		GroupIDs []string `json:"group_ids,omitempty"`
 	}
 }
 
@@ -87,11 +83,11 @@ type GetNodeOutput struct {
 }
 
 type NodeItem struct {
-	ID      string `json:"id"`
-	URL     string `json:"url"`
-	GroupID string `json:"group_id"`
-	Country string `json:"country"`
-	IsSelf  bool   `json:"is_self"`
+	ID       string   `json:"id"`
+	URL      string   `json:"url"`
+	GroupIDs []string `json:"group_ids"`
+	Country  string   `json:"country"`
+	IsSelf   bool     `json:"is_self"`
 }
 
 func (h *NodeManagementHandler) Register(api huma.API) {
@@ -107,17 +103,19 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		return nil, huma.Error400BadRequest("url is required when is_self is false")
 	}
 
-	if input.Body.GroupID == "" {
-		return nil, huma.Error400BadRequest("group_id is required")
+	if len(input.Body.GroupIDs) == 0 {
+		return nil, huma.Error400BadRequest("group_ids is required")
 	}
 
-	if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-		if errors.Is(err, domain.ErrGroupNotFound) {
-			h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-			return nil, huma.Error400BadRequest("group not found")
+	for _, groupID := range input.Body.GroupIDs {
+		if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+			if errors.Is(err, domain.ErrGroupNotFound) {
+				h.logger.Warn("group not found", slog.String("group_id", groupID))
+				return nil, huma.Error400BadRequest("group not found")
+			}
+			h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
-		h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to validate group")
 	}
 
 	if input.Body.IsSelf {
@@ -131,16 +129,16 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		}
 	}
 
-	nodeID := generateNodeID(input.Body.URL, input.Body.GroupID)
+	nodeID := generateNodeID(input.Body.URL, input.Body.GroupIDs)
 	if input.Body.IsSelf {
-		nodeID = "self_" + input.Body.GroupID
+		nodeID = "self_" + strings.Join(input.Body.GroupIDs, "_")
 	}
 
 	node := domain.Node{
-		ID:      nodeID,
-		URL:     input.Body.URL,
-		GroupID: input.Body.GroupID,
-		IsSelf:  input.Body.IsSelf,
+		ID:       nodeID,
+		URL:      input.Body.URL,
+		GroupIDs: input.Body.GroupIDs,
+		IsSelf:   input.Body.IsSelf,
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {
@@ -153,7 +151,7 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	out := &CreateNodeOutput{}
 	out.Body.ID = nodeID
 	out.Body.URL = input.Body.URL
-	out.Body.GroupID = input.Body.GroupID
+	out.Body.GroupIDs = input.Body.GroupIDs
 	out.Body.IsSelf = input.Body.IsSelf
 
 	return out, nil
@@ -217,42 +215,20 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 }
 
 func (h *NodeManagementHandler) buildNodeItems(
-	ctx context.Context,
+	_ context.Context,
 	nodes []domain.Node,
 	limit int,
-	offset int,
+	_ int,
 ) ([]NodeItem, bool) {
 	response := make([]NodeItem, 0, len(nodes))
-	var hasSelf bool
 	for _, n := range nodes {
-		if n.IsSelf {
-			hasSelf = true
-		}
 		response = append(response, NodeItem{
-			ID:      n.ID,
-			URL:     n.URL,
-			GroupID: n.GroupID,
-			Country: domain.NormalizeCountryCode(n.Country),
-			IsSelf:  n.IsSelf,
+			ID:       n.ID,
+			URL:      n.URL,
+			GroupIDs: n.GroupIDs,
+			Country:  domain.NormalizeCountryCode(n.Country),
+			IsSelf:   n.IsSelf,
 		})
-	}
-
-	// Inject a virtual self-node when none exists in storage so the
-	// fallback hub is visible in the UI.
-	if !hasSelf && offset == 0 {
-		inbounds, err := h.inboundRepo.List(ctx)
-		if err != nil {
-			h.logger.Error("failed to list inbounds for self node", slog.String("error", err.Error()))
-		} else if len(inbounds) > 0 {
-			ib := inbounds[0]
-			response = append([]NodeItem{{
-				ID:      "self",
-				URL:     fmt.Sprintf("vless://self@%s:%d", ib.Address, ib.Port),
-				GroupID: "",
-				Country: "",
-				IsSelf:  true,
-			}}, response...)
-		}
 	}
 
 	if len(response) > limit {
@@ -263,8 +239,8 @@ func (h *NodeManagementHandler) buildNodeItems(
 }
 
 func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNodeInput) (*struct{}, error) {
-	if input.Body.URL == "" && input.Body.GroupID == "" {
-		return nil, huma.Error400BadRequest("at least one field (url or group_id) is required")
+	if input.Body.URL == "" && len(input.Body.GroupIDs) == 0 {
+		return nil, huma.Error400BadRequest("at least one field (url or group_ids) is required")
 	}
 
 	existingNode, err := h.nodeRepo.FindByID(ctx, input.ID)
@@ -277,25 +253,27 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 	}
 
 	updates := domain.Node{
-		ID:      input.ID,
-		URL:     existingNode.URL,
-		GroupID: existingNode.GroupID,
+		ID:       input.ID,
+		URL:      existingNode.URL,
+		GroupIDs: existingNode.GroupIDs,
 	}
 
 	if input.Body.URL != "" {
 		updates.URL = input.Body.URL
 	}
 
-	if input.Body.GroupID != "" {
-		if _, err := h.groupRepo.FindByID(ctx, input.Body.GroupID); err != nil {
-			if errors.Is(err, domain.ErrGroupNotFound) {
-				h.logger.Warn("group not found", slog.String("group_id", input.Body.GroupID))
-				return nil, huma.Error400BadRequest("group not found")
+	if len(input.Body.GroupIDs) > 0 {
+		for _, groupID := range input.Body.GroupIDs {
+			if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+				if errors.Is(err, domain.ErrGroupNotFound) {
+					h.logger.Warn("group not found", slog.String("group_id", groupID))
+					return nil, huma.Error400BadRequest("group not found")
+				}
+				h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
+				return nil, huma.Error500InternalServerError("failed to validate group")
 			}
-			h.logger.Error("failed to find group", slog.String("group_id", input.Body.GroupID), slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("failed to validate group")
 		}
-		updates.GroupID = input.Body.GroupID
+		updates.GroupIDs = input.Body.GroupIDs
 	}
 
 	if err := h.nodeRepo.Update(ctx, updates); err != nil {
@@ -318,11 +296,11 @@ func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput
 
 	return &GetNodeOutput{
 		Body: NodeItem{
-			ID:      node.ID,
-			URL:     node.URL,
-			GroupID: node.GroupID,
-			Country: domain.NormalizeCountryCode(node.Country),
-			IsSelf:  node.IsSelf,
+			ID:       node.ID,
+			URL:      node.URL,
+			GroupIDs: node.GroupIDs,
+			Country:  domain.NormalizeCountryCode(node.Country),
+			IsSelf:   node.IsSelf,
 		},
 	}, nil
 }
@@ -336,7 +314,7 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 	return nil, nil
 }
 
-func generateNodeID(url, groupID string) string {
-	hash := sha256.Sum256([]byte(url + "|" + groupID))
+func generateNodeID(url string, groupIDs []string) string {
+	hash := sha256.Sum256([]byte(url + "|" + strings.Join(groupIDs, ",")))
 	return "node_" + hex.EncodeToString(hash[:8])
 }

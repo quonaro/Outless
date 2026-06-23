@@ -26,7 +26,7 @@ const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const selectedNode = ref<Node | null>(null)
 const nodeUrl = ref('')
-const nodeGroupId = ref('')
+const nodeGroupIds = ref<string[]>([])
 const isSelfNode = ref(false)
 const filterGroupId = ref<string>('')
 const isCreateSubmitting = ref(false)
@@ -84,9 +84,9 @@ const visibleNodes = computed<Node[]>(() => {
   const list = nodes.value ?? []
   if (!filterGroupId.value) return list
   if (filterGroupId.value === '__ungrouped__') {
-    return list.filter((n) => !n.group_id)
+    return list.filter((n) => n.group_ids.length === 0)
   }
-  return list.filter((n) => n.group_id === filterGroupId.value)
+  return list.filter((n) => n.group_ids.includes(filterGroupId.value))
 })
 
 const hasSelfNode = computed<boolean>(() => {
@@ -104,7 +104,7 @@ const groupNameById = computed<Record<string, string>>(() => {
 
 function resetForm() {
   nodeUrl.value = ''
-  nodeGroupId.value = ''
+  nodeGroupIds.value = []
   isSelfNode.value = false
   selectedNode.value = null
   isCreateSubmitting.value = false
@@ -128,7 +128,7 @@ function openEditDialog(node: Node) {
   isEditSubmitting.value = false
   selectedNode.value = node
   nodeUrl.value = node.url
-  nodeGroupId.value = node.group_id
+  nodeGroupIds.value = node.group_ids
   showEditDialog.value = true
 }
 
@@ -140,10 +140,10 @@ function closeEditDialog() {
 
 function handleCreate() {
   if (!isSelfNode.value && !nodeUrl.value.trim()) return
-  if (!nodeGroupId.value.trim() || isCreateSubmitting.value) return
+  if (nodeGroupIds.value.length === 0 || isCreateSubmitting.value) return
   const payload: CreateNode = {
     url: isSelfNode.value ? '' : nodeUrl.value.trim(),
-    group_id: nodeGroupId.value.trim(),
+    group_ids: nodeGroupIds.value,
     is_self: isSelfNode.value,
   }
   isCreateSubmitting.value = true
@@ -155,11 +155,16 @@ function handleCreate() {
 }
 
 function handleUpdate() {
-  if (!selectedNode.value || !nodeUrl.value.trim() || !nodeGroupId.value || isEditSubmitting.value)
+  if (
+    !selectedNode.value ||
+    !nodeUrl.value.trim() ||
+    nodeGroupIds.value.length === 0 ||
+    isEditSubmitting.value
+  )
     return
   const payload: UpdateNode = {
     url: nodeUrl.value.trim(),
-    group_id: nodeGroupId.value,
+    group_ids: nodeGroupIds.value,
   }
   isEditSubmitting.value = true
   updateMutation.mutate(
@@ -220,7 +225,7 @@ async function handleDelete(node: Node) {
             <p class="text-xs text-muted-foreground">
               Group:
               <span class="font-medium">
-                {{ groupNameById[node.group_id] ?? node.group_id }}
+                {{ node.group_ids.map((id) => groupNameById[id] ?? id).join(', ') }}
               </span>
               · ID: {{ node.id }}
             </p>
@@ -279,24 +284,31 @@ async function handleDelete(node: Node) {
             />
           </div>
           <div class="space-y-2">
-            <label class="text-sm font-medium">Group *</label>
-            <select
-              v-model="nodeGroupId"
-              class="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              required
+            <label class="text-sm font-medium">Groups *</label>
+            <div
+              class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
             >
-              <option value="" disabled selected>Select a group</option>
-              <option v-for="g in groups ?? []" :key="g.id" :value="g.id">
-                {{ g.name }}
-              </option>
-            </select>
+              <label
+                v-for="g in groups ?? []"
+                :key="g.id"
+                class="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  v-model="nodeGroupIds"
+                  type="checkbox"
+                  :value="g.id"
+                  class="h-4 w-4 rounded border-input"
+                />
+                <span>{{ g.name }}</span>
+              </label>
+            </div>
           </div>
         </CardContent>
         <CardFooter class="flex justify-end gap-2">
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
           <UiButton
             :disabled="
-              (!isSelfNode && !nodeUrl.trim()) || !nodeGroupId.trim() || isCreateSubmitting
+              (!isSelfNode && !nodeUrl.trim()) || nodeGroupIds.length === 0 || isCreateSubmitting
             "
             @click="handleCreate"
           >
@@ -320,15 +332,24 @@ async function handleDelete(node: Node) {
             <UiInput v-model="nodeUrl" @keyup.enter="handleUpdate" />
           </div>
           <div class="space-y-2">
-            <label class="text-sm font-medium">Group *</label>
-            <select
-              v-model="nodeGroupId"
-              class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            <label class="text-sm font-medium">Groups *</label>
+            <div
+              class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
             >
-              <option v-for="g in groups ?? []" :key="g.id" :value="g.id">
-                {{ g.name }}
-              </option>
-            </select>
+              <label
+                v-for="g in groups ?? []"
+                :key="g.id"
+                class="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  v-model="nodeGroupIds"
+                  type="checkbox"
+                  :value="g.id"
+                  class="h-4 w-4 rounded border-input"
+                />
+                <span>{{ g.name }}</span>
+              </label>
+            </div>
           </div>
         </CardContent>
         <CardFooter class="flex justify-end gap-2">

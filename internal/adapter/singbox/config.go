@@ -208,7 +208,14 @@ func buildUsersAndRules(tokens []domain.Token, nodes []domain.Node, logger *slog
 		hasAccess := false
 		for _, node := range nodes {
 			if !allGroups {
-				if _, ok := allowed[node.GroupID]; !ok {
+				nodeAllowed := false
+				for _, gid := range node.GroupIDs {
+					if _, ok := allowed[gid]; ok {
+						nodeAllowed = true
+						break
+					}
+				}
+				if !nodeAllowed {
 					continue
 				}
 			}

@@ -68,7 +68,7 @@ const groupNameInput = ref('')
 const groupRandomEnabledInput = ref(false)
 const groupRandomLimitInput = ref<string>('')
 const nodeURLInput = ref('')
-const nodeGroupIDInput = ref('')
+const nodeGroupIDsInput = ref<string[]>([])
 const nodeIsSelfInput = ref(false)
 const createNodeErrorMessage = ref('')
 const isCreateGroupSubmitting = ref(false)
@@ -91,13 +91,14 @@ const createGroupMutation = useMutation({
 })
 
 const createNodeMutation = useMutation({
-  mutationFn: (payload: { url: string; group_id: string; is_self: boolean }) => createNode(payload),
+  mutationFn: (payload: { url: string; group_ids: string[]; is_self: boolean }) =>
+    createNode(payload),
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['nodes'] })
     queryClient.invalidateQueries({ queryKey: ['groups'] })
     showCreateNodeDialog.value = false
     nodeURLInput.value = ''
-    nodeGroupIDInput.value = ''
+    nodeGroupIDsInput.value = []
     createNodeErrorMessage.value = ''
   },
 })
@@ -125,8 +126,10 @@ const filteredFlatNodes = computed<Node[]>(() => {
   const searchValue = search.value.trim().toLowerCase()
   return list.filter((node) => {
     if (!searchValue) return true
-    const groupName = groupNameByID.value[node.group_id] ?? ''
-    return `${node.url} ${node.id} ${node.country} ${groupName}`.toLowerCase().includes(searchValue)
+    const groupNames = node.group_ids.map((id) => groupNameByID.value[id] ?? '').join(' ')
+    return `${node.url} ${node.id} ${node.country} ${groupNames}`
+      .toLowerCase()
+      .includes(searchValue)
   })
 })
 
@@ -154,16 +157,16 @@ function submitCreateGroup() {
 
 function submitCreateNode() {
   const url = nodeURLInput.value.trim()
-  const groupId = nodeGroupIDInput.value.trim()
+  const groupIds = nodeGroupIDsInput.value
   const isSelf = nodeIsSelfInput.value
-  if ((!isSelf && !url) || !groupId || isCreateNodeSubmitting.value) {
-    createNodeErrorMessage.value = 'Please select a group.'
+  if ((!isSelf && !url) || groupIds.length === 0 || isCreateNodeSubmitting.value) {
+    createNodeErrorMessage.value = 'Please select at least one group.'
     return
   }
   createNodeErrorMessage.value = ''
   isCreateNodeSubmitting.value = true
   createNodeMutation.mutate(
-    { url: isSelf ? '' : url, group_id: groupId, is_self: isSelf },
+    { url: isSelf ? '' : url, group_ids: groupIds, is_self: isSelf },
     {
       onError: (error) => {
         createNodeErrorMessage.value = resolveCreateNodeErrorMessage(error)
@@ -194,7 +197,7 @@ function resolveCreateNodeErrorMessage(error: unknown): string {
 }
 
 function handleAddNode(groupId: string) {
-  nodeGroupIDInput.value = groupId
+  nodeGroupIDsInput.value = [groupId]
   nodeIsSelfInput.value = false
   showCreateNodeDialog.value = true
 }
@@ -202,6 +205,7 @@ function handleAddNode(groupId: string) {
 function closeCreateNodeDialog() {
   showCreateNodeDialog.value = false
   nodeIsSelfInput.value = false
+  nodeGroupIDsInput.value = []
   createNodeErrorMessage.value = ''
 }
 
@@ -213,7 +217,7 @@ function handleMoveNode(payload: { node: Node; targetGroupId: string }) {
   movingNodeIDs.value = next
   updateNode(payload.node.id, {
     url: payload.node.url,
-    group_id: payload.targetGroupId,
+    group_ids: [payload.targetGroupId],
   })
     .then(() => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] })
@@ -243,7 +247,7 @@ function openBulkMoveDialog() {
 
 function handleBulkMove() {
   const promises = Array.from(selectedNodeIDs.value).map((nodeId) =>
-    updateNode(nodeId, { group_id: bulkMoveTargetGroupId.value })
+    updateNode(nodeId, { group_ids: [bulkMoveTargetGroupId.value] })
   )
   Promise.all(promises)
     .then(() => {
@@ -277,7 +281,7 @@ async function handleBulkDelete() {
 }
 
 function handleDuplicateNode(node: Node) {
-  createNode({ url: node.url, group_id: node.group_id, is_self: node.is_self }).then(() => {
+  createNode({ url: node.url, group_ids: node.group_ids, is_self: node.is_self }).then(() => {
     queryClient.invalidateQueries({ queryKey: ['nodes'] })
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   })
@@ -377,7 +381,11 @@ onBeforeUnmount(() => {
               <Plus class="h-4 w-4 mr-2" />
               Create Group
             </UiButton>
-            <UiButton @click="showCreateNodeDialog = true">
+            <UiButton
+              :disabled="!groups?.length"
+              :title="groups?.length ? '' : 'Create a group first'"
+              @click="showCreateNodeDialog = true"
+            >
               <Server class="h-4 w-4 mr-2" />
               Create Node
             </UiButton>
@@ -432,7 +440,11 @@ onBeforeUnmount(() => {
                   </div>
                   <p class="text-xs text-muted-foreground">
                     {{ node.id }} ·
-                    {{ groupNameByID[node.group_id] ?? (node.group_id || 'No group') }}
+                    {{
+                      node.group_ids.length
+                        ? node.group_ids.map((id) => groupNameByID[id] ?? id).join(', ')
+                        : 'No group'
+                    }}
                   </p>
                 </div>
                 <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap">
@@ -557,19 +569,24 @@ onBeforeUnmount(() => {
               />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium" for="create-node-group-id">Group</label>
-              <select
-                id="create-node-group-id"
-                v-model="nodeGroupIDInput"
-                name="create-node-group-id"
-                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                required
+              <label class="text-sm font-medium">Groups</label>
+              <div
+                class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
               >
-                <option value="" disabled selected>Select a group</option>
-                <option v-for="group in groups ?? []" :key="group.id" :value="group.id">
-                  {{ group.name }}
-                </option>
-              </select>
+                <label
+                  v-for="group in groups ?? []"
+                  :key="group.id"
+                  class="flex items-center gap-2 cursor-pointer"
+                >
+                  <input
+                    v-model="nodeGroupIDsInput"
+                    type="checkbox"
+                    :value="group.id"
+                    class="h-4 w-4 rounded border-input"
+                  />
+                  <span>{{ group.name }}</span>
+                </label>
+              </div>
             </div>
             <p v-if="createNodeErrorMessage" class="text-sm text-red-600 dark:text-red-400">
               {{ createNodeErrorMessage }}
@@ -580,7 +597,7 @@ onBeforeUnmount(() => {
             <UiButton
               :disabled="
                 (!nodeIsSelfInput && !nodeURLInput.trim()) ||
-                !nodeGroupIDInput.trim() ||
+                nodeGroupIDsInput.length === 0 ||
                 isCreateNodeSubmitting
               "
               @click="submitCreateNode"

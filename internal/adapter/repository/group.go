@@ -79,9 +79,9 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 		Select(
 			"groups.id", "groups.name", "groups.random_enabled",
 			"groups.random_limit", "groups.created_at",
-			"COUNT(nodes.id) AS total_nodes",
+			"COUNT(node_groups.node_id) AS total_nodes",
 		).
-		Joins("LEFT JOIN nodes ON nodes.group_id = groups.id").
+		Joins("LEFT JOIN node_groups ON node_groups.group_id = groups.id").
 		Group("groups.id").
 		Order("groups.created_at DESC").
 		Find(&models).Error

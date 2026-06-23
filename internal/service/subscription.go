@@ -211,7 +211,14 @@ func (s *SubscriptionService) buildHubURLs(
 
 	for _, node := range allNodes {
 		if !allGroupsAllowed {
-			if _, ok := allowedGroups[node.GroupID]; !ok {
+			allowed := false
+			for _, gid := range node.GroupIDs {
+				if _, ok := allowedGroups[gid]; ok {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
 				continue
 			}
 		}
@@ -225,9 +232,13 @@ func (s *SubscriptionService) buildHubURLs(
 			continue
 		}
 
+		primaryGroup := ""
+		if len(node.GroupIDs) > 0 {
+			primaryGroup = node.GroupIDs[0]
+		}
 		var remark string
 		if hub.NameTemplate != "" {
-			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
+			groupLabel := resolveGroupLabel(groupNames, primaryGroup)
 			vlessData := template.VLESSData{
 				Name:       parsed.Name,
 				Host:       parsed.Host,
@@ -241,7 +252,7 @@ func (s *SubscriptionService) buildHubURLs(
 			templateData := template.BuildTemplateData(vlessData, groupLabel, normalizeCountry(node.Country), groupLabel, token.Owner)
 			remark = template.RenderTemplate(hub.NameTemplate, templateData)
 		} else {
-			groupLabel := resolveGroupLabel(groupNames, node.GroupID)
+			groupLabel := resolveGroupLabel(groupNames, primaryGroup)
 			hostLabel := extractNodeHost(node.URL)
 			remark = buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country))
 		}
@@ -277,14 +288,23 @@ func (s *SubscriptionService) buildHubURLsWithGroupSettings(
 	nodesByGroup := make(map[string][]domain.Node)
 	for _, node := range allNodes {
 		if !allGroupsAllowed {
-			if _, ok := allowedGroups[node.GroupID]; !ok {
+			allowed := false
+			for _, gid := range node.GroupIDs {
+				if _, ok := allowedGroups[gid]; ok {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
 				continue
 			}
 		}
 		if node.URL == "" {
 			continue
 		}
-		nodesByGroup[node.GroupID] = append(nodesByGroup[node.GroupID], node)
+		for _, gid := range node.GroupIDs {
+			nodesByGroup[gid] = append(nodesByGroup[gid], node)
+		}
 	}
 
 	var selectedNodes []domain.Node

@@ -197,7 +197,7 @@ function confirmDelete() {
 
 function openMoveNodeDialog(node: Node) {
   moveNodeTarget.value = node
-  moveTargetGroupId.value = node.group_id ?? ''
+  moveTargetGroupId.value = node.group_ids[0] ?? ''
   moveNodeDialogOpen.value = true
 }
 

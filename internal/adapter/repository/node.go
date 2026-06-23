@@ -16,13 +16,19 @@ import (
 type nodeModel struct {
 	ID        string    `gorm:"column:id;primaryKey"`
 	URL       string    `gorm:"column:url"`
-	GroupID   *string   `gorm:"column:group_id;index"`
 	Country   string    `gorm:"column:country"`
 	IsSelf    bool      `gorm:"column:is_self;index"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
 func (nodeModel) TableName() string { return "nodes" }
+
+type nodeGroupModel struct {
+	NodeID  string `gorm:"column:node_id;primaryKey"`
+	GroupID string `gorm:"column:group_id;primaryKey"`
+}
+
+func (nodeGroupModel) TableName() string { return "node_groups" }
 
 // NodeRepository persists nodes using GORM over SQLite.
 type NodeRepository struct {
@@ -36,7 +42,56 @@ func NewNodeRepository(db *gorm.DB, logger *slog.Logger) *NodeRepository {
 }
 
 func (r *NodeRepository) toDomain(m nodeModel) domain.Node {
-	return domain.Node{ID: m.ID, URL: m.URL, GroupID: derefString(m.GroupID), Country: m.Country, IsSelf: m.IsSelf}
+	return domain.Node{ID: m.ID, URL: m.URL, Country: m.Country, IsSelf: m.IsSelf}
+}
+
+func (r *NodeRepository) fillGroupIDs(ctx context.Context, nodes []domain.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	nodeIDs := make([]string, len(nodes))
+	for i, n := range nodes {
+		nodeIDs[i] = n.ID
+	}
+	type row struct {
+		NodeID  string `gorm:"column:node_id"`
+		GroupID string `gorm:"column:group_id"`
+	}
+	var rows []row
+	if err := r.db.WithContext(ctx).Model(&nodeGroupModel{}).
+		Where("node_id IN ?", nodeIDs).
+		Find(&rows).Error; err != nil {
+		return fmt.Errorf("querying node groups: %w", err)
+	}
+	groupMap := make(map[string][]string, len(nodes))
+	for _, item := range rows {
+		groupMap[item.NodeID] = append(groupMap[item.NodeID], item.GroupID)
+	}
+	for i := range nodes {
+		nodes[i].GroupIDs = groupMap[nodes[i].ID]
+	}
+	return nil
+}
+
+func (r *NodeRepository) createGroupLinks(ctx context.Context, nodeID string, groupIDs []string) error {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+	models := make([]nodeGroupModel, 0, len(groupIDs))
+	for _, gid := range groupIDs {
+		models = append(models, nodeGroupModel{NodeID: nodeID, GroupID: gid})
+	}
+	if err := r.db.WithContext(ctx).Create(&models).Error; err != nil {
+		return fmt.Errorf("creating node groups: %w", err)
+	}
+	return nil
+}
+
+func (r *NodeRepository) replaceGroupLinks(ctx context.Context, nodeID string, groupIDs []string) error {
+	if err := r.db.WithContext(ctx).Where("node_id = ?", nodeID).Delete(&nodeGroupModel{}).Error; err != nil {
+		return fmt.Errorf("deleting old node groups: %w", err)
+	}
+	return r.createGroupLinks(ctx, nodeID, groupIDs)
 }
 
 // IterateNodes streams nodes from storage using Go iterators.
@@ -44,13 +99,21 @@ func (r *NodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.Node
 	return func(yield func(domain.Node, error) bool) {
 		models := make([]nodeModel, 0, 256)
 		if err := r.db.WithContext(ctx).
-			Select("id", "url", "group_id", "country", "is_self").
+			Select("id", "url", "country", "is_self").
 			Find(&models).Error; err != nil {
 			yield(domain.Node{}, fmt.Errorf("querying nodes: %w", err))
 			return
 		}
+		nodes := make([]domain.Node, 0, len(models))
 		for _, m := range models {
-			if !yield(r.toDomain(m), nil) {
+			nodes = append(nodes, r.toDomain(m))
+		}
+		if err := r.fillGroupIDs(ctx, nodes); err != nil {
+			yield(domain.Node{}, err)
+			return
+		}
+		for _, n := range nodes {
+			if !yield(n, nil) {
 				return
 			}
 		}
@@ -65,16 +128,17 @@ func (r *NodeRepository) ListVLESSURLs(ctx context.Context, groupID string, rand
 
 	query := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
-		Select("url").
-		Where("url LIKE ?", "vless://%")
+		Select("nodes.url").
+		Where("nodes.url LIKE ?", "vless://%")
 
 	if groupID != "" {
-		query = query.Where("group_id = ?", groupID)
+		query = query.Joins("JOIN node_groups ON node_groups.node_id = nodes.id").
+			Where("node_groups.group_id = ?", groupID)
 	}
 	if randomEnabled {
 		query = query.Order("RANDOM()")
 	} else {
-		query = query.Order("id ASC")
+		query = query.Order("nodes.id ASC")
 	}
 
 	limit := 50
@@ -100,7 +164,6 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 	model := nodeModel{
 		ID:        node.ID,
 		URL:       node.URL,
-		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
 		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
@@ -111,6 +174,9 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 		}
 		return fmt.Errorf("creating node: %w", err)
 	}
+	if err := r.createGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
+		return err
+	}
 	r.logger.Debug("node created", slog.String("node_id", node.ID))
 	return nil
 }
@@ -120,7 +186,6 @@ func (r *NodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (
 	model := nodeModel{
 		ID:        node.ID,
 		URL:       node.URL,
-		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
 		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
@@ -130,6 +195,11 @@ func (r *NodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (
 		Create(&model)
 	if tx.Error != nil {
 		return false, fmt.Errorf("creating node if absent: %w", tx.Error)
+	}
+	if tx.RowsAffected > 0 {
+		if err := r.createGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
+			return false, err
+		}
 	}
 	return tx.RowsAffected > 0, nil
 }
@@ -146,7 +216,6 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 		ids = append(ids, nodes[i].ID)
 	}
 
-	// Determine which IDs already exist to compute the inserted set.
 	existing := make([]string, 0, len(ids))
 	if err := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
@@ -170,7 +239,6 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 		models = append(models, nodeModel{
 			ID:        n.ID,
 			URL:       n.URL,
-			GroupID:   nullableString(n.GroupID),
 			Country:   n.Country,
 			IsSelf:    n.IsSelf,
 			CreatedAt: now,
@@ -188,16 +256,24 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 		return nil, fmt.Errorf("bulk creating nodes: %w", err)
 	}
 
+	for _, n := range nodes {
+		if _, ok := existingSet[n.ID]; ok {
+			continue
+		}
+		if err := r.createGroupLinks(ctx, n.ID, n.GroupIDs); err != nil {
+			r.logger.Warn("failed to create node groups", slog.String("node_id", n.ID), slog.String("error", err.Error()))
+		}
+	}
+
 	r.logger.Debug("nodes bulk-created", slog.Int("count", len(inserted)))
 	return inserted, nil
 }
 
-// Upsert inserts a new node or updates url and group_id if it already exists.
+// Upsert inserts a new node or updates url if it already exists.
 func (r *NodeRepository) Upsert(ctx context.Context, node domain.Node) error {
 	model := nodeModel{
 		ID:        node.ID,
 		URL:       node.URL,
-		GroupID:   nullableString(node.GroupID),
 		Country:   node.Country,
 		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
@@ -205,11 +281,14 @@ func (r *NodeRepository) Upsert(ctx context.Context, node domain.Node) error {
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"url", "group_id"}),
+			DoUpdates: clause.AssignmentColumns([]string{"url"}),
 		}).
 		Create(&model).Error
 	if err != nil {
 		return fmt.Errorf("upserting node: %w", err)
+	}
+	if err := r.replaceGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
+		return err
 	}
 	r.logger.Debug("node upserted", slog.String("node_id", node.ID))
 	return nil
@@ -225,7 +304,11 @@ func (r *NodeRepository) FindByID(ctx context.Context, id string) (domain.Node, 
 		}
 		return domain.Node{}, fmt.Errorf("finding node by id: %w", err)
 	}
-	return r.toDomain(model), nil
+	node := r.toDomain(model)
+	if err := r.fillGroupIDs(ctx, []domain.Node{node}); err != nil {
+		return domain.Node{}, err
+	}
+	return node, nil
 }
 
 // List returns all nodes.
@@ -237,6 +320,9 @@ func (r *NodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 	nodes := make([]domain.Node, 0, len(models))
 	for _, m := range models {
 		nodes = append(nodes, r.toDomain(m))
+	}
+	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
 	}
 	return nodes, nil
 }
@@ -252,6 +338,9 @@ func (r *NodeRepository) ListPage(ctx context.Context, limit int, offset int) ([
 	for _, m := range models {
 		nodes = append(nodes, r.toDomain(m))
 	}
+	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
+	}
 	return nodes, nil
 }
 
@@ -259,13 +348,17 @@ func (r *NodeRepository) ListPage(ctx context.Context, limit int, offset int) ([
 func (r *NodeRepository) ListPageByGroup(ctx context.Context, groupID string, limit int, offset int) ([]domain.Node, error) {
 	var models []nodeModel
 	if err := r.db.WithContext(ctx).
-		Where("group_id = ?", groupID).
+		Joins("JOIN node_groups ON node_groups.node_id = nodes.id").
+		Where("node_groups.group_id = ?", groupID).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("listing paged nodes by group: %w", err)
 	}
 	nodes := make([]domain.Node, 0, len(models))
 	for _, m := range models {
 		nodes = append(nodes, r.toDomain(m))
+	}
+	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
 	}
 	return nodes, nil
 }
@@ -274,27 +367,35 @@ func (r *NodeRepository) ListPageByGroup(ctx context.Context, groupID string, li
 func (r *NodeRepository) ListByGroup(ctx context.Context, groupID string) ([]domain.Node, error) {
 	var models []nodeModel
 	if err := r.db.WithContext(ctx).
-		Where("group_id = ?", groupID).Order("created_at DESC").Find(&models).Error; err != nil {
+		Joins("JOIN node_groups ON node_groups.node_id = nodes.id").
+		Where("node_groups.group_id = ?", groupID).
+		Order("created_at DESC").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("listing nodes by group: %w", err)
 	}
 	nodes := make([]domain.Node, 0, len(models))
 	for _, m := range models {
 		nodes = append(nodes, r.toDomain(m))
 	}
+	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
+	}
 	return nodes, nil
 }
 
-// Update updates a node's URL or group.
+// Update updates a node's URL or group associations.
 func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	result := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Where("id = ?", node.ID).
-		Updates(map[string]any{"url": node.URL, "group_id": nullableString(node.GroupID), "is_self": node.IsSelf})
+		Updates(map[string]any{"url": node.URL, "is_self": node.IsSelf})
 	if result.Error != nil {
 		return fmt.Errorf("updating node: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("node not found: %w", domain.ErrNodeNotFound)
+	}
+	if err := r.replaceGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
+		return err
 	}
 	r.logger.Debug("node updated", slog.String("node_id", node.ID))
 	return nil
@@ -311,6 +412,9 @@ func (r *NodeRepository) HasSelfNode(ctx context.Context) (bool, error) {
 
 // Delete removes a node by ID.
 func (r *NodeRepository) Delete(ctx context.Context, id string) error {
+	if err := r.db.WithContext(ctx).Where("node_id = ?", id).Delete(&nodeGroupModel{}).Error; err != nil {
+		return fmt.Errorf("deleting node groups: %w", err)
+	}
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&nodeModel{})
 	if result.Error != nil {
 		return fmt.Errorf("deleting node: %w", result.Error)

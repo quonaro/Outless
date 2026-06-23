@@ -21,6 +21,7 @@ func NewDB(path string) (*gorm.DB, error) {
 
 	if err := db.AutoMigrate(
 		&nodeModel{},
+		&nodeGroupModel{},
 		&tokenModel{},
 		&tokenGroupModel{},
 		&tokenInboundModel{},
