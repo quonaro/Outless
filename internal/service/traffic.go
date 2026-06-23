@@ -217,6 +217,9 @@ func (s *TrafficCollector) persistTokenDeltas(
 		if err := s.upsertDelta(ctx, id, "month", monthStart, d.upload, d.download); err != nil {
 			s.logger.Error("failed to record monthly usage", slog.String("token_id", id), slog.String("error", err.Error()))
 		}
+		if err := s.tokenRepo.RecordTokenConnection(ctx, id, d.upload, d.download, now); err != nil {
+			s.logger.Error("failed to record token connection", slog.String("token_id", id), slog.String("error", err.Error()))
+		}
 	}
 }
 

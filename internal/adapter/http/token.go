@@ -96,17 +96,19 @@ type UpdateTokenInput struct {
 }
 
 type TokenItem struct {
-	ID          string    `json:"id"`
-	Owner       string    `json:"owner"`
-	GroupID     string    `json:"group_id"`
-	GroupIDs    []string  `json:"group_ids"`
-	InboundIDs  []string  `json:"inbound_ids"`
-	AccessURL   string    `json:"access_url"`
-	IsActive    bool      `json:"is_active"`
-	QuotaBytes  *int64    `json:"quota_bytes,omitempty"`
-	QuotaPeriod string    `json:"quota_period"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Owner           string    `json:"owner"`
+	GroupID         string    `json:"group_id"`
+	GroupIDs        []string  `json:"group_ids"`
+	InboundIDs      []string  `json:"inbound_ids"`
+	AccessURL       string    `json:"access_url"`
+	IsActive        bool      `json:"is_active"`
+	QuotaBytes      *int64    `json:"quota_bytes,omitempty"`
+	QuotaPeriod     string    `json:"quota_period"`
+	UsedBytes       int64     `json:"used_bytes"`
+	LastConnectedAt time.Time `json:"last_connected_at"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func (h *TokenManagementHandler) Register(api huma.API) {
@@ -115,6 +117,7 @@ func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Put(api, "/v1/tokens/{id}", h.UpdateToken)
 	huma.Post(api, "/v1/tokens/{id}/deactivate", h.DeactivateToken)
 	huma.Post(api, "/v1/tokens/{id}/activate", h.ActivateToken)
+	huma.Post(api, "/v1/tokens/{id}/reset-traffic", h.ResetTraffic)
 	huma.Delete(api, "/v1/tokens/{id}", h.RemoveToken)
 }
 
@@ -195,16 +198,18 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 
 	for _, t := range tokens {
 		response = append(response, TokenItem{
-			ID:          t.ID,
-			Owner:       t.Owner,
-			GroupID:     t.GroupID,
-			GroupIDs:    t.GroupIDs,
-			InboundIDs:  t.InboundIDs,
-			IsActive:    t.IsActive,
-			QuotaBytes:  t.QuotaBytes,
-			QuotaPeriod: t.QuotaPeriod,
-			ExpiresAt:   t.ExpiresAt,
-			CreatedAt:   t.CreatedAt,
+			ID:              t.ID,
+			Owner:           t.Owner,
+			GroupID:         t.GroupID,
+			GroupIDs:        t.GroupIDs,
+			InboundIDs:      t.InboundIDs,
+			IsActive:        t.IsActive,
+			QuotaBytes:      t.QuotaBytes,
+			QuotaPeriod:     t.QuotaPeriod,
+			UsedBytes:       t.UsedBytes,
+			LastConnectedAt: t.LastConnectedAt,
+			ExpiresAt:       t.ExpiresAt,
+			CreatedAt:       t.CreatedAt,
 		})
 	}
 
@@ -365,6 +370,15 @@ func (h *TokenManagementHandler) UpdateToken(ctx context.Context, input *UpdateT
 		}
 	}
 
+	return nil, nil
+}
+
+func (h *TokenManagementHandler) ResetTraffic(ctx context.Context, input *DeleteTokenInput) (*struct{}, error) {
+	if err := h.tokenRepo.ResetTraffic(ctx, input.ID); err != nil {
+		h.logger.Error("failed to reset token traffic", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to reset token traffic")
+	}
+	h.logger.Info("token traffic reset", slog.String("id", input.ID))
 	return nil, nil
 }
 

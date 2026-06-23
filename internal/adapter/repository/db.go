@@ -38,6 +38,10 @@ func NewDB(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("running sqlite migrations: %w", err)
 	}
 
+	if err := db.Exec("UPDATE tokens SET used_bytes = 0 WHERE used_bytes IS NULL").Error; err != nil {
+		return nil, fmt.Errorf("initializing token used_bytes: %w", err)
+	}
+
 	return db, nil
 }
 

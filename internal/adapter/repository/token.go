@@ -18,16 +18,18 @@ import (
 )
 
 type tokenModel struct {
-	ID          string    `gorm:"column:id;primaryKey"`
-	Owner       string    `gorm:"column:owner"`
-	GroupID     *string   `gorm:"column:group_id"`
-	TokenHash   string    `gorm:"column:token_hash;index"`
-	UUID        string    `gorm:"column:uuid"`
-	IsActive    bool      `gorm:"column:is_active"`
-	QuotaBytes  *int64    `gorm:"column:quota_bytes"`
-	QuotaPeriod string    `gorm:"column:quota_period"`
-	ExpiresAt   time.Time `gorm:"column:expires_at"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
+	ID              string    `gorm:"column:id;primaryKey"`
+	Owner           string    `gorm:"column:owner"`
+	GroupID         *string   `gorm:"column:group_id"`
+	TokenHash       string    `gorm:"column:token_hash;index"`
+	UUID            string    `gorm:"column:uuid"`
+	IsActive        bool      `gorm:"column:is_active"`
+	QuotaBytes      *int64    `gorm:"column:quota_bytes"`
+	QuotaPeriod     string    `gorm:"column:quota_period"`
+	UsedBytes       int64     `gorm:"column:used_bytes;default:0"`
+	LastConnectedAt time.Time `gorm:"column:last_connected_at"`
+	ExpiresAt       time.Time `gorm:"column:expires_at"`
+	CreatedAt       time.Time `gorm:"column:created_at"`
 }
 
 func (tokenModel) TableName() string { return "tokens" }
@@ -444,6 +446,41 @@ func (r *TokenRepository) SetQuota(
 	return nil
 }
 
+// RecordTokenConnection increments used_bytes and sets last_connected_at for a token.
+func (r *TokenRepository) RecordTokenConnection(
+	ctx context.Context,
+	id string,
+	uploadDelta int64,
+	downloadDelta int64,
+	at time.Time,
+) error {
+	result := r.db.WithContext(ctx).Model(&tokenModel{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"used_bytes":        gorm.Expr("COALESCE(used_bytes, 0) + ?", uploadDelta+downloadDelta),
+			"last_connected_at": at.UTC(),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("recording token connection: %w", result.Error)
+	}
+	return nil
+}
+
+// ResetTraffic clears the used_bytes counter for a token.
+func (r *TokenRepository) ResetTraffic(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).Model(&tokenModel{}).
+		Where("id = ?", id).
+		Update("used_bytes", 0)
+	if result.Error != nil {
+		return fmt.Errorf("resetting token traffic: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+	}
+	r.logger.Info("token traffic reset", slog.String("id", id))
+	return nil
+}
+
 func (r *TokenRepository) loadGroupIDsByTokenIDs(ctx context.Context, tokenIDs []string) (map[string][]string, error) {
 	if len(tokenIDs) == 0 {
 		return map[string][]string{}, nil
@@ -489,17 +526,19 @@ func toDomainToken(model tokenModel, groupIDs []string, inboundIDs []string) dom
 		primaryGroupID = groupIDs[0]
 	}
 	return domain.Token{
-		ID:          model.ID,
-		Owner:       model.Owner,
-		GroupID:     primaryGroupID,
-		GroupIDs:    groupIDs,
-		InboundIDs:  uniqueNonEmpty(inboundIDs),
-		UUID:        model.UUID,
-		IsActive:    model.IsActive,
-		QuotaBytes:  model.QuotaBytes,
-		QuotaPeriod: model.QuotaPeriod,
-		ExpiresAt:   model.ExpiresAt,
-		CreatedAt:   model.CreatedAt,
+		ID:              model.ID,
+		Owner:           model.Owner,
+		GroupID:         primaryGroupID,
+		GroupIDs:        groupIDs,
+		InboundIDs:      uniqueNonEmpty(inboundIDs),
+		UUID:            model.UUID,
+		IsActive:        model.IsActive,
+		QuotaBytes:      model.QuotaBytes,
+		QuotaPeriod:     model.QuotaPeriod,
+		UsedBytes:       model.UsedBytes,
+		LastConnectedAt: model.LastConnectedAt,
+		ExpiresAt:       model.ExpiresAt,
+		CreatedAt:       model.CreatedAt,
 	}
 }
 

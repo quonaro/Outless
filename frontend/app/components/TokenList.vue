@@ -12,9 +12,28 @@ import { useDeleteToken } from '~/composables/tokens/useDeleteToken'
 import { useRemoveToken } from '~/composables/tokens/useRemoveToken'
 import { useActivateToken } from '~/composables/tokens/useActivateToken'
 import { useUpdateToken } from '~/composables/tokens/useUpdateToken'
+import { useResetTrafficToken } from '~/composables/tokens/useResetTrafficToken'
+import { useTokenTraffic } from '~/composables/tokens/useTokenTraffic'
 import { useGroups } from '~/composables/groups/useGroups'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
-import { Plus, MoreVertical, Eye, Pencil, Power, PowerOff, Trash2, Copy } from 'lucide-vue-next'
+import {
+  Plus,
+  MoreVertical,
+  Eye,
+  Pencil,
+  Power,
+  PowerOff,
+  Trash2,
+  Copy,
+  RotateCcw,
+  BarChart3,
+  Globe,
+  ArrowLeftRight,
+  Wifi,
+  Activity,
+  Calendar,
+} from 'lucide-vue-next'
+import TokenTrafficChart from '~/components/TokenTrafficChart.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import UiCard from '~/components/ui/card/card.vue'
@@ -46,6 +65,8 @@ const showCreateDialog = ref(false)
 const showIssuedDialog = ref(false)
 const showAccessURLDialog = ref(false)
 const showEditDialog = ref(false)
+const showTrafficDialog = ref(false)
+const trafficTokenId = ref('')
 const issuedToken = ref<IssuedToken | null>(null)
 const selectedAccessURL = ref('')
 const issuedAccessURL = ref('')
@@ -53,6 +74,7 @@ const isIssueSubmitting = ref(false)
 const pendingDeactivateId = ref('')
 const pendingActivateId = ref('')
 const pendingRemoveId = ref('')
+const pendingResetTrafficId = ref('')
 const editingTokenId = ref('')
 const isEditSubmitting = ref(false)
 
@@ -193,6 +215,16 @@ const updateMutation = useUpdateToken({
     })
   },
 })
+const resetTrafficMutation = useResetTrafficToken({
+  onSuccess: () => {
+    invalidate()
+  },
+})
+const { data: trafficData, isLoading: isTrafficLoading } = useTokenTraffic(
+  trafficTokenId,
+  'day',
+  30
+)
 
 const groupNameById = computed<Record<string, string>>(() => {
   const map: Record<string, string> = {}
@@ -309,6 +341,26 @@ async function handleRemove(token: Token) {
   })
 }
 
+async function handleResetTraffic(token: Token) {
+  const ok = await confirm({
+    title: 'Reset traffic',
+    message: `Reset traffic counter for ${token.owner}?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
+  pendingResetTrafficId.value = token.id
+  resetTrafficMutation.mutate(token.id, {
+    onSettled: () => {
+      pendingResetTrafficId.value = ''
+    },
+  })
+}
+
+function openTrafficDialog(token: Token) {
+  trafficTokenId.value = token.id
+  showTrafficDialog.value = true
+}
+
 function resolveAccessURL(token: Pick<Token, 'access_url'>): string {
   if (!token.access_url) return ''
   if (token.access_url.startsWith('http://') || token.access_url.startsWith('https://')) {
@@ -330,6 +382,32 @@ async function copyText(value: string) {
   } catch {
     // clipboard may be unavailable outside secure context
   }
+}
+
+function formatRelativeTime(date: Date): string {
+  const now = Date.now()
+  const diff = now - date.getTime()
+  const abs = Math.abs(diff)
+  const seconds = Math.floor(abs / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (diff < 0) {
+    // future
+    if (days > 30) return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    if (days > 0) return `in ${days}d`
+    if (hours > 0) return `in ${hours}h`
+    if (minutes > 0) return `in ${minutes}m`
+    return 'soon'
+  }
+
+  if (seconds < 60) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 function viewAccessURL(token: Token) {
@@ -533,83 +611,134 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
 
     <UiCard v-for="token in sortedTokens" :key="token.id" class="p-4">
       <CardContent class="p-0">
-        <div class="flex items-start justify-between gap-4">
-          <div class="min-w-0 flex-1 space-y-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span
-                class="rounded-full px-2 py-0.5 text-xs font-medium uppercase"
-                :class="statusBadge(token).cls"
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-2 min-w-0">
+            <span
+              class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+              :class="statusBadge(token).cls"
+            >
+              {{ statusBadge(token).label }}
+            </span>
+            <span class="truncate text-base font-semibold">{{ token.owner }}</span>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <UiButton variant="ghost" size="icon" class="shrink-0 -mr-2 -mt-1">
+                <MoreVertical class="h-4 w-4" />
+              </UiButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem @click="viewAccessURL(token)">
+                <Eye class="h-4 w-4 mr-2" />
+                View URL
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="copyAccessURL(token)">
+                <Copy class="h-4 w-4 mr-2" />
+                Copy URL
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="openEditDialog(token)">
+                <Pencil class="h-4 w-4 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="openTrafficDialog(token)">
+                <BarChart3 class="h-4 w-4 mr-2" />
+                View activity
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                :disabled="pendingResetTrafficId === token.id"
+                @click="handleResetTraffic(token)"
               >
-                {{ statusBadge(token).label }}
-              </span>
-              <span class="truncate text-base font-semibold">{{ token.owner }}</span>
-            </div>
-            <p class="text-sm text-muted-foreground">
-              Groups:
-              <span class="font-medium">{{ tokenGroupLabels(token) }}</span>
-            </p>
-            <p class="text-sm text-muted-foreground">
-              Inbounds:
-              <span class="font-medium">{{ tokenInboundLabels(token) }}</span>
-            </p>
-            <p v-if="token.quota_bytes && token.quota_period" class="text-sm text-muted-foreground">
-              Quota: {{ formatBytes(token.quota_bytes) }} / {{ periodLabel(token.quota_period) }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              Expires: {{ new Date(token.expires_at).toLocaleString() }} · Created:
-              {{ new Date(token.created_at).toLocaleString() }}
-            </p>
+                <RotateCcw class="h-4 w-4 mr-2" />
+                Reset traffic
+              </DropdownMenuItem>
+              <template v-if="token.is_active">
+                <DropdownMenuItem
+                  class="text-destructive focus:text-destructive"
+                  :disabled="pendingDeactivateId === token.id"
+                  @click="handleDeactivate(token)"
+                >
+                  <PowerOff class="h-4 w-4 mr-2" />
+                  Deactivate
+                </DropdownMenuItem>
+              </template>
+              <template v-else>
+                <DropdownMenuItem
+                  :disabled="pendingActivateId === token.id"
+                  @click="handleActivate(token)"
+                >
+                  <Power class="h-4 w-4 mr-2" />
+                  Activate
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="text-destructive focus:text-destructive"
+                  :disabled="pendingRemoveId === token.id"
+                  @click="handleRemove(token)"
+                >
+                  <Trash2 class="h-4 w-4 mr-2" />
+                  Remove
+                </DropdownMenuItem>
+              </template>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Globe class="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span class="text-[10px] text-muted-foreground/50 shrink-0">Groups</span>
+            <span class="truncate text-muted-foreground">{{ tokenGroupLabels(token) }}</span>
           </div>
-          <div class="flex shrink-0 gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger as-child>
-                <UiButton variant="ghost" size="icon">
-                  <MoreVertical class="h-4 w-4" />
-                </UiButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem @click="viewAccessURL(token)">
-                  <Eye class="h-4 w-4 mr-2" />
-                  View URL
-                </DropdownMenuItem>
-                <DropdownMenuItem @click="copyAccessURL(token)">
-                  <Copy class="h-4 w-4 mr-2" />
-                  Copy URL
-                </DropdownMenuItem>
-                <DropdownMenuItem @click="openEditDialog(token)">
-                  <Pencil class="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                <template v-if="token.is_active">
-                  <DropdownMenuItem
-                    class="text-destructive focus:text-destructive"
-                    :disabled="pendingDeactivateId === token.id"
-                    @click="handleDeactivate(token)"
-                  >
-                    <PowerOff class="h-4 w-4 mr-2" />
-                    Deactivate
-                  </DropdownMenuItem>
-                </template>
-                <template v-else>
-                  <DropdownMenuItem
-                    :disabled="pendingActivateId === token.id"
-                    @click="handleActivate(token)"
-                  >
-                    <Power class="h-4 w-4 mr-2" />
-                    Activate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    class="text-destructive focus:text-destructive"
-                    :disabled="pendingRemoveId === token.id"
-                    @click="handleRemove(token)"
-                  >
-                    <Trash2 class="h-4 w-4 mr-2" />
-                    Remove
-                  </DropdownMenuItem>
-                </template>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <ArrowLeftRight class="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span class="text-[10px] text-muted-foreground/50 shrink-0">Inbounds</span>
+            <span class="truncate text-muted-foreground">{{ tokenInboundLabels(token) }}</span>
           </div>
+          <div class="col-span-2 flex items-center gap-1.5 min-w-0">
+            <Activity class="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span class="text-[10px] text-muted-foreground/50 shrink-0">Traffic</span>
+            <span class="shrink-0 font-medium text-foreground">{{
+              formatBytes(token.used_bytes)
+            }}</span>
+            <template v-if="token.quota_bytes">
+              <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all"
+                  :class="token.used_bytes / token.quota_bytes >= 0.9 ? 'bg-red-500' : 'bg-primary'"
+                  :style="{
+                    width: `${Math.min(100, Math.round((token.used_bytes / token.quota_bytes) * 100))}%`,
+                  }"
+                />
+              </div>
+              <span class="shrink-0 text-muted-foreground">{{
+                formatBytes(token.quota_bytes)
+              }}</span>
+            </template>
+            <span v-else-if="token.quota_period" class="shrink-0 text-muted-foreground">{{
+              periodLabel(token.quota_period)
+            }}</span>
+          </div>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Wifi class="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span class="text-[10px] text-muted-foreground/50 shrink-0">Last seen</span>
+            <span class="text-muted-foreground">
+              {{
+                token.last_connected_at
+                  ? formatRelativeTime(new Date(token.last_connected_at))
+                  : 'Never'
+              }}
+            </span>
+          </div>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Calendar class="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span class="text-[10px] text-muted-foreground/50 shrink-0">Expires</span>
+            <span class="text-muted-foreground">{{
+              formatRelativeTime(new Date(token.expires_at))
+            }}</span>
+          </div>
+        </div>
+
+        <div class="mt-2 text-[10px] text-muted-foreground/60">
+          Created {{ new Date(token.created_at).toLocaleDateString() }}
         </div>
       </CardContent>
     </UiCard>
@@ -925,6 +1054,25 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
         <SheetFooter>
           <UiButton variant="outline" @click="copyText(selectedAccessURL)">Copy</UiButton>
           <UiButton @click="showAccessURLDialog = false">Close</UiButton>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+
+    <Sheet v-model:open="showTrafficDialog">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Activity</SheetTitle>
+          <SheetDescription>Daily traffic for the selected token.</SheetDescription>
+        </SheetHeader>
+        <div class="py-4">
+          <div v-if="isTrafficLoading" class="py-8 text-center text-muted-foreground">
+            Loading chart...
+          </div>
+          <TokenTrafficChart v-else-if="trafficData?.length" :items="trafficData" />
+          <div v-else class="py-8 text-center text-muted-foreground">No activity data yet</div>
+        </div>
+        <SheetFooter>
+          <UiButton variant="outline" @click="showTrafficDialog = false">Close</UiButton>
         </SheetFooter>
       </SheetContent>
     </Sheet>

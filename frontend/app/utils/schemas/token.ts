@@ -10,6 +10,8 @@ export const TokenSchema = z.object({
   is_active: z.boolean(),
   quota_bytes: z.number().nullable().optional(),
   quota_period: z.string().optional(),
+  used_bytes: z.number().default(0),
+  last_connected_at: z.string().nullable().optional(),
   expires_at: z.string(),
   created_at: z.string(),
 })

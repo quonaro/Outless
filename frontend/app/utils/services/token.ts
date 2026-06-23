@@ -88,3 +88,10 @@ export async function fetchTokenTraffic(
   })
   return z.array(TrafficItemSchema).parse(data)
 }
+
+export async function resetTokenTraffic(id: string): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/tokens/${id}/reset-traffic`, {
+    method: 'POST',
+  })
+}

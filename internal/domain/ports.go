@@ -46,6 +46,8 @@ type TokenRepository interface {
 		expiresAt time.Time, quotaBytes *int64, quotaPeriod string,
 	) error
 	SetQuota(ctx context.Context, id string, quotaBytes *int64, quotaPeriod string) error
+	RecordTokenConnection(ctx context.Context, id string, uploadDelta int64, downloadDelta int64, at time.Time) error
+	ResetTraffic(ctx context.Context, id string) error
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
