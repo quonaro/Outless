@@ -395,7 +395,7 @@ function formatRelativeTime(date: Date): string {
 
   if (diff < 0) {
     // future
-    if (days > 30) return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    if (days > 30) return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     if (days > 0) return `in ${days}d`
     if (hours > 0) return `in ${hours}h`
     if (minutes > 0) return `in ${minutes}m`
@@ -407,7 +407,7 @@ function formatRelativeTime(date: Date): string {
   if (hours < 24) return `${hours}h ago`
   if (days < 7) return `${days}d ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function viewAccessURL(token: Token) {
@@ -738,7 +738,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
         </div>
 
         <div class="mt-2 text-[10px] text-muted-foreground/60">
-          Created {{ new Date(token.created_at).toLocaleDateString() }}
+          Created {{ new Date(token.created_at).toLocaleDateString('en-US') }}
         </div>
       </CardContent>
     </UiCard>

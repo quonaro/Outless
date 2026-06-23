@@ -30,7 +30,7 @@ function formatBytes(v: number): string {
 
 function shortDate(iso: string): string {
   const d = new Date(iso)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 const sorted = computed(() => {
