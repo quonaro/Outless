@@ -130,7 +130,7 @@ const handleCloseMobile = () => {
 
   <!-- Desktop sidebar -->
   <aside
-    class="hidden h-screen flex-col border-r bg-background transition-all duration-300 md:flex"
+    class="hidden h-screen flex-col border-r bg-background transition-[width] duration-300 md:flex"
     :class="sidebar.isExpanded ? 'w-72' : 'w-20'"
   >
     <!-- Logo Section -->

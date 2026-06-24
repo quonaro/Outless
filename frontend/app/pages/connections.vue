@@ -10,6 +10,7 @@ import {
   ChevronUp,
   History,
   Search,
+  Trash2,
 } from 'lucide-vue-next'
 import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
@@ -17,7 +18,8 @@ import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import { useConnectionsStream } from '~/composables/stats/useConnectionsStream'
 import { useTokens } from '~/composables/tokens/useTokens'
 import { useNodes } from '~/composables/nodes/useNodes'
-import { useDomainHistory } from '~/composables/stats/useEntityTraffic'
+import { useDomainHistory, useClearDomainHistory } from '~/composables/stats/useEntityTraffic'
+import { useConfirm } from '~/composables/useConfirm'
 
 const { data, isConnected } = useConnectionsStream()
 const { data: tokens } = useTokens()
@@ -150,6 +152,21 @@ function resolveNode(nodeID: string): string {
 }
 
 const { data: historyData, isLoading: historyLoading } = useDomainHistory()
+const { mutate: clearHistory } = useClearDomainHistory()
+const { confirm } = useConfirm()
+
+async function handleClearHistory() {
+  const ok = await confirm({
+    title: 'Clear Domain History',
+    message: 'This will permanently delete all domain history records. Are you sure?',
+    variant: 'destructive',
+    confirmLabel: 'Clear',
+    cancelLabel: 'Cancel',
+  })
+  if (ok) {
+    clearHistory()
+  }
+}
 
 const filteredGroups = computed<FlowGroup[]>(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -277,6 +294,14 @@ function formatBytes(bytes: number): string {
         >
           <History class="h-3.5 w-3.5" />
           History (30d)
+        </button>
+        <button
+          v-if="activeTab === 'history'"
+          class="ml-auto inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
+          @click="handleClearHistory"
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+          Clear History
         </button>
       </div>
 
