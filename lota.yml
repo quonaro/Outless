@@ -2,20 +2,52 @@ vars:
   - FRONTEND_DIR=./frontend
   - WEB_DIST=web/dist
   - BINARY=outless
+  - GO_TAGS=with_reality_server with_utls
+  - GO_LDFLAGS=-s -w
 
 build:
-  desc: Build frontend and Go binary
-  script: |
-    set -euo pipefail
-    (
-      cd "$FRONTEND_DIR"
-      pnpm install
-      pnpm generate
-    )
-    rm -rf "$WEB_DIST"
-    mkdir -p "$WEB_DIST"
-    cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
-    CGO_ENABLED=0 go build -trimpath -tags "with_reality_server with_utls" -ldflags="-s -w" -o "$BINARY" ./cmd/outless
+  desc: Build for different platforms
+  x64:
+    desc: Build for x64
+    script: |
+      set -euo pipefail
+      (
+        cd "$FRONTEND_DIR"
+        pnpm install
+        pnpm generate
+      )
+      rm -rf "$WEB_DIST"
+      mkdir -p "$WEB_DIST"
+      cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
+      CGO_ENABLED=0 go build -trimpath -tags "$GO_TAGS" -ldflags="$GO_LDFLAGS" -o "$BINARY" ./cmd/outless
+
+  arm64:
+    desc: Build for Linux ARM64 (aarch64)
+    script: |
+      set -euo pipefail
+      (
+        cd "$FRONTEND_DIR"
+        pnpm install
+        pnpm generate
+      )
+      rm -rf "$WEB_DIST"
+      mkdir -p "$WEB_DIST"
+      cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
+      GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -tags "$GO_TAGS" -ldflags="$GO_LDFLAGS" -o "${BINARY}-linux-arm64" ./cmd/outless
+
+  arm:
+    desc: Build for Linux ARM (armv7)
+    script: |
+      set -euo pipefail
+      (
+        cd "$FRONTEND_DIR"
+        pnpm install
+        pnpm generate
+      )
+      rm -rf "$WEB_DIST"
+      mkdir -p "$WEB_DIST"
+      cp -r "$FRONTEND_DIR"/.output/public/. "$WEB_DIST"/
+      GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -tags "$GO_TAGS" -ldflags="$GO_LDFLAGS" -o "${BINARY}-linux-armv7" ./cmd/outless
 
 run:
   desc: Run the application
