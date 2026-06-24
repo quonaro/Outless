@@ -105,7 +105,9 @@ type TrafficEntityItem struct {
 }
 
 type EntityTrafficOutput struct {
-	Body []TrafficEntityItem `json:"items"`
+	Body struct {
+		Items []TrafficEntityItem `json:"items"`
+	}
 }
 
 // GetTokenTrafficStats returns per-token traffic for the current day.
@@ -133,9 +135,9 @@ func (h *StatsHandler) GetTokenTrafficStats(ctx context.Context, _ *struct{}) (*
 	}
 
 	out := &EntityTrafficOutput{}
-	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	out.Body.Items = make([]TrafficEntityItem, 0, len(usageList))
 	for _, u := range usageList {
-		out.Body = append(out.Body, TrafficEntityItem{
+		out.Body.Items = append(out.Body.Items, TrafficEntityItem{
 			ID:            u.TokenID,
 			Name:          tokenName[u.TokenID],
 			UploadBytes:   u.UploadBytes,
@@ -171,9 +173,9 @@ func (h *StatsHandler) GetNodeTrafficStats(ctx context.Context, _ *struct{}) (*E
 	}
 
 	out := &EntityTrafficOutput{}
-	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	out.Body.Items = make([]TrafficEntityItem, 0, len(usageList))
 	for _, u := range usageList {
-		out.Body = append(out.Body, TrafficEntityItem{
+		out.Body.Items = append(out.Body.Items, TrafficEntityItem{
 			ID:            u.NodeID,
 			Name:          nodeName[u.NodeID],
 			UploadBytes:   u.UploadBytes,
@@ -209,13 +211,13 @@ func (h *StatsHandler) GetInboundTrafficStats(ctx context.Context, _ *struct{}) 
 	}
 
 	out := &EntityTrafficOutput{}
-	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	out.Body.Items = make([]TrafficEntityItem, 0, len(usageList))
 	for _, u := range usageList {
 		name := inboundName[u.InboundTag]
 		if name == "" {
 			name = u.InboundTag
 		}
-		out.Body = append(out.Body, TrafficEntityItem{
+		out.Body.Items = append(out.Body.Items, TrafficEntityItem{
 			ID:            u.InboundTag,
 			Name:          name,
 			UploadBytes:   u.UploadBytes,
@@ -251,13 +253,13 @@ func (h *StatsHandler) GetDomainTrafficStats(ctx context.Context, _ *struct{}) (
 	}
 
 	out := &EntityTrafficOutput{}
-	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	out.Body.Items = make([]TrafficEntityItem, 0, len(usageList))
 	for _, u := range usageList {
 		name := tokenName[u.TokenID]
 		if name == "" {
 			name = u.TokenID
 		}
-		out.Body = append(out.Body, TrafficEntityItem{
+		out.Body.Items = append(out.Body.Items, TrafficEntityItem{
 			ID:            u.Domain,
 			Name:          name,
 			UploadBytes:   u.UploadBytes,
