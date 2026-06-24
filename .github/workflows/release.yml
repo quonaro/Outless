@@ -32,10 +32,13 @@ jobs:
           tags: |
             ghcr.io/outvless/outless:${{ github.ref_name }}
             ghcr.io/outvless/outless:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   binaries:
     runs-on: ubuntu-latest
     env:
+      GOPROXY: https://proxy.golang.org,direct
       GO_TAGS: with_reality_server with_utls
       GO_LDFLAGS: -s -w
     steps:
@@ -88,6 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: binaries
     env:
+      GOPROXY: https://proxy.golang.org,direct
       SDK_URL: https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz
       SDK_DIR: ${{ github.workspace }}/openwrt-sdk
     steps:

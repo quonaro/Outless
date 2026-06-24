@@ -11,6 +11,7 @@ RUN pnpm generate
 
 # Stage 2: Build Go binary
 FROM golang:1.26-alpine AS builder
+ENV GOPROXY=https://proxy.golang.org,direct
 RUN apk add --no-cache ca-certificates git
 WORKDIR /build
 COPY go.mod go.sum ./
