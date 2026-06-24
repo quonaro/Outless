@@ -20,8 +20,20 @@ function formatBytes(v: number): string {
   return `${scaled.toFixed(2)} ${unit}`
 }
 
-const sortedItems = computed(() => {
-  return [...props.items].sort((a, b) => b.total_bytes - a.total_bytes)
+const processedItems = computed(() => {
+  const map = new Map<string, TrafficEntityItem>()
+  for (const item of props.items) {
+    const key = item.name || item.id
+    const existing = map.get(key)
+    if (existing) {
+      existing.upload_bytes += item.upload_bytes
+      existing.download_bytes += item.download_bytes
+      existing.total_bytes += item.total_bytes
+    } else {
+      map.set(key, { ...item, id: key })
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.total_bytes - a.total_bytes)
 })
 </script>
 
@@ -51,7 +63,7 @@ const sortedItems = computed(() => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in sortedItems" :key="item.id" class="border-t">
+          <tr v-for="item in processedItems" :key="item.id" class="border-t">
             <td class="px-4 py-2 truncate max-w-xs">
               <div class="flex items-center gap-2">
                 <component
