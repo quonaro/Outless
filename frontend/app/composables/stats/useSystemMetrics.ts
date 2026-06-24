@@ -1,5 +1,4 @@
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getAuthHeaders } from '~/utils/services/auth-header'
 
 export interface SystemMetricsPoint {
   timestamp: number
@@ -22,19 +21,14 @@ export interface SystemMetrics {
 
 const current = ref<SystemMetrics | null>(null)
 const history = ref<SystemMetricsPoint[]>([])
-let timer: ReturnType<typeof setInterval> | null = null
 let active = 0
+let source: EventSource | null = null
 
 const maxHistory = 60
-const pollInterval = 2000
 
-async function fetchMetrics(): Promise<void> {
+function onMessage(event: MessageEvent) {
   try {
-    const res = await fetch('/api/v1/stats/system', {
-      headers: getAuthHeaders(),
-    })
-    if (!res.ok) return
-    const data = (await res.json()) as SystemMetrics
+    const data = JSON.parse(event.data) as SystemMetrics
     current.value = data
 
     const now = Date.now()
@@ -56,16 +50,22 @@ async function fetchMetrics(): Promise<void> {
 
 function start() {
   active++
-  if (timer) return
-  fetchMetrics()
-  timer = setInterval(fetchMetrics, pollInterval)
+  if (source) return
+
+  const token = useCookie<string | null>('auth_token').value
+  const url = token
+    ? `/api/v1/stats/system/stream?access_token=${encodeURIComponent(token)}`
+    : '/api/v1/stats/system/stream'
+
+  source = new EventSource(url)
+  source.onmessage = onMessage
 }
 
 function stop() {
   active--
-  if (active <= 0 && timer) {
-    clearInterval(timer)
-    timer = null
+  if (active <= 0 && source) {
+    source.close()
+    source = null
     active = 0
   }
 }
@@ -74,5 +74,5 @@ export function useSystemMetrics() {
   onMounted(() => start())
   onUnmounted(() => stop())
 
-  return { current, history, fetchMetrics }
+  return { current, history }
 }

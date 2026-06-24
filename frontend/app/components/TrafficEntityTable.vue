@@ -63,7 +63,7 @@ const processedItems = computed(() => {
     </div>
     <div v-else class="overflow-auto max-h-[14rem]">
       <table class="w-full text-sm">
-        <thead class="bg-muted sticky top-0 z-10">
+        <thead class="bg-muted/50 sticky top-0 z-10">
           <tr>
             <th class="px-4 py-2 text-left font-medium">Name</th>
             <th class="px-4 py-2 text-right font-medium whitespace-nowrap">Upload</th>

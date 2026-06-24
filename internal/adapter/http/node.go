@@ -16,17 +16,20 @@ import (
 type NodeManagementHandler struct {
 	nodeRepo  domain.NodeRepository
 	groupRepo domain.GroupRepository
+	runtime   RuntimeController
 	logger    *slog.Logger
 }
 
 func NewNodeManagementHandler(
 	nodeRepo domain.NodeRepository,
 	groupRepo domain.GroupRepository,
+	runtime RuntimeController,
 	logger *slog.Logger,
 ) *NodeManagementHandler {
 	return &NodeManagementHandler{
 		nodeRepo:  nodeRepo,
 		groupRepo: groupRepo,
+		runtime:   runtime,
 		logger:    logger,
 	}
 }
@@ -149,6 +152,11 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		h.logger.Error("failed to create node", slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to create node")
 	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after node creation", slog.String("error", err.Error()))
+	}
+
 	out := &CreateNodeOutput{}
 	out.Body.ID = nodeID
 	out.Body.URL = input.Body.URL
@@ -282,6 +290,10 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 		return nil, huma.Error500InternalServerError("failed to update node")
 	}
 
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after node update", slog.String("id", input.ID), slog.String("error", err.Error()))
+	}
+
 	return nil, nil
 }
 
@@ -312,6 +324,10 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 		return nil, huma.Error500InternalServerError("failed to delete node")
 	}
 
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after node deletion", slog.String("id", input.ID), slog.String("error", err.Error()))
+	}
+
 	return nil, nil
 }
 
@@ -330,6 +346,11 @@ func (h *NodeManagementHandler) BatchDeleteNodes(ctx context.Context, input *bat
 			h.logger.Error("failed to delete node in batch", slog.String("id", id), slog.String("error", err.Error()))
 		}
 	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after batch node deletion", slog.String("error", err.Error()))
+	}
+
 	h.logger.Info("batch deleted nodes", slog.Int("count", len(input.Body.IDs)))
 	return nil, nil
 }

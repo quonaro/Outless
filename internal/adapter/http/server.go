@@ -32,22 +32,23 @@ type Config struct {
 
 // Handlers groups all HTTP handlers the server wires up.
 type Handlers struct {
-	Subscription      *SubscriptionHandler
-	Auth              *AuthHandler
-	Token             *TokenManagementHandler
-	Node              *NodeManagementHandler
-	Group             *GroupManagementHandler
-	PublicSource      *PublicSourceManagementHandler
-	Inbound           *InboundManagementHandler
-	Settings          *SettingsHandler
-	Admin             *AdminManagementHandler
-	Stats             *StatsHandler
-	System            *SystemMetricsHandler
-	Traffic           *TrafficHandler
-	Connections       *ConnectionsHandler
-	StreamConnections http.Handler
-	ImportExport      *ImportExportHandler
-	LogStream         http.Handler
+	Subscription        *SubscriptionHandler
+	Auth                *AuthHandler
+	Token               *TokenManagementHandler
+	Node                *NodeManagementHandler
+	Group               *GroupManagementHandler
+	PublicSource        *PublicSourceManagementHandler
+	Inbound             *InboundManagementHandler
+	Settings            *SettingsHandler
+	Admin               *AdminManagementHandler
+	Stats               *StatsHandler
+	System              *SystemMetricsHandler
+	Traffic             *TrafficHandler
+	Connections         *ConnectionsHandler
+	StreamConnections   http.Handler
+	StreamSystemMetrics http.Handler
+	ImportExport        *ImportExportHandler
+	LogStream           http.Handler
 }
 
 func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers) {
@@ -71,6 +72,9 @@ func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers
 	}
 	if handlers.StreamConnections != nil {
 		apiMux.HandleFunc("/v1/connections/stream", handlers.StreamConnections.ServeHTTP)
+	}
+	if handlers.StreamSystemMetrics != nil {
+		apiMux.HandleFunc("/v1/stats/system/stream", handlers.StreamSystemMetrics.ServeHTTP)
 	}
 	if handlers.ImportExport != nil {
 		handlers.ImportExport.Register(humaAPI)

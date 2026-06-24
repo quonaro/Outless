@@ -15,11 +15,12 @@ import (
 
 type InboundManagementHandler struct {
 	inboundRepo domain.InboundRepository
+	runtime     RuntimeController
 	logger      *slog.Logger
 }
 
-func NewInboundManagementHandler(inboundRepo domain.InboundRepository, logger *slog.Logger) *InboundManagementHandler {
-	return &InboundManagementHandler{inboundRepo: inboundRepo, logger: logger}
+func NewInboundManagementHandler(inboundRepo domain.InboundRepository, runtime RuntimeController, logger *slog.Logger) *InboundManagementHandler {
+	return &InboundManagementHandler{inboundRepo: inboundRepo, runtime: runtime, logger: logger}
 }
 
 type InboundItem struct {
@@ -172,6 +173,10 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 		return nil, huma.Error500InternalServerError("failed to create inbound")
 	}
 
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after inbound creation", slog.String("error", err.Error()))
+	}
+
 	out := &CreateInboundOutput{}
 	out.Body = toInboundItem(inbound)
 	return out, nil
@@ -249,6 +254,11 @@ func (h *InboundManagementHandler) UpdateInbound(ctx context.Context, input *Upd
 		h.logger.Error("failed to update inbound", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to update inbound")
 	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after inbound update", slog.String("id", input.ID), slog.String("error", err.Error()))
+	}
+
 	return nil, nil
 }
 
@@ -260,6 +270,11 @@ func (h *InboundManagementHandler) DeleteInbound(ctx context.Context, input *Del
 		h.logger.Error("failed to delete inbound", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to delete inbound")
 	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after inbound deletion", slog.String("id", input.ID), slog.String("error", err.Error()))
+	}
+
 	return nil, nil
 }
 

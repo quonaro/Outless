@@ -176,6 +176,10 @@ func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateT
 		return nil, huma.Error500InternalServerError("failed to create token")
 	}
 
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after token creation", slog.String("error", err.Error()))
+	}
+
 	out := &CreateTokenOutput{}
 	out.Body.ID = token.ID
 	out.Body.Token = plainToken

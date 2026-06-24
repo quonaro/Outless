@@ -124,23 +124,27 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	cleanupService := service.NewCleanupService(tokenRepo, logger).WithTrafficRepo(trafficRepo)
 
 	// HTTP handlers
+	systemHandler := httpadapter.NewSystemMetricsHandler(runtime, logger)
+	defer systemHandler.Stop()
+
 	handlers := httpadapter.Handlers{
-		Subscription:      httpadapter.NewSubscriptionHandler(subscriptionService, tokenRepo, logger),
-		Auth:              httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
-		Token:             httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
-		Node:              httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
-		Group:             httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, subscriptionService, logger),
-		PublicSource:      httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
-		Inbound:           httpadapter.NewInboundManagementHandler(inboundRepo, logger),
-		Settings:          httpadapter.NewSettingsHandler(cfgPath, logger),
-		Admin:             httpadapter.NewAdminManagementHandler(adminRepo, logger),
-		Stats:             httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, inboundRepo, trafficRepo, logger),
-		System:            httpadapter.NewSystemMetricsHandler(runtime, logger),
-		Traffic:           httpadapter.NewTrafficHandler(trafficRepo, tokenRepo, logger),
-		Connections:       httpadapter.NewConnectionsHandler(runtime, logger),
-		StreamConnections: httpadapter.NewStreamConnectionsHandler(runtime, logger),
-		ImportExport:      httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, publicSourceRepo, inboundRepo, logger),
-		LogStream:         httpadapter.NewLogStreamHandler(broadcaster),
+		Subscription:        httpadapter.NewSubscriptionHandler(subscriptionService, tokenRepo, logger),
+		Auth:                httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
+		Token:               httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
+		Node:                httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, runtime, logger),
+		Group:               httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, subscriptionService, logger),
+		PublicSource:        httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
+		Inbound:             httpadapter.NewInboundManagementHandler(inboundRepo, runtime, logger),
+		Settings:            httpadapter.NewSettingsHandler(cfgPath, logger),
+		Admin:               httpadapter.NewAdminManagementHandler(adminRepo, logger),
+		Stats:               httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, inboundRepo, trafficRepo, logger),
+		System:              systemHandler,
+		Traffic:             httpadapter.NewTrafficHandler(trafficRepo, tokenRepo, logger),
+		Connections:         httpadapter.NewConnectionsHandler(runtime, logger),
+		StreamConnections:   httpadapter.NewStreamConnectionsHandler(runtime, logger),
+		StreamSystemMetrics: httpadapter.NewStreamSystemMetricsHandler(systemHandler, logger),
+		ImportExport:        httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, publicSourceRepo, inboundRepo, logger),
+		LogStream:           httpadapter.NewLogStreamHandler(broadcaster),
 	}
 
 	httpConfig := httpadapter.Config{
@@ -153,7 +157,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	}
 	server := httpadapter.NewServer(httpConfig, logger, jwtService, handlers)
 
-	routerManager := service.NewRouterManager(runtime, 0, logger)
+	routerManager := service.NewRouterManager(runtime, logger)
 
 	// Start background services
 	if err := cleanupService.Start(ctx); err != nil {

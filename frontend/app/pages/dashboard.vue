@@ -221,7 +221,7 @@ const tokensWithQuota = computed(() => {
                       </div>
                       <div class="min-w-0">
                         <p class="text-sm text-muted-foreground">CPU</p>
-                        <p class="text-xl font-bold">
+                        <p class="text-2xl font-bold">
                           {{ systemMetrics ? `${systemMetrics.cpu_percent.toFixed(1)}%` : '—' }}
                         </p>
                       </div>
@@ -236,7 +236,7 @@ const tokensWithQuota = computed(() => {
                       </div>
                       <div class="min-w-0">
                         <p class="text-sm text-muted-foreground">RAM</p>
-                        <p class="text-xl font-bold">
+                        <p class="text-2xl font-bold">
                           {{
                             systemMetrics
                               ? `${formatBytes(systemMetrics.memory_used_bytes)} / ${formatBytes(systemMetrics.memory_total_bytes)}`
@@ -255,7 +255,7 @@ const tokensWithQuota = computed(() => {
                       </div>
                       <div class="min-w-0">
                         <p class="text-sm text-muted-foreground">NET RX</p>
-                        <p class="text-xl font-bold">
+                        <p class="text-2xl font-bold">
                           {{
                             systemMetrics
                               ? `${formatBytes(systemMetrics.net_rx_bytes_per_sec)}/s`
@@ -274,7 +274,7 @@ const tokensWithQuota = computed(() => {
                       </div>
                       <div class="min-w-0">
                         <p class="text-sm text-muted-foreground">NET TX</p>
-                        <p class="text-xl font-bold">
+                        <p class="text-2xl font-bold">
                           {{
                             systemMetrics
                               ? `${formatBytes(systemMetrics.net_tx_bytes_per_sec)}/s`
@@ -308,13 +308,13 @@ const tokensWithQuota = computed(() => {
                 <Key class="h-5 w-5 text-amber-500" />
                 Per-Token Traffic (Today)
               </h2>
-              <div class="rounded-md border overflow-hidden">
+              <UiCard class="overflow-hidden">
                 <TrafficEntityTable
                   :items="tokenTraffic?.items ?? []"
                   :is-loading="isTokenTrafficLoading"
                   empty-text="No token traffic recorded yet"
                 />
-              </div>
+              </UiCard>
             </div>
 
             <div>
@@ -322,13 +322,13 @@ const tokensWithQuota = computed(() => {
                 <ArrowLeftRight class="h-5 w-5 text-violet-500" />
                 Per-Inbound Traffic (Today)
               </h2>
-              <div class="rounded-md border overflow-hidden">
+              <UiCard class="overflow-hidden">
                 <TrafficEntityTable
                   :items="inboundTraffic?.items ?? []"
                   :is-loading="isInboundTrafficLoading"
                   empty-text="No inbound traffic recorded yet"
                 />
-              </div>
+              </UiCard>
             </div>
 
             <div>
@@ -347,7 +347,7 @@ const tokensWithQuota = computed(() => {
                   >
                     No tokens have quotas configured
                   </div>
-                  <div v-else class="overflow-x-auto rounded-md border">
+                  <div v-else class="overflow-x-auto rounded-md border bg-card">
                     <table class="w-full text-sm">
                       <thead class="bg-muted/50">
                         <tr>
@@ -404,13 +404,13 @@ const tokensWithQuota = computed(() => {
                 <Server class="h-5 w-5 text-sky-500" />
                 Per-Node Traffic (Today)
               </h2>
-              <div class="rounded-md border overflow-hidden">
+              <UiCard class="overflow-hidden">
                 <TrafficEntityTable
                   :items="nodeTraffic?.items ?? []"
                   :is-loading="isNodeTrafficLoading"
                   empty-text="No node traffic recorded yet"
                 />
-              </div>
+              </UiCard>
             </div>
 
             <div>
@@ -418,13 +418,13 @@ const tokensWithQuota = computed(() => {
                 <Globe class="h-5 w-5 text-emerald-500" />
                 Per-Domain Traffic (Today)
               </h2>
-              <div class="rounded-md border overflow-hidden">
+              <UiCard class="overflow-hidden">
                 <TrafficEntityTable
                   :items="domainTraffic?.items ?? []"
                   :is-loading="isDomainTrafficLoading"
                   empty-text="No domain traffic recorded yet"
                 />
-              </div>
+              </UiCard>
             </div>
           </div>
         </div>
