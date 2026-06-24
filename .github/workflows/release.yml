@@ -19,6 +19,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Patch go.mod for linter compatibility
+        run: sed -i 's/^go 1.26.1$/go 1.24/' go.mod
       - name: Download Go modules
         run: go mod download
       - name: Run golangci-lint
