@@ -142,6 +142,11 @@ func (r *statusRecorder) Flush() {
 	}
 }
 
+// Unwrap returns the underlying ResponseWriter for http.NewResponseController.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func extractRemoteIP(remoteAddr string) string {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {

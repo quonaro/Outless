@@ -126,7 +126,7 @@ const tokensWithQuota = computed(() => {
       <div v-else-if="isError" class="py-8 text-center text-destructive">
         Failed to load stats: {{ error?.message }}
       </div>
-      <div v-else class="space-y-8">
+      <div v-else class="space-y-8 pb-12">
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
           <div class="space-y-8 flex flex-col h-full">
             <div>
@@ -154,7 +154,7 @@ const tokensWithQuota = computed(() => {
               </div>
             </div>
 
-            <div class="flex flex-col">
+            <div class="flex-1 flex flex-col min-h-0">
               <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
                   <Terminal class="h-5 w-5 text-green-500" />
@@ -198,9 +198,9 @@ const tokensWithQuota = computed(() => {
                   </button>
                 </div>
               </div>
-              <UiCard class="p-4 max-h-[28rem] flex flex-col">
-                <CardContent class="p-0 flex-1 flex flex-col min-h-0 overflow-hidden">
-                  <LogStream :lines="logLines" :font-size="fontSize" class="flex-1 min-h-0" />
+              <UiCard class="p-4 max-h-[28rem] flex-1 flex flex-col min-h-0">
+                <CardContent class="p-0 flex-1 flex flex-col min-h-0">
+                  <LogStream :lines="logLines" :font-size="fontSize" class="h-full" />
                 </CardContent>
               </UiCard>
             </div>
@@ -285,21 +285,6 @@ const tokensWithQuota = computed(() => {
                     </div>
                   </CardContent>
                 </UiCard>
-                <UiCard class="p-4 md:col-span-2">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-amber-500/10">
-                        <Users class="h-5 w-5 text-amber-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">Online</p>
-                        <p class="text-xl font-bold">
-                          {{ systemMetrics ? systemMetrics.connections_count : '—' }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
               </div>
             </div>
             <div class="flex-1 flex flex-col min-h-0">
@@ -307,7 +292,7 @@ const tokensWithQuota = computed(() => {
                 <Activity class="h-5 w-5 text-sky-500" />
                 Live Metrics
               </h2>
-              <UiCard class="p-4 flex-1 flex flex-col min-h-0">
+              <UiCard class="p-4 max-h-[28rem] flex-1 flex flex-col min-h-0">
                 <CardContent class="p-0 flex-1 flex flex-col min-h-0">
                   <LiveMetrics :current="systemMetrics" :history="systemHistory" />
                 </CardContent>
@@ -323,18 +308,13 @@ const tokensWithQuota = computed(() => {
                 <Key class="h-5 w-5 text-amber-500" />
                 Per-Token Traffic (Today)
               </h2>
-              <UiCard class="p-4">
-                <CardContent class="p-0">
-                  <TrafficEntityTable
-                    :items="tokenTraffic?.items ?? []"
-                    :is-loading="isTokenTrafficLoading"
-                    empty-text="No token traffic recorded yet"
-                    :name-icon="Key"
-                    :row-icon="Key"
-                    icon-color="text-amber-500"
-                  />
-                </CardContent>
-              </UiCard>
+              <div class="rounded-md border overflow-hidden">
+                <TrafficEntityTable
+                  :items="tokenTraffic?.items ?? []"
+                  :is-loading="isTokenTrafficLoading"
+                  empty-text="No token traffic recorded yet"
+                />
+              </div>
             </div>
 
             <div>
@@ -342,18 +322,13 @@ const tokensWithQuota = computed(() => {
                 <ArrowLeftRight class="h-5 w-5 text-violet-500" />
                 Per-Inbound Traffic (Today)
               </h2>
-              <UiCard class="p-4">
-                <CardContent class="p-0">
-                  <TrafficEntityTable
-                    :items="inboundTraffic?.items ?? []"
-                    :is-loading="isInboundTrafficLoading"
-                    empty-text="No inbound traffic recorded yet"
-                    :name-icon="ArrowLeftRight"
-                    :row-icon="ArrowLeftRight"
-                    icon-color="text-violet-500"
-                  />
-                </CardContent>
-              </UiCard>
+              <div class="rounded-md border overflow-hidden">
+                <TrafficEntityTable
+                  :items="inboundTraffic?.items ?? []"
+                  :is-loading="isInboundTrafficLoading"
+                  empty-text="No inbound traffic recorded yet"
+                />
+              </div>
             </div>
 
             <div>
@@ -429,18 +404,13 @@ const tokensWithQuota = computed(() => {
                 <Server class="h-5 w-5 text-sky-500" />
                 Per-Node Traffic (Today)
               </h2>
-              <UiCard class="p-4">
-                <CardContent class="p-0">
-                  <TrafficEntityTable
-                    :items="nodeTraffic?.items ?? []"
-                    :is-loading="isNodeTrafficLoading"
-                    empty-text="No node traffic recorded yet"
-                    :name-icon="Server"
-                    :row-icon="Server"
-                    icon-color="text-sky-500"
-                  />
-                </CardContent>
-              </UiCard>
+              <div class="rounded-md border overflow-hidden">
+                <TrafficEntityTable
+                  :items="nodeTraffic?.items ?? []"
+                  :is-loading="isNodeTrafficLoading"
+                  empty-text="No node traffic recorded yet"
+                />
+              </div>
             </div>
 
             <div>
@@ -448,18 +418,13 @@ const tokensWithQuota = computed(() => {
                 <Globe class="h-5 w-5 text-emerald-500" />
                 Per-Domain Traffic (Today)
               </h2>
-              <UiCard class="p-4 max-h-96 overflow-y-auto">
-                <CardContent class="p-0">
-                  <TrafficEntityTable
-                    :items="domainTraffic?.items ?? []"
-                    :is-loading="isDomainTrafficLoading"
-                    empty-text="No domain traffic recorded yet"
-                    :name-icon="Globe"
-                    :row-icon="Globe"
-                    icon-color="text-emerald-500"
-                  />
-                </CardContent>
-              </UiCard>
+              <div class="rounded-md border overflow-hidden">
+                <TrafficEntityTable
+                  :items="domainTraffic?.items ?? []"
+                  :is-loading="isDomainTrafficLoading"
+                  empty-text="No domain traffic recorded yet"
+                />
+              </div>
             </div>
           </div>
         </div>

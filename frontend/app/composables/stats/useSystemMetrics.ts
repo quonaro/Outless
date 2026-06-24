@@ -26,6 +26,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 let active = 0
 
 const maxHistory = 60
+const pollInterval = 2000
 
 async function fetchMetrics(): Promise<void> {
   try {
@@ -57,7 +58,7 @@ function start() {
   active++
   if (timer) return
   fetchMetrics()
-  timer = setInterval(fetchMetrics, 5000)
+  timer = setInterval(fetchMetrics, pollInterval)
 }
 
 function stop() {

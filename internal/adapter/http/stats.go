@@ -169,7 +169,13 @@ func (h *StatsHandler) GetNodeTrafficStats(ctx context.Context, _ *struct{}) (*E
 
 	nodeName := make(map[string]string, len(nodes))
 	for _, n := range nodes {
-		nodeName[n.ID] = n.URL
+		if n.URL != "" {
+			nodeName[n.ID] = n.URL
+		} else if n.IsSelf {
+			nodeName[n.ID] = "self"
+		} else {
+			nodeName[n.ID] = n.ID
+		}
 	}
 
 	out := &EntityTrafficOutput{}

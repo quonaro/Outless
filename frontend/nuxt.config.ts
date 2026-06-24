@@ -97,6 +97,8 @@ export default defineNuxtConfig({
         'tailwindcss-animate',
         '@vue/devtools-core',
         '@vue/devtools-kit',
+        'chart.js',
+        'vue-chartjs',
       ],
       exclude: [],
     },

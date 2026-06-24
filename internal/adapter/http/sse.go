@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // LogBroadcaster distributes log lines to SSE subscribers.
@@ -128,6 +129,10 @@ func (h *LogStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Remove the server's write timeout so the SSE stream isn't killed
+	// after 30s of inactivity.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
 	ch := h.broadcaster.Subscribe()
 	defer h.broadcaster.Unsubscribe(ch)
 
@@ -137,6 +142,11 @@ func (h *LogStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	// Send a keep-alive comment every 25s so reverse proxies (nginx,
+	// cloudflare) don't drop the idle connection.
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case msg, ok := <-ch:
@@ -144,6 +154,12 @@ func (h *LogStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
+			if err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ticker.C:
+			_, err := fmt.Fprintf(w, ": keep-alive\n\n")
 			if err != nil {
 				return
 			}
