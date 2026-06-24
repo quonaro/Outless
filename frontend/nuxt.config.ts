@@ -74,6 +74,12 @@ export default defineNuxtConfig({
     },
   },
 
+  nitro: {
+    routeRules: {
+      '/api/**': { proxy: 'http://localhost:41220/api/**' },
+    },
+  },
+
   vite: {
     optimizeDeps: {
       include: [
@@ -103,12 +109,6 @@ export default defineNuxtConfig({
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': '*',
-      },
-      proxy: {
-        '/api': {
-          target: 'http://localhost:41220',
-          changeOrigin: true,
-        },
       },
     },
   },

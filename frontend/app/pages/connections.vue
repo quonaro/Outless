@@ -151,7 +151,9 @@ function resolveNode(nodeID: string): string {
   return nodeMap.value.get(nodeID) ?? nodeID
 }
 
-const { data: historyData, isLoading: historyLoading } = useDomainHistory()
+const { data: historyData, isLoading: historyLoading } = useDomainHistory(30, {
+  enabled: computed(() => activeTab.value === 'history'),
+})
 const { mutate: clearHistory } = useClearDomainHistory()
 const { confirm } = useConfirm()
 

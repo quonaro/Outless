@@ -16,7 +16,9 @@ import {
 } from '~/utils/services/stats'
 import type { DomainHierarchyOutput, EntityTrafficOutput } from '~/utils/schemas/stats'
 
-export function useTokenTrafficStats(options?: UseQueryOptions<EntityTrafficOutput, Error>) {
+type TrafficQueryOptions<T> = Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'>
+
+export function useTokenTrafficStats(options?: TrafficQueryOptions<EntityTrafficOutput>) {
   return useQuery({
     queryKey: ['token-traffic-stats'],
     queryFn: () => fetchTokenTrafficStats(),
@@ -25,7 +27,7 @@ export function useTokenTrafficStats(options?: UseQueryOptions<EntityTrafficOutp
   })
 }
 
-export function useNodeTrafficStats(options?: UseQueryOptions<EntityTrafficOutput, Error>) {
+export function useNodeTrafficStats(options?: TrafficQueryOptions<EntityTrafficOutput>) {
   return useQuery({
     queryKey: ['node-traffic-stats'],
     queryFn: () => fetchNodeTrafficStats(),
@@ -34,7 +36,7 @@ export function useNodeTrafficStats(options?: UseQueryOptions<EntityTrafficOutpu
   })
 }
 
-export function useInboundTrafficStats(options?: UseQueryOptions<EntityTrafficOutput, Error>) {
+export function useInboundTrafficStats(options?: TrafficQueryOptions<EntityTrafficOutput>) {
   return useQuery({
     queryKey: ['inbound-traffic-stats'],
     queryFn: () => fetchInboundTrafficStats(),
@@ -43,7 +45,7 @@ export function useInboundTrafficStats(options?: UseQueryOptions<EntityTrafficOu
   })
 }
 
-export function useDomainTrafficStats(options?: UseQueryOptions<EntityTrafficOutput, Error>) {
+export function useDomainTrafficStats(options?: TrafficQueryOptions<EntityTrafficOutput>) {
   return useQuery({
     queryKey: ['domain-traffic-stats'],
     queryFn: () => fetchDomainTrafficStats(),
@@ -52,10 +54,7 @@ export function useDomainTrafficStats(options?: UseQueryOptions<EntityTrafficOut
   })
 }
 
-export function useDomainHistory(
-  days = 30,
-  options?: UseQueryOptions<DomainHierarchyOutput, Error>
-) {
+export function useDomainHistory(days = 30, options?: TrafficQueryOptions<DomainHierarchyOutput>) {
   return useQuery({
     queryKey: ['domain-history', days],
     queryFn: () => fetchDomainHistory(days),

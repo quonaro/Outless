@@ -8,6 +8,7 @@ import (
 	"outless/internal/domain"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type tokenUsageModel struct {
@@ -329,7 +330,9 @@ func (r *TrafficRepository) RecordDomainUsage(ctx context.Context, usage domain.
 		DownloadBytes: usage.DownloadBytes,
 		UpdatedAt:     time.Now().UTC(),
 	}
-	err := r.db.WithContext(ctx).Save(&model).Error
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{UpdateAll: true}).
+		Create(&model).Error
 	if err != nil {
 		return fmt.Errorf("recording domain usage: %w", err)
 	}
@@ -346,6 +349,9 @@ func (r *TrafficRepository) GetDomainUsage(
 			tokenID, nodeID, domainName, periodType, periodStart.UTC()).
 		First(&model).Error
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return domain.DomainUsage{}, nil
+		}
 		return domain.DomainUsage{}, fmt.Errorf("getting domain usage: %w", err)
 	}
 	return toDomainDomainUsage(model), nil
@@ -389,7 +395,7 @@ func toDomainDomainUsage(model domainUsageModel) domain.DomainUsage {
 
 // DeleteAllDomainUsage removes all domain usage records.
 func (r *TrafficRepository) DeleteAllDomainUsage(ctx context.Context) error {
-	result := r.db.WithContext(ctx).Delete(&domainUsageModel{})
+	result := r.db.WithContext(ctx).Where("1 = 1").Delete(&domainUsageModel{})
 	if result.Error != nil {
 		return fmt.Errorf("deleting all domain usage: %w", result.Error)
 	}

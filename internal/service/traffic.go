@@ -308,14 +308,13 @@ func (s *TrafficCollector) upsertDomainDelta(
 ) error {
 	usage, err := s.trafficRepo.GetDomainUsage(ctx, tokenID, nodeID, domainName, periodType, time.Unix(0, periodStart).UTC())
 	if err != nil {
-		usage = domain.DomainUsage{
-			TokenID:     tokenID,
-			NodeID:      nodeID,
-			Domain:      domainName,
-			PeriodType:  periodType,
-			PeriodStart: time.Unix(0, periodStart).UTC(),
-		}
+		return fmt.Errorf("getting domain usage for upsert: %w", err)
 	}
+	usage.TokenID = tokenID
+	usage.NodeID = nodeID
+	usage.Domain = domainName
+	usage.PeriodType = periodType
+	usage.PeriodStart = time.Unix(0, periodStart).UTC()
 	usage.UploadBytes += uploadDelta
 	usage.DownloadBytes += downloadDelta
 	usage.UpdatedAt = time.Now().UTC()
