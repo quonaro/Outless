@@ -1,6 +1,6 @@
 module outless
 
-go 1.24
+go 1.26.1
 
 require (
 	github.com/boombuler/barcode v1.1.0
