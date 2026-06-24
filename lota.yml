@@ -111,8 +111,10 @@ package:
       cp -r deploy/openwrt/files "$REAL_SDK_DIR/package/outless/"
       cp deploy/openwrt/Makefile "$REAL_SDK_DIR/package/outless/"
 
+      OUTLESS_ROOT="$PWD"
       echo "Building .ipk..."
       cd "$REAL_SDK_DIR"
+      make defconfig
       make package/outless/compile V=s -j$(nproc)
 
       IPK_PATH=$(find "$REAL_SDK_DIR/bin/packages" -name "outless_*.ipk" | head -n1)
@@ -120,7 +122,8 @@ package:
         echo "ERROR: .ipk not found after build"
         exit 1
       fi
-      cp "$IPK_PATH" .
+      cp "$IPK_PATH" "$OUTLESS_ROOT/"
+      cd "$OUTLESS_ROOT"
       echo "IPK built:"
       ls -lh ./outless_*.ipk
 

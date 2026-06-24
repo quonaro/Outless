@@ -35,6 +35,9 @@ tmp/
 # Devin agent files
 .devin/
 
+# Private scripts (sensitive IPs, credentials, etc.)
+scripts/private/
+
 # Frontend
 frontend/node_modules/
 frontend/.nuxt/

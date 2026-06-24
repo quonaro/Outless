@@ -26,15 +26,13 @@ define Package/outless/conffiles
 /etc/outless/config.yaml
 endef
 
-# Expects the prebuilt binary to be placed next to this Makefile as
-# outless-$(ARCH) or copied into the build directory manually.
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
+	cp $(CURDIR)/outless $(PKG_BUILD_DIR)/outless
 endef
 
 define Build/Compile
 	# Prebuilt binary — nothing to compile.
-	# Copy your prebuilt binary to $(PKG_BUILD_DIR)/outless before running make.
 endef
 
 define Package/outless/install
