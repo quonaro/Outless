@@ -13,7 +13,7 @@ define Package/outless
   CATEGORY:=Network
   TITLE:=Outless proxy management panel
   DEPENDS:=+kmod-tun
-  URL:=https://github.com/quonaro/outless
+  URL:=https://github.com/OutVless/Outless
 endef
 
 define Package/outless/description
