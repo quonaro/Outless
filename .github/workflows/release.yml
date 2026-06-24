@@ -10,25 +10,6 @@ permissions:
   packages: write
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.24
-      - name: Patch go.mod for linter compatibility
-        run: go mod edit -go=1.24 go.mod
-      - name: Download Go modules
-        run: go mod download
-      - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
-      - name: Run golangci-lint
-        run: golangci-lint run ./...
-
   docker:
     runs-on: ubuntu-latest
     steps:

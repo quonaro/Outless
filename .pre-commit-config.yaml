@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w
+        language: system
+        types: [go]
+        pass_filenames: true
+
+      - id: goimports
+        name: goimports
+        entry: goimports -w
+        language: system
+        types: [go]
+        pass_filenames: true
+
+      - id: frontend-lint
+        name: frontend lint
+        entry: bash -c 'cd frontend && pnpm lint:all'
+        language: system
+        files: ^frontend/
+        pass_filenames: false
