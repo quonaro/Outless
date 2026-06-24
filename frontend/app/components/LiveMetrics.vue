@@ -6,6 +6,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
   LineElement,
   PointElement,
   CategoryScale,
@@ -14,7 +15,16 @@ import {
 } from 'chart.js'
 import type { SystemMetrics, SystemMetricsPoint } from '~/composables/stats/useSystemMetrics'
 
-ChartJS.register(Title, Tooltip, Legend, LineElement, PointElement, CategoryScale, LinearScale)
+ChartJS.register(
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+  LineElement,
+  PointElement,
+  CategoryScale,
+  LinearScale
+)
 
 const props = defineProps<{
   current: SystemMetrics | null

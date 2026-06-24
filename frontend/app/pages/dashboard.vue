@@ -154,103 +154,7 @@ const tokensWithQuota = computed(() => {
               </div>
             </div>
 
-            <div>
-              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Activity class="h-5 w-5 text-sky-500" />
-                System
-              </h2>
-              <div class="grid gap-4 md:grid-cols-2">
-                <UiCard class="p-4">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-indigo-500/10">
-                        <Activity class="h-5 w-5 text-indigo-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">CPU</p>
-                        <p class="text-2xl font-bold">
-                          {{ systemMetrics ? `${systemMetrics.cpu_percent.toFixed(1)}%` : '—' }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-                <UiCard class="p-4">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-emerald-500/10">
-                        <Brain class="h-5 w-5 text-emerald-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">RAM</p>
-                        <p class="text-2xl font-bold">
-                          {{
-                            systemMetrics
-                              ? `${formatBytes(systemMetrics.memory_used_bytes)} / ${formatBytes(systemMetrics.memory_total_bytes)}`
-                              : '—'
-                          }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-                <UiCard class="p-4">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-blue-500/10">
-                        <ArrowDownToLine class="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">NET RX</p>
-                        <p class="text-2xl font-bold">
-                          {{
-                            systemMetrics
-                              ? `${formatBytes(systemMetrics.net_rx_bytes_per_sec)}/s`
-                              : '—'
-                          }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-                <UiCard class="p-4">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-rose-500/10">
-                        <ArrowUpFromLine class="h-5 w-5 text-rose-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">NET TX</p>
-                        <p class="text-2xl font-bold">
-                          {{
-                            systemMetrics
-                              ? `${formatBytes(systemMetrics.net_tx_bytes_per_sec)}/s`
-                              : '—'
-                          }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-                <UiCard class="p-4 md:col-span-2">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5 bg-amber-500/10">
-                        <Users class="h-5 w-5 text-amber-600" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">Online</p>
-                        <p class="text-2xl font-bold">
-                          {{ systemMetrics ? systemMetrics.connections_count : '—' }}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-              </div>
-            </div>
-
-            <div class="flex-1 flex flex-col min-h-0">
+            <div class="flex flex-col">
               <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
                   <Terminal class="h-5 w-5 text-green-500" />
@@ -294,24 +198,121 @@ const tokensWithQuota = computed(() => {
                   </button>
                 </div>
               </div>
-              <UiCard class="p-4 flex-1 flex flex-col min-h-0">
-                <CardContent class="p-0 flex-1 flex flex-col min-h-0">
+              <UiCard class="p-4 max-h-[28rem] flex flex-col">
+                <CardContent class="p-0 flex-1 flex flex-col min-h-0 overflow-hidden">
                   <LogStream :lines="logLines" :font-size="fontSize" class="flex-1 min-h-0" />
                 </CardContent>
               </UiCard>
             </div>
           </div>
 
-          <div class="flex flex-col h-full">
-            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Activity class="h-5 w-5 text-sky-500" />
-              Live Metrics
-            </h2>
-            <UiCard class="p-4 flex-1 flex flex-col min-h-0">
-              <CardContent class="p-0 flex-1 flex flex-col min-h-0">
-                <LiveMetrics :current="systemMetrics" :history="systemHistory" />
-              </CardContent>
-            </UiCard>
+          <div class="space-y-8 flex flex-col h-full">
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Activity class="h-5 w-5 text-sky-500" />
+                System
+              </h2>
+              <div class="grid gap-4 md:grid-cols-2">
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-indigo-500/10">
+                        <Activity class="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">CPU</p>
+                        <p class="text-xl font-bold">
+                          {{ systemMetrics ? `${systemMetrics.cpu_percent.toFixed(1)}%` : '—' }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-emerald-500/10">
+                        <Brain class="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">RAM</p>
+                        <p class="text-xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.memory_used_bytes)} / ${formatBytes(systemMetrics.memory_total_bytes)}`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-blue-500/10">
+                        <ArrowDownToLine class="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">NET RX</p>
+                        <p class="text-xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.net_rx_bytes_per_sec)}/s`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-rose-500/10">
+                        <ArrowUpFromLine class="h-5 w-5 text-rose-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">NET TX</p>
+                        <p class="text-xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.net_tx_bytes_per_sec)}/s`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4 md:col-span-2">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-amber-500/10">
+                        <Users class="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">Online</p>
+                        <p class="text-xl font-bold">
+                          {{ systemMetrics ? systemMetrics.connections_count : '—' }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+              </div>
+            </div>
+            <div class="flex-1 flex flex-col min-h-0">
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Activity class="h-5 w-5 text-sky-500" />
+                Live Metrics
+              </h2>
+              <UiCard class="p-4 flex-1 flex flex-col min-h-0">
+                <CardContent class="p-0 flex-1 flex flex-col min-h-0">
+                  <LiveMetrics :current="systemMetrics" :history="systemHistory" />
+                </CardContent>
+              </UiCard>
+            </div>
           </div>
         </div>
 
