@@ -16,7 +16,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   removeNode: [node: Node]
   addNode: [groupId: string]
-  moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
   updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
@@ -24,7 +23,6 @@ const emit = defineEmits<{
 const queryClient = useQueryClient()
 const { confirm } = useConfirm()
 const deletingNodeIDs = ref<Set<string>>(new Set())
-const movingNodeIDs = ref<Set<string>>(new Set())
 const deletingGroupIDs = ref<Set<string>>(new Set())
 const editingGroupIDs = ref<Set<string>>(new Set())
 
@@ -81,9 +79,6 @@ async function removeNode(node: Node) {
 function handleAddNode(groupId: string) {
   emit('addNode', groupId)
 }
-function handleMoveNode(payload: { node: Node; targetGroupId: string }) {
-  emit('moveNode', payload)
-}
 function handleEditGroup(group: {
   id: string
   name: string
@@ -133,14 +128,12 @@ function handleDeleteGroup(groupId: string) {
       :key="group.id"
       :group="group"
       :search="props.search"
-      :moving-ids="movingNodeIDs"
       :selected-ids="props.selectedNodeIds"
       :all-groups="props.groups"
       :editing-group="editingGroupIDs.has(group.id)"
       :deleting-group="deletingGroupIDs.has(group.id)"
       :deleting-ids="deletingNodeIDs"
       @add-node="handleAddNode"
-      @move-node="handleMoveNode"
       @toggle-selection="emit('toggleSelection', $event)"
       @update-node-groups="(nodeId, groupIds) => emit('updateNodeGroups', nodeId, groupIds)"
       @remove-node="removeNode"

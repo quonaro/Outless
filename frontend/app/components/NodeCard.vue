@@ -14,7 +14,6 @@ import {
 import UiButton from '~/components/ui/button/button.vue'
 import {
   MoreHorizontal,
-  ArrowRight,
   Tags,
   Trash2,
   type LucideIcon,
@@ -96,12 +95,10 @@ const props = defineProps<{
   inbounds?: Inbound[]
   groupLabel?: string
   deleting?: boolean
-  moving?: boolean
   showActions?: boolean
 }>()
 
 const emit = defineEmits<{
-  moveNode: [node: Node]
   editGroups: [node: Node]
   deleteNode: [node: Node]
 }>()
@@ -223,10 +220,6 @@ const title = computed(() => {
               </UiButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem :disabled="moving" @click.prevent="emit('moveNode', node)">
-                <ArrowRight class="mr-2 h-3.5 w-3.5" />
-                Move
-              </DropdownMenuItem>
               <DropdownMenuItem @click.prevent="emit('editGroups', node)">
                 <Tags class="mr-2 h-3.5 w-3.5" />
                 Groups

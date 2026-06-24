@@ -38,7 +38,6 @@ const props = withDefaults(
     group: Group
     search: string
     deletingIds: Set<string>
-    movingIds: Set<string>
     selectedIds: Set<string>
     allGroups: Group[]
     editingGroup: boolean
@@ -61,16 +60,10 @@ const emit = defineEmits<{
   ]
   deleteGroup: [groupId: string]
   addNode: [groupId: string]
-  moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
-  bulkMove: [targetGroupId: string]
-  bulkDelete: []
   updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
 
-const moveNodeDialogOpen = ref(false)
-const moveNodeTarget = ref<Node | null>(null)
-const moveTargetGroupId = ref('')
 const accordionOpen = ref(false)
 const editDialogOpen = ref(false)
 const deleteDialogOpen = ref(false)
@@ -185,20 +178,6 @@ function confirmDelete() {
   deleteDialogOpen.value = false
 }
 
-function openMoveNodeDialog(node: Node) {
-  moveNodeTarget.value = node
-  moveTargetGroupId.value = node.group_ids[0] ?? ''
-  moveNodeDialogOpen.value = true
-}
-
-function confirmMoveNode() {
-  if (!moveNodeTarget.value) return
-  emit('moveNode', { node: moveNodeTarget.value, targetGroupId: moveTargetGroupId.value })
-  moveNodeDialogOpen.value = false
-  moveNodeTarget.value = null
-  moveTargetGroupId.value = ''
-}
-
 const editGroupsDialogOpen = ref(false)
 const editGroupsTarget = ref<Node | null>(null)
 const editGroupsSelected = ref<string[]>([])
@@ -280,8 +259,6 @@ function confirmEditGroups() {
               :inbounds="inbounds ?? []"
               show-actions
               :deleting="props.deletingIds.has(node.id)"
-              :moving="props.movingIds.has(node.id)"
-              @move-node="openMoveNodeDialog"
               @edit-groups="openEditGroupsDialog"
               @delete-node="emit('removeNode', $event)"
             />
@@ -365,30 +342,6 @@ function confirmEditGroups() {
         <UiButton variant="destructive" :disabled="props.deletingGroup" @click="confirmDelete">
           Delete
         </UiButton>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-
-  <Dialog :open="moveNodeDialogOpen" @update:open="moveNodeDialogOpen = $event">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Move node</DialogTitle>
-        <DialogDescription> Select target group to move this node. </DialogDescription>
-      </DialogHeader>
-      <div class="py-4">
-        <UiLabel for="move-target-group">Target group</UiLabel>
-        <select
-          id="move-target-group"
-          v-model="moveTargetGroupId"
-          class="mt-1.5 w-full rounded-md border bg-background px-3 py-2 text-sm"
-        >
-          <option value="">No group</option>
-          <option v-for="g in props.allGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
-        </select>
-      </div>
-      <DialogFooter>
-        <UiButton variant="outline" @click="moveNodeDialogOpen = false">Cancel</UiButton>
-        <UiButton @click="confirmMoveNode">Move</UiButton>
       </DialogFooter>
     </DialogContent>
   </Dialog>

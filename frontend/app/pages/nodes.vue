@@ -78,8 +78,6 @@ const isCreateGroupSubmitting = ref(false)
 const isCreateNodeSubmitting = ref(false)
 const deletingNodeIDs = ref<Set<string>>(new Set())
 const selectedNodeIDs = ref<Set<string>>(new Set())
-const bulkMoveDialogOpen = ref(false)
-const bulkMoveTargetGroupId = ref('')
 const editingNodeGroupIDs = ref<Set<string>>(new Set())
 
 const createGroupMutation = useMutation({
@@ -211,27 +209,6 @@ function closeCreateNodeDialog() {
   createNodeErrorMessage.value = ''
 }
 
-const movingNodeIDs = ref<Set<string>>(new Set())
-
-function handleMoveNode(payload: { node: Node; targetGroupId: string }) {
-  const next = new Set(movingNodeIDs.value)
-  next.add(payload.node.id)
-  movingNodeIDs.value = next
-  updateNode(payload.node.id, {
-    url: payload.node.url,
-    group_ids: [payload.targetGroupId],
-  })
-    .then(() => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] })
-      queryClient.invalidateQueries({ queryKey: ['groups'] })
-    })
-    .finally(() => {
-      const current = new Set(movingNodeIDs.value)
-      current.delete(payload.node.id)
-      movingNodeIDs.value = current
-    })
-}
-
 function handleToggleSelection(nodeId: string) {
   const next = new Set(selectedNodeIDs.value)
   if (next.has(nodeId)) {
@@ -240,27 +217,6 @@ function handleToggleSelection(nodeId: string) {
     next.add(nodeId)
   }
   selectedNodeIDs.value = next
-}
-
-function openBulkMoveDialog() {
-  bulkMoveTargetGroupId.value = ''
-  bulkMoveDialogOpen.value = true
-}
-
-function handleBulkMove() {
-  const promises = Array.from(selectedNodeIDs.value).map((nodeId) =>
-    updateNode(nodeId, { group_ids: [bulkMoveTargetGroupId.value] })
-  )
-  Promise.all(promises)
-    .then(() => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] })
-      queryClient.invalidateQueries({ queryKey: ['groups'] })
-      selectedNodeIDs.value = new Set()
-      bulkMoveDialogOpen.value = false
-    })
-    .catch((err: Error) => {
-      toast.error('Bulk move failed', { description: err.message })
-    })
 }
 
 async function handleBulkDelete() {
@@ -371,7 +327,6 @@ onBeforeUnmount(() => {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div v-if="selectedNodeIDs.size > 0" class="flex items-center gap-2">
             <span class="text-sm font-medium">{{ selectedNodeIDs.size }} selected</span>
-            <UiButton size="sm" @click="openBulkMoveDialog"> Move </UiButton>
             <UiButton size="sm" variant="destructive" @click="handleBulkDelete"> Delete </UiButton>
             <UiButton size="sm" variant="outline" @click="selectedNodeIDs = new Set()">
               Clear
@@ -410,7 +365,6 @@ onBeforeUnmount(() => {
           :search="search"
           :selected-node-ids="selectedNodeIDs"
           @add-node="handleAddNode"
-          @move-node="handleMoveNode"
           @toggle-selection="handleToggleSelection"
           @update-node-groups="handleUpdateNodeGroups"
         />
@@ -571,37 +525,6 @@ onBeforeUnmount(() => {
             >
               {{ isCreateNodeSubmitting ? 'Creating...' : 'Create' }}
             </UiButton>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet v-model:open="bulkMoveDialogOpen">
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Move selected nodes</SheetTitle>
-            <SheetDescription>Move selected nodes to another group.</SheetDescription>
-          </SheetHeader>
-          <div class="space-y-4 py-4">
-            <p class="text-sm text-muted-foreground">
-              Move {{ selectedNodeIDs.size }} selected nodes to another group.
-            </p>
-            <div class="space-y-2">
-              <label class="text-sm font-medium" for="bulk-move-target-group">Target group</label>
-              <select
-                id="bulk-move-target-group"
-                v-model="bulkMoveTargetGroupId"
-                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">No group</option>
-                <option v-for="group in groups ?? []" :key="group.id" :value="group.id">
-                  {{ group.name }}
-                </option>
-              </select>
-            </div>
-          </div>
-          <SheetFooter>
-            <UiButton variant="outline" @click="bulkMoveDialogOpen = false">Cancel</UiButton>
-            <UiButton :disabled="!bulkMoveTargetGroupId" @click="handleBulkMove">Move</UiButton>
           </SheetFooter>
         </SheetContent>
       </Sheet>
