@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import {
   AuthResponseSchema,
+  TOTPStatusResponseSchema,
   TOTPSetupResponseSchema,
   type LoginCredentialsSchema,
   type TOTPVerifyInput,
@@ -17,6 +18,14 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
     body: credentials,
   })
   return AuthResponseSchema.parse(data)
+}
+
+export async function getTOTPStatus(): Promise<z.infer<typeof TOTPStatusResponseSchema>> {
+  const { $api } = useNuxtApp()
+  const data = await $api('/v1/auth/totp/status', {
+    method: 'GET',
+  })
+  return TOTPStatusResponseSchema.parse(data)
 }
 
 export async function setupTOTP(): Promise<z.infer<typeof TOTPSetupResponseSchema>> {

@@ -13,7 +13,7 @@ import {
   Download,
   Upload,
 } from 'lucide-vue-next'
-import { setupTOTP, verifyTOTP, disableTOTP } from '~/utils/services/auth'
+import { setupTOTP, verifyTOTP, disableTOTP, getTOTPStatus } from '~/utils/services/auth'
 import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
 import UiButton from '~/components/ui/button/button.vue'
@@ -48,6 +48,7 @@ const isSaving = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
 
 const totpEnabled = ref(false)
+const isLoadingTOTP = ref(false)
 const showSetup = ref(false)
 const showDisable = ref(false)
 const secret = ref('')
@@ -56,6 +57,21 @@ const qrBase64 = ref('')
 const setupCode = ref('')
 const disableCode = ref('')
 const disablePassword = ref('')
+
+async function loadTOTPStatus() {
+  isLoadingTOTP.value = true
+  try {
+    const response = await getTOTPStatus()
+    totpEnabled.value = response.totp_enabled
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to load 2FA status', { description: msg })
+  } finally {
+    isLoadingTOTP.value = false
+  }
+}
+
+onMounted(loadTOTPStatus)
 
 async function handleSetup() {
   try {
@@ -196,7 +212,7 @@ async function handleSave(options?: { danger?: boolean }) {
     <template v-else>
       <div>
         <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-          <Settings2 class="h-5 w-5 text-primary" />
+          <Settings2 class="h-5 w-5 text-blue-500" />
           Application
         </h2>
         <UiCard class="p-4">
@@ -287,7 +303,7 @@ async function handleSave(options?: { danger?: boolean }) {
 
       <div>
         <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-          <KeyRound class="h-5 w-5 text-primary" />
+          <KeyRound class="h-5 w-5 text-emerald-500" />
           Admin Account
         </h2>
         <UiCard class="p-4">
@@ -307,12 +323,17 @@ async function handleSave(options?: { danger?: boolean }) {
 
       <div>
         <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-          <Shield class="h-5 w-5 text-primary" />
+          <Shield class="h-5 w-5 text-amber-500" />
           Two-Factor Authentication
         </h2>
         <UiCard class="p-4">
           <CardContent class="p-0 space-y-4">
-            <div v-if="!totpEnabled && !showSetup">
+            <div v-if="isLoadingTOTP" class="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 class="h-4 w-4 animate-spin" />
+              Loading 2FA status...
+            </div>
+
+            <div v-else-if="!totpEnabled && !showSetup">
               <p class="text-sm text-muted-foreground mb-3">2FA is currently disabled.</p>
               <UiButton @click="handleSetup">
                 <QrCode class="h-4 w-4 mr-2" />
@@ -396,7 +417,7 @@ async function handleSave(options?: { danger?: boolean }) {
 
       <div>
         <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-          <Download class="h-5 w-5 text-primary" />
+          <Download class="h-5 w-5 text-violet-500" />
           Backup
         </h2>
         <UiCard class="p-4">

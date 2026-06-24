@@ -55,6 +55,7 @@ type loginOutput struct {
 // Register wires auth endpoints into Huma API.
 func (h *AuthHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/auth/login", h.login)
+	huma.Get(api, "/v1/auth/totp/status", h.totpStatus)
 	huma.Post(api, "/v1/auth/totp/setup", h.totpSetup)
 	huma.Post(api, "/v1/auth/totp/verify", h.totpVerifySetup)
 	huma.Post(api, "/v1/auth/totp/disable", h.totpDisable)
@@ -78,6 +79,8 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 		return nil, huma.Error500InternalServerError("authentication failed")
 	}
 
+	h.logger.Info("login attempt", slog.String("username", username), slog.Bool("totp_enabled", admin.TOTPEnabled))
+
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)); err != nil {
 		h.logger.Warn("login attempt with invalid password", slog.String("username", username))
 		return nil, huma.Error401Unauthorized("invalid credentials")
@@ -85,6 +88,7 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 
 	if admin.TOTPEnabled {
 		if input.Body.TOTPCode == "" {
+			h.logger.Info("login requires totp", slog.String("username", username))
 			out := &loginOutput{}
 			out.Body.TOTPRequired = true
 			out.Body.Username = admin.Username
@@ -108,6 +112,28 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 	out.Body.Username = admin.Username
 	out.Body.TOTPRequired = false
 
+	return out, nil
+}
+
+type totpStatusOutput struct {
+	Body struct {
+		Enabled bool `json:"totp_enabled"`
+	}
+}
+
+func (h *AuthHandler) totpStatus(ctx context.Context, _ *struct{}) (*totpStatusOutput, error) {
+	claims := GetClaims(ctx)
+	if claims == nil {
+		return nil, huma.Error401Unauthorized("unauthorized")
+	}
+
+	admin, err := h.adminRepo.FindByUsername(ctx, claims.Username)
+	if err != nil {
+		return nil, huma.Error404NotFound("admin not found")
+	}
+
+	out := &totpStatusOutput{}
+	out.Body.Enabled = admin.TOTPEnabled
 	return out, nil
 }
 

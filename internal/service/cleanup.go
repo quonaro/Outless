@@ -9,26 +9,41 @@ import (
 	"outless/internal/domain"
 )
 
-// CleanupService periodically removes expired tokens from the database.
+// CleanupService periodically removes expired tokens and old domain usage from the database.
 type CleanupService struct {
-	tokenRepo domain.TokenRepository
-	logger    *slog.Logger
-	interval  time.Duration
-	retention time.Duration
-	stopCh    chan struct{}
-	stoppedCh chan struct{}
+	tokenRepo       domain.TokenRepository
+	trafficRepo     domain.TrafficRepository
+	logger          *slog.Logger
+	interval        time.Duration
+	retention       time.Duration
+	domainRetention time.Duration
+	stopCh          chan struct{}
+	stoppedCh       chan struct{}
 }
 
 // NewCleanupService constructs a cleanup service with default 24h interval.
 func NewCleanupService(tokenRepo domain.TokenRepository, logger *slog.Logger) *CleanupService {
 	return &CleanupService{
-		tokenRepo: tokenRepo,
-		logger:    logger,
-		interval:  24 * time.Hour,
-		retention: 24 * time.Hour,
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		tokenRepo:       tokenRepo,
+		logger:          logger,
+		interval:        24 * time.Hour,
+		retention:       24 * time.Hour,
+		domainRetention: 30 * 24 * time.Hour,
+		stopCh:          make(chan struct{}),
+		stoppedCh:       make(chan struct{}),
 	}
+}
+
+// WithTrafficRepo injects the traffic repository for domain usage cleanup.
+func (s *CleanupService) WithTrafficRepo(repo domain.TrafficRepository) *CleanupService {
+	s.trafficRepo = repo
+	return s
+}
+
+// WithDomainRetention sets how long domain usage day-records are kept.
+func (s *CleanupService) WithDomainRetention(d time.Duration) *CleanupService {
+	s.domainRetention = d
+	return s
 }
 
 // WithInterval sets custom cleanup interval (useful for testing).
@@ -49,7 +64,11 @@ func (s *CleanupService) Start(ctx context.Context) error {
 		s.logger.Error("initial token cleanup failed", slog.String("error", err.Error()))
 	}
 	go s.loop(ctx)
-	s.logger.Info("token cleanup service started", slog.Duration("interval", s.interval), slog.Duration("retention", s.retention))
+	s.logger.Info("token cleanup service started",
+		slog.Duration("interval", s.interval),
+		slog.Duration("retention", s.retention),
+		slog.Duration("domain_retention", s.domainRetention),
+	)
 	return nil
 }
 
@@ -91,5 +110,15 @@ func (s *CleanupService) runCleanup(ctx context.Context) error {
 	} else {
 		s.logger.Debug("token cleanup completed, no expired tokens found")
 	}
+
+	if s.trafficRepo != nil {
+		domainCutoff := time.Now().UTC().Add(-s.domainRetention)
+		if err := s.trafficRepo.DeleteDomainUsageOlderThan(ctx, domainCutoff); err != nil {
+			s.logger.Error("domain usage cleanup failed", slog.String("error", err.Error()))
+		} else {
+			s.logger.Debug("domain usage cleanup completed")
+		}
+	}
+
 	return nil
 }

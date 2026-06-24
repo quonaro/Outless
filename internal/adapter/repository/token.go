@@ -23,6 +23,7 @@ type tokenModel struct {
 	GroupID         *string   `gorm:"column:group_id"`
 	TokenHash       string    `gorm:"column:token_hash;index"`
 	UUID            string    `gorm:"column:uuid"`
+	AccessURL       string    `gorm:"column:access_url"`
 	IsActive        bool      `gorm:"column:is_active"`
 	QuotaBytes      *int64    `gorm:"column:quota_bytes"`
 	QuotaPeriod     string    `gorm:"column:quota_period"`
@@ -113,6 +114,7 @@ func (r *TokenRepository) IssueToken(
 		GroupID:     nullableString(legacyGroupID),
 		TokenHash:   tokenHash(plainToken),
 		UUID:        tokenUUID,
+		AccessURL:   "/v1/sub/" + plainToken,
 		IsActive:    true,
 		QuotaBytes:  quotaBytes,
 		QuotaPeriod: quotaPeriod,
@@ -489,6 +491,32 @@ func (r *TokenRepository) ResetTraffic(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReissueToken regenerates the plain token and access URL for an existing token.
+func (r *TokenRepository) ReissueToken(ctx context.Context, id string) (domain.Token, string, error) {
+	var model tokenModel
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error; err != nil {
+		return domain.Token{}, "", fmt.Errorf("finding token: %w", err)
+	}
+
+	plainToken, err := generateToken(32)
+	if err != nil {
+		return domain.Token{}, "", fmt.Errorf("generating token: %w", err)
+	}
+
+	model.TokenHash = tokenHash(plainToken)
+	model.AccessURL = "/v1/sub/" + plainToken
+
+	if err := r.db.WithContext(ctx).Save(&model).Error; err != nil {
+		return domain.Token{}, "", fmt.Errorf("updating token: %w", err)
+	}
+
+	groupIDs, _ := r.loadGroupIDsByTokenIDs(ctx, []string{id})
+	inboundIDs, _ := r.loadInboundIDsByTokenIDs(ctx, []string{id})
+
+	r.logger.Info("token reissued", slog.String("token_id", id))
+	return toDomainToken(model, groupIDs[id], inboundIDs[id]), plainToken, nil
+}
+
 // AddIPRestriction adds an IP restriction for a token.
 func (r *TokenRepository) AddIPRestriction(ctx context.Context, tokenID string, ip string, mode string) error {
 	model := tokenIPRestrictionModel{TokenID: tokenID, IP: ip, Mode: mode}
@@ -603,6 +631,7 @@ func toDomainToken(model tokenModel, groupIDs []string, inboundIDs []string) dom
 		GroupIDs:        groupIDs,
 		InboundIDs:      uniqueNonEmpty(inboundIDs),
 		UUID:            model.UUID,
+		AccessURL:       model.AccessURL,
 		IsActive:        model.IsActive,
 		QuotaBytes:      model.QuotaBytes,
 		QuotaPeriod:     model.QuotaPeriod,

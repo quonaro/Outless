@@ -1,29 +1,48 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
-// Module-level singleton state: only one EventSource for the log stream.
-const lines = ref<string[]>([])
+export interface Connection {
+  id: string
+  user: string
+  node_id: string
+  inbound: string
+  domain: string
+  upload: number
+  download: number
+}
+
+export interface ConnectionsSnapshot {
+  upload_total: number
+  download_total: number
+  connections: Connection[]
+}
+
+// Module-level singleton state: only one EventSource per stream type.
+const data = ref<ConnectionsSnapshot | null>(null)
 const isConnected = ref(false)
 let eventSource: EventSource | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let subscriberCount = 0
 
-function connect(maxLines: number) {
+function connect() {
   subscriberCount++
   if (eventSource) return
 
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
   const url = token
-    ? `${base}/api/v1/events/logs?access_token=${encodeURIComponent(token)}`
-    : `${base}/api/v1/events/logs`
+    ? `${base}/api/v1/connections/stream?access_token=${encodeURIComponent(token)}`
+    : `${base}/api/v1/connections/stream`
+
   eventSource = new EventSource(url)
   eventSource.onopen = () => {
     isConnected.value = true
   }
   eventSource.onmessage = (event) => {
-    lines.value.push(event.data)
-    if (lines.value.length > maxLines) {
-      lines.value = lines.value.slice(-maxLines)
+    try {
+      const parsed = JSON.parse(event.data) as ConnectionsSnapshot
+      data.value = parsed
+    } catch {
+      // ignore malformed events
     }
   }
   eventSource.onerror = () => {
@@ -33,7 +52,7 @@ function connect(maxLines: number) {
     if (subscriberCount > 0) {
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null
-        if (subscriberCount > 0) connect(maxLines)
+        if (subscriberCount > 0) connect()
       }, 3000)
     }
   }
@@ -50,13 +69,23 @@ function disconnect() {
     eventSource?.close()
     eventSource = null
     isConnected.value = false
-    lines.value = []
+    data.value = null
   }
 }
 
-export function useLogStream(maxLines = 200) {
-  onMounted(() => connect(maxLines))
-  onUnmounted(() => disconnect())
+export function useConnectionsStream() {
+  onMounted(() => {
+    connect()
+  })
 
-  return { lines, isConnected, connect, disconnect }
+  onUnmounted(() => {
+    disconnect()
+  })
+
+  return {
+    data,
+    isConnected,
+    connect,
+    disconnect,
+  }
 }

@@ -48,6 +48,7 @@ type TokenRepository interface {
 	SetQuota(ctx context.Context, id string, quotaBytes *int64, quotaPeriod string) error
 	RecordTokenConnection(ctx context.Context, id string, uploadDelta int64, downloadDelta int64, at time.Time) error
 	ResetTraffic(ctx context.Context, id string) error
+	ReissueToken(ctx context.Context, id string) (Token, string, error)
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 
 	AddIPRestriction(ctx context.Context, tokenID string, ip string, mode string) error
@@ -175,6 +176,8 @@ type TrafficRepository interface {
 	RecordDomainUsage(ctx context.Context, usage DomainUsage) error
 	GetDomainUsage(ctx context.Context, tokenID string, domain string, periodType string, periodStart time.Time) (DomainUsage, error)
 	ListDomainUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]DomainUsage, error)
+	DeleteDomainUsageOlderThan(ctx context.Context, cutoff time.Time) error
+	ListDomainUsageAggregate(ctx context.Context, days int) ([]DomainUsage, error)
 
 	ListTokenUsageForPeriod(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]TokenUsage, error)
 }

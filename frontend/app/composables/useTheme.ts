@@ -1,30 +1,21 @@
-import { useColorMode } from '@vueuse/core'
-
 export type Theme = 'light' | 'dark' | 'system'
 
+interface ColorModeInstance {
+  preference: Theme
+  value: 'light' | 'dark'
+  unknown: boolean
+  forced: boolean
+}
+
 export function useTheme() {
-  const theme = useState<Theme>('theme', () => 'system')
+  const colorMode = useNuxtApp().$colorMode as ColorModeInstance
 
-  const colorMode = useColorMode({
-    attribute: 'class',
-    selector: 'html',
-  })
+  const theme = computed<Theme>(() => colorMode.preference)
 
-  const isDark = computed(() => {
-    if (theme.value === 'system') {
-      return colorMode.value === 'dark'
-    }
-    return theme.value === 'dark'
-  })
+  const isDark = computed(() => colorMode.value === 'dark')
 
   const setTheme = (newTheme: Theme) => {
-    theme.value = newTheme
-
-    if (newTheme === 'system') {
-      colorMode.value = 'auto'
-    } else {
-      colorMode.value = newTheme
-    }
+    colorMode.preference = newTheme
   }
 
   const toggleTheme = () => {
@@ -33,7 +24,6 @@ export function useTheme() {
     } else if (theme.value === 'dark') {
       setTheme('light')
     } else {
-      // system preference
       setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark')
     }
   }

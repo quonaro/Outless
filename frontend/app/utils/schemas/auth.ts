@@ -12,6 +12,10 @@ export const AuthResponseSchema = z.object({
   totp_required: z.boolean().default(false),
 })
 
+export const TOTPStatusResponseSchema = z.object({
+  totp_enabled: z.boolean(),
+})
+
 export const TOTPSetupResponseSchema = z.object({
   secret: z.string(),
   uri: z.string(),
@@ -29,6 +33,7 @@ export const TOTPDisableSchema = z.object({
 
 export type LoginCredentials = z.infer<typeof LoginCredentialsSchema>
 export type AuthResponse = z.infer<typeof AuthResponseSchema>
+export type TOTPStatusResponse = z.infer<typeof TOTPStatusResponseSchema>
 export type TOTPSetupResponse = z.infer<typeof TOTPSetupResponseSchema>
 export type TOTPVerifyInput = z.infer<typeof TOTPVerifySchema>
 export type TOTPDisableInput = z.infer<typeof TOTPDisableSchema>

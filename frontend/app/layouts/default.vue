@@ -1,25 +1,17 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { useColorMode } from '@vueuse/core'
 import { Menu } from 'lucide-vue-next'
 import Sidebar from '~/components/Sidebar.vue'
 import { Toaster } from 'vue-sonner'
 import { useAuth } from '~/composables/useAuth'
 import { useSidebar } from '~/composables/useSidebar'
 
-const colorMode = useColorMode({ emitAuto: true })
+const colorMode = useNuxtApp().$colorMode
 const auth = useAuth()
 const sidebar = useSidebar()
 
 const toasterTheme = computed<'light' | 'dark'>(() => {
-  // 'auto' means system preference, check actual dark class on html
-  if (colorMode.value === 'dark') return 'dark'
-  if (colorMode.value === 'light') return 'light'
-  // auto - check what actually rendered on client, fallback to light on server
-  if (typeof document !== 'undefined') {
-    return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-  }
-  return 'light'
+  return colorMode.value === 'dark' ? 'dark' : 'light'
 })
 
 watch(

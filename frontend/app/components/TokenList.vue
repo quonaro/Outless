@@ -13,6 +13,7 @@ import { useRemoveToken } from '~/composables/tokens/useRemoveToken'
 import { useActivateToken } from '~/composables/tokens/useActivateToken'
 import { useUpdateToken } from '~/composables/tokens/useUpdateToken'
 import { useResetTrafficToken } from '~/composables/tokens/useResetTrafficToken'
+import { useReissueToken } from '~/composables/tokens/useReissueToken'
 import { useTokenTraffic } from '~/composables/tokens/useTokenTraffic'
 import { useGroups } from '~/composables/groups/useGroups'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
@@ -20,13 +21,13 @@ import { batchDeactivateTokens, batchRemoveTokens } from '~/utils/services/token
 import {
   Plus,
   MoreVertical,
-  Eye,
   Pencil,
   Power,
   PowerOff,
   Trash2,
   Copy,
   RotateCcw,
+  RefreshCw,
   BarChart3,
   Globe,
   ArrowLeftRight,
@@ -226,6 +227,7 @@ const resetTrafficMutation = useResetTrafficToken({
     invalidate()
   },
 })
+const reissueMutation = useReissueToken()
 const { data: trafficData, isLoading: isTrafficLoading } = useTokenTraffic(
   trafficTokenId,
   'day',
@@ -372,6 +374,30 @@ async function handleResetTraffic(token: Token) {
   })
 }
 
+async function handleReissue(token: Token) {
+  const ok = await confirm({
+    title: 'Re-issue token',
+    message: `Re-issue token for ${token.owner}? The old subscription URL will become invalid.`,
+    variant: 'destructive',
+  })
+  if (!ok) return
+  try {
+    const result = await reissueMutation.mutateAsync(token.id)
+    issuedToken.value = {
+      ...token,
+      token: result.token,
+      access_url: result.access_url,
+    } as IssuedToken
+    issuedAccessURL.value = resolveAccessURL({ access_url: result.access_url })
+    showIssuedDialog.value = true
+    toast.success('Token re-issued')
+    invalidate()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to re-issue token', { description: msg })
+  }
+}
+
 async function handleBatchDeactivate() {
   if (selectedTokenIDs.value.size === 0) return
   const ok = await confirm({
@@ -462,15 +488,6 @@ function formatRelativeTime(date: Date): string {
   if (days < 7) return `${days}d ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function viewAccessURL(token: Token) {
-  selectedAccessURL.value = resolveAccessURL(token)
-  if (!selectedAccessURL.value) {
-    toast.error('Access URL is unavailable for this legacy token. Re-issue token to recover URL.')
-    return
-  }
-  showAccessURLDialog.value = true
 }
 
 async function copyAccessURL(token: Token) {
@@ -695,13 +712,17 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               </UiButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem @click="viewAccessURL(token)">
-                <Eye class="h-4 w-4 mr-2" />
-                View URL
-              </DropdownMenuItem>
-              <DropdownMenuItem @click="copyAccessURL(token)">
+              <DropdownMenuItem v-if="token.access_url" @click="copyAccessURL(token)">
                 <Copy class="h-4 w-4 mr-2" />
                 Copy URL
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-else
+                class="text-destructive focus:text-destructive"
+                @click="handleReissue(token)"
+              >
+                <RefreshCw class="h-4 w-4 mr-2" />
+                Re-issue token
               </DropdownMenuItem>
               <DropdownMenuItem @click="openEditDialog(token)">
                 <Pencil class="h-4 w-4 mr-2" />
@@ -709,8 +730,10 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 @click="
-                  ipRestrictionTokenId = token.id
-                  showIPRestrictionsDialog = true
+                  () => {
+                    ipRestrictionTokenId = token.id
+                    showIPRestrictionsDialog = true
+                  }
                 "
               >
                 <Shield class="h-4 w-4 mr-2" />
@@ -721,6 +744,7 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
                 View activity
               </DropdownMenuItem>
               <DropdownMenuItem
+                class="text-destructive focus:text-destructive"
                 :disabled="pendingResetTrafficId === token.id"
                 @click="handleResetTraffic(token)"
               >

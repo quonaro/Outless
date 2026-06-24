@@ -113,7 +113,6 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	}
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
-	cleanupService := service.NewCleanupService(tokenRepo, logger)
 	totpService := service.NewTOTPService()
 
 	// Runtime controller (embedded sing-box)
@@ -122,6 +121,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 
 	trafficRepo := repository.NewTrafficRepository(db)
 	trafficCollector := service.NewTrafficCollector(runtime, trafficRepo, tokenRepo, logger)
+	cleanupService := service.NewCleanupService(tokenRepo, logger).WithTrafficRepo(trafficRepo)
 
 	// HTTP handlers
 	handlers := httpadapter.Handlers{

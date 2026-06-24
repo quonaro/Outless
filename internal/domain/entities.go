@@ -25,6 +25,7 @@ type Token struct {
 	GroupIDs        []string
 	InboundIDs      []string
 	UUID            string
+	AccessURL       string
 	IsActive        bool
 	QuotaBytes      *int64
 	QuotaPeriod     string

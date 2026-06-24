@@ -5,6 +5,7 @@ import {
   type EntityTrafficOutput,
   type Stats,
   type TrafficStats,
+  type TrafficEntityItem,
 } from '~/utils/schemas/stats'
 
 export async function fetchStats(): Promise<Stats> {
@@ -41,4 +42,10 @@ export async function fetchDomainTrafficStats(): Promise<EntityTrafficOutput> {
   const { $api } = useNuxtApp()
   const data = await $api<EntityTrafficOutput>('/v1/stats/traffic/domains')
   return EntityTrafficOutputSchema.parse(data)
+}
+
+export async function fetchDomainHistory(days = 30): Promise<EntityTrafficOutput> {
+  const { $api } = useNuxtApp()
+  const data = await $api<TrafficEntityItem[]>(`/v1/stats/traffic/domains/history?days=${days}`)
+  return EntityTrafficOutputSchema.parse({ items: data })
 }

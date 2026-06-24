@@ -124,6 +124,7 @@ func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Delete(api, "/v1/tokens/{id}/ips/{ip}", h.RemoveIPRestriction)
 	huma.Post(api, "/v1/tokens/batch-deactivate", h.BatchDeactivateTokens)
 	huma.Post(api, "/v1/tokens/batch-delete", h.BatchRemoveTokens)
+	huma.Post(api, "/v1/tokens/{id}/reissue", h.ReissueToken)
 }
 
 func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateTokenInput) (*CreateTokenOutput, error) {
@@ -208,6 +209,7 @@ func (h *TokenManagementHandler) ListTokens(ctx context.Context, _ *struct{}) (*
 			GroupID:         t.GroupID,
 			GroupIDs:        t.GroupIDs,
 			InboundIDs:      t.InboundIDs,
+			AccessURL:       t.AccessURL,
 			IsActive:        t.IsActive,
 			QuotaBytes:      t.QuotaBytes,
 			QuotaPeriod:     t.QuotaPeriod,
@@ -385,6 +387,38 @@ func (h *TokenManagementHandler) ResetTraffic(ctx context.Context, input *Delete
 	}
 	h.logger.Info("token traffic reset", slog.String("id", input.ID))
 	return nil, nil
+}
+
+type reissueTokenInput struct {
+	ID string `path:"id" required:"true"`
+}
+
+type reissueTokenOutput struct {
+	Body struct {
+		ID        string `json:"id"`
+		Token     string `json:"token"`
+		AccessURL string `json:"access_url"`
+		Owner     string `json:"owner"`
+	}
+}
+
+func (h *TokenManagementHandler) ReissueToken(ctx context.Context, input *reissueTokenInput) (*reissueTokenOutput, error) {
+	token, plainToken, err := h.tokenRepo.ReissueToken(ctx, input.ID)
+	if err != nil {
+		h.logger.Error("failed to reissue token", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to reissue token")
+	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Warn("failed to sync after reissue", slog.String("error", err.Error()))
+	}
+
+	out := &reissueTokenOutput{}
+	out.Body.ID = token.ID
+	out.Body.Token = plainToken
+	out.Body.AccessURL = token.AccessURL
+	out.Body.Owner = token.Owner
+	return out, nil
 }
 
 type ipRestrictionItem struct {

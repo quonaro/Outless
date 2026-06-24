@@ -143,3 +143,20 @@ export async function batchRemoveTokens(ids: string[]): Promise<void> {
     body: { ids },
   })
 }
+
+const ReissueResultSchema = z.object({
+  id: z.string(),
+  token: z.string(),
+  access_url: z.string(),
+  owner: z.string(),
+})
+
+export type ReissueResult = z.infer<typeof ReissueResultSchema>
+
+export async function reissueToken(id: string): Promise<ReissueResult> {
+  const { $api } = useNuxtApp()
+  const data = await $api(`/v1/tokens/${id}/reissue`, {
+    method: 'POST',
+  })
+  return ReissueResultSchema.parse(data)
+}

@@ -73,7 +73,10 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		token := ""
 		if authHeader == "" {
-			if strings.HasSuffix(r.URL.Path, "/sync/stream") || r.URL.Path == "/v1/ws" || r.URL.Path == "/v1/events/logs" {
+			if strings.HasSuffix(r.URL.Path, "/sync/stream") ||
+				r.URL.Path == "/v1/ws" ||
+				r.URL.Path == "/v1/events/logs" ||
+				r.URL.Path == "/v1/connections/stream" {
 				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
 			}
 			if token == "" {

@@ -383,3 +383,45 @@ func toDomainDomainUsage(model domainUsageModel) domain.DomainUsage {
 		UpdatedAt:     model.UpdatedAt,
 	}
 }
+
+// DeleteDomainUsageOlderThan removes day-level domain usage records older than cutoff.
+func (r *TrafficRepository) DeleteDomainUsageOlderThan(ctx context.Context, cutoff time.Time) error {
+	result := r.db.WithContext(ctx).
+		Where("period_type = ? AND period_start < ?", "day", cutoff.UTC()).
+		Delete(&domainUsageModel{})
+	if result.Error != nil {
+		return fmt.Errorf("deleting old domain usage: %w", result.Error)
+	}
+	return nil
+}
+
+type domainAggregateRow struct {
+	Domain        string `gorm:"column:domain"`
+	UploadBytes   int64  `gorm:"column:upload_bytes"`
+	DownloadBytes int64  `gorm:"column:download_bytes"`
+}
+
+// ListDomainUsageAggregate returns per-domain traffic summed over the last N days.
+func (r *TrafficRepository) ListDomainUsageAggregate(ctx context.Context, days int) ([]domain.DomainUsage, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -days)
+	var rows []domainAggregateRow
+	err := r.db.WithContext(ctx).
+		Table("domain_usage").
+		Select("domain, SUM(upload_bytes) as upload_bytes, SUM(download_bytes) as download_bytes").
+		Where("period_type = ? AND period_start >= ?", "day", cutoff).
+		Group("domain").
+		Order("SUM(upload_bytes + download_bytes) DESC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing domain usage aggregate: %w", err)
+	}
+	out := make([]domain.DomainUsage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.DomainUsage{
+			Domain:        row.Domain,
+			UploadBytes:   row.UploadBytes,
+			DownloadBytes: row.DownloadBytes,
+		})
+	}
+	return out, nil
+}

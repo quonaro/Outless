@@ -61,8 +61,14 @@ const onSubmit = handleSubmit(async (values) => {
       await nextTick()
       await navigateTo('/dashboard')
     }
-  } catch {
-    errorMessage.value = 'Invalid username, password, or TOTP code'
+  } catch (err: unknown) {
+    const statusCode = (err as { statusCode?: number })?.statusCode
+    console.error('login error:', statusCode, err)
+    if (totpRequired.value) {
+      errorMessage.value = 'Invalid TOTP code'
+    } else {
+      errorMessage.value = 'Invalid username or password'
+    }
   } finally {
     isLoading.value = false
   }

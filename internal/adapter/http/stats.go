@@ -57,6 +57,7 @@ func (h *StatsHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/stats/traffic/nodes", h.GetNodeTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/inbounds", h.GetInboundTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/domains", h.GetDomainTrafficStats)
+	huma.Get(api, "/v1/stats/traffic/domains/history", h.GetDomainTrafficHistory)
 }
 
 type TrafficStatsOutput struct {
@@ -258,6 +259,33 @@ func (h *StatsHandler) GetDomainTrafficStats(ctx context.Context, _ *struct{}) (
 		out.Body = append(out.Body, TrafficEntityItem{
 			ID:            u.Domain,
 			Name:          name,
+			UploadBytes:   u.UploadBytes,
+			DownloadBytes: u.DownloadBytes,
+			TotalBytes:    u.UploadBytes + u.DownloadBytes,
+		})
+	}
+	return out, nil
+}
+
+// DomainHistoryInput defines query parameters for domain history.
+type DomainHistoryInput struct {
+	Days int `query:"days" default:"30" minimum:"1" maximum:"365"`
+}
+
+// GetDomainTrafficHistory returns per-domain traffic aggregated over the last N days.
+func (h *StatsHandler) GetDomainTrafficHistory(ctx context.Context, input *DomainHistoryInput) (*EntityTrafficOutput, error) {
+	usageList, err := h.trafficRepo.ListDomainUsageAggregate(ctx, input.Days)
+	if err != nil {
+		h.logger.Error("failed to list domain usage history", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch domain history")
+	}
+
+	out := &EntityTrafficOutput{}
+	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+	for _, u := range usageList {
+		out.Body = append(out.Body, TrafficEntityItem{
+			ID:            u.Domain,
+			Name:          u.Domain,
 			UploadBytes:   u.UploadBytes,
 			DownloadBytes: u.DownloadBytes,
 			TotalBytes:    u.UploadBytes + u.DownloadBytes,
