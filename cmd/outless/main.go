@@ -116,7 +116,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	totpService := service.NewTOTPService()
 
 	// Runtime controller (embedded sing-box)
-	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0)
+	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0, broadcaster.Broadcast)
 	logger.Info("using embedded sing-box runtime")
 
 	trafficRepo := repository.NewTrafficRepository(db)

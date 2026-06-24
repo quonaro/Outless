@@ -28,6 +28,7 @@ type RuntimeController struct {
 	inboundRepo     domain.InboundRepository
 	singboxLogLevel string
 	debounce        time.Duration
+	logOutput       func(string)
 
 	mu             sync.Mutex
 	instance       *box.Box
@@ -45,6 +46,7 @@ func NewRuntimeController(
 	inboundRepo domain.InboundRepository,
 	singboxLogLevel string,
 	debounce time.Duration,
+	logOutput func(string),
 ) *RuntimeController {
 	if debounce <= 0 {
 		debounce = 3 * time.Second
@@ -56,6 +58,7 @@ func NewRuntimeController(
 		inboundRepo:     inboundRepo,
 		singboxLogLevel: singboxLogLevel,
 		debounce:        debounce,
+		logOutput:       logOutput,
 	}
 }
 
@@ -215,7 +218,11 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 		r.logger.Debug("sing-box options", slog.String("config", string(debugJSON)))
 	}
 
-	instance, err := box.New(box.Options{Context: ctx, Options: opts})
+	instance, err := box.New(box.Options{
+		Context:           ctx,
+		Options:           opts,
+		PlatformLogWriter: newSingBoxLogWriter(r.logOutput),
+	})
 	if err != nil {
 		return fmt.Errorf("creating sing-box instance: %w", err)
 	}
