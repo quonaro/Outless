@@ -6,6 +6,7 @@ export interface Connection {
   node_id: string
   inbound: string
   domain: string
+  source_ip: string
   upload: number
   download: number
 }

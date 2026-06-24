@@ -27,6 +27,7 @@ type connectionItem struct {
 	NodeID   string `json:"node_id"`
 	Inbound  string `json:"inbound"`
 	Domain   string `json:"domain"`
+	SourceIP string `json:"source_ip"`
 	Upload   int64  `json:"upload"`
 	Download int64  `json:"download"`
 }
@@ -64,6 +65,7 @@ func (h *ConnectionsHandler) handleConnections(w http.ResponseWriter, r *http.Re
 			NodeID:   c.NodeID,
 			Inbound:  c.Inbound,
 			Domain:   c.Domain,
+			SourceIP: c.SourceIP,
 			Upload:   c.Upload,
 			Download: c.Download,
 		})
@@ -118,6 +120,7 @@ func (h *StreamConnectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 				NodeID:   c.NodeID,
 				Inbound:  c.Inbound,
 				Domain:   c.Domain,
+				SourceIP: c.SourceIP,
 				Upload:   c.Upload,
 				Download: c.Download,
 			})

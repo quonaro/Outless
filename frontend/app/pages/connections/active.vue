@@ -23,7 +23,14 @@ interface FlowGroup {
   count: number
   upload: number
   download: number
-  flows: { id: string; domain: string; inbound: string; upload: number; download: number }[]
+  flows: {
+    id: string
+    domain: string
+    inbound: string
+    source_ip: string
+    upload: number
+    download: number
+  }[]
 }
 
 const groups = computed<FlowGroup[]>(() => {
@@ -36,6 +43,7 @@ const groups = computed<FlowGroup[]>(() => {
       id: conn.id,
       domain: conn.domain,
       inbound: conn.inbound,
+      source_ip: conn.source_ip,
       upload: conn.upload,
       download: conn.download,
     }
@@ -122,7 +130,10 @@ const filteredGroups = computed<FlowGroup[]>(() => {
         g.node_id.toLowerCase().includes(q)
       if (matchMeta) return g
       const domainFlows = g.flows.filter(
-        (f) => f.domain.toLowerCase().includes(q) || f.inbound.toLowerCase().includes(q)
+        (f) =>
+          f.domain.toLowerCase().includes(q) ||
+          f.inbound.toLowerCase().includes(q) ||
+          f.source_ip.toLowerCase().includes(q)
       )
       if (domainFlows.length > 0) {
         return { ...g, flows: domainFlows, count: domainFlows.length }
@@ -192,6 +203,9 @@ const filteredGroups = computed<FlowGroup[]>(() => {
               <div class="flex items-center gap-2 min-w-0">
                 <span v-if="flow.domain" class="truncate">{{ flow.domain }}</span>
                 <span v-else class="truncate">{{ flow.inbound || '—' }}</span>
+                <span v-if="flow.source_ip" class="truncate text-muted-foreground">{{
+                  flow.source_ip
+                }}</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <span v-if="g.nodeCountry" class="flex items-center gap-1">

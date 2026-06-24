@@ -101,6 +101,7 @@ type TrafficConnection struct {
 	NodeID   string
 	Inbound  string
 	Domain   string
+	SourceIP string
 	Upload   int64
 	Download int64
 }

@@ -146,6 +146,7 @@ func (r *RuntimeController) TrafficSnapshot() *domain.TrafficSnapshot {
 			NodeID:   parseNodeID(meta.Metadata.User),
 			Inbound:  meta.Metadata.Inbound,
 			Domain:   connDomain,
+			SourceIP: meta.Metadata.Source.Addr.String(),
 			Upload:   meta.Upload.Load(),
 			Download: meta.Download.Load(),
 		})
