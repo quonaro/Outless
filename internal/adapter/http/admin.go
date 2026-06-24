@@ -31,6 +31,7 @@ type ChangePasswordInput struct {
 		CurrentPassword string `json:"current_password" required:"true" maxLength:"128"`
 		NewLogin        string `json:"new_login" maxLength:"64"`
 		NewPassword     string `json:"new_password" required:"true" maxLength:"128"`
+		ConfirmPassword string `json:"confirm_password" required:"true" maxLength:"128"`
 	}
 }
 
@@ -42,6 +43,9 @@ func (h *AdminManagementHandler) Register(api huma.API) {
 func (h *AdminManagementHandler) ChangePassword(ctx context.Context, input *ChangePasswordInput) (*struct{}, error) {
 	if input.Body.CurrentLogin == "" || input.Body.CurrentPassword == "" || input.Body.NewPassword == "" {
 		return nil, huma.Error400BadRequest("current_login, current_password and new_password are required")
+	}
+	if input.Body.NewPassword != input.Body.ConfirmPassword {
+		return nil, huma.Error400BadRequest("new_password and confirm_password do not match")
 	}
 
 	admin, err := h.adminRepo.FindByUsername(ctx, input.Body.CurrentLogin)
