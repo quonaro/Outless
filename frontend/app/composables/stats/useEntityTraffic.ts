@@ -6,7 +6,7 @@ import {
   fetchDomainTrafficStats,
   fetchDomainHistory,
 } from '~/utils/services/stats'
-import type { EntityTrafficOutput } from '~/utils/schemas/stats'
+import type { DomainHierarchyOutput, EntityTrafficOutput } from '~/utils/schemas/stats'
 
 export function useTokenTrafficStats(options?: UseQueryOptions<EntityTrafficOutput, Error>) {
   return useQuery({
@@ -44,7 +44,10 @@ export function useDomainTrafficStats(options?: UseQueryOptions<EntityTrafficOut
   })
 }
 
-export function useDomainHistory(days = 30, options?: UseQueryOptions<EntityTrafficOutput, Error>) {
+export function useDomainHistory(
+  days = 30,
+  options?: UseQueryOptions<DomainHierarchyOutput, Error>
+) {
   return useQuery({
     queryKey: ['domain-history', days],
     queryFn: () => fetchDomainHistory(days),

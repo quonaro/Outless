@@ -149,6 +149,7 @@ type InboundUsage struct {
 // DomainUsage aggregates per-domain traffic for a specific period.
 type DomainUsage struct {
 	TokenID       string
+	NodeID        string
 	Domain        string
 	PeriodStart   time.Time
 	PeriodType    string
@@ -174,10 +175,15 @@ type TrafficRepository interface {
 	ListInboundUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]InboundUsage, error)
 
 	RecordDomainUsage(ctx context.Context, usage DomainUsage) error
-	GetDomainUsage(ctx context.Context, tokenID string, domain string, periodType string, periodStart time.Time) (DomainUsage, error)
+	GetDomainUsage(
+		ctx context.Context, tokenID string, nodeID string,
+		domain string, periodType string, periodStart time.Time,
+	) (DomainUsage, error)
 	ListDomainUsage(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]DomainUsage, error)
 	DeleteDomainUsageOlderThan(ctx context.Context, cutoff time.Time) error
 	ListDomainUsageAggregate(ctx context.Context, days int) ([]DomainUsage, error)
+	ListDomainUsageAggregateByUser(ctx context.Context, days int) ([]DomainUsage, error)
+	DeleteAllDomainUsage(ctx context.Context) error
 
 	ListTokenUsageForPeriod(ctx context.Context, periodType string, periodStart time.Time, limit int) ([]TokenUsage, error)
 }

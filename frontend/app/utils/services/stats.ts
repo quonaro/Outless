@@ -1,11 +1,12 @@
 import {
+  DomainHierarchyOutputSchema,
   EntityTrafficOutputSchema,
   StatsSchema,
   TrafficStatsSchema,
+  type DomainHierarchyOutput,
   type EntityTrafficOutput,
   type Stats,
   type TrafficStats,
-  type TrafficEntityItem,
 } from '~/utils/schemas/stats'
 
 export async function fetchStats(): Promise<Stats> {
@@ -44,8 +45,13 @@ export async function fetchDomainTrafficStats(): Promise<EntityTrafficOutput> {
   return EntityTrafficOutputSchema.parse(data)
 }
 
-export async function fetchDomainHistory(days = 30): Promise<EntityTrafficOutput> {
+export async function fetchDomainHistory(days = 30): Promise<DomainHierarchyOutput> {
   const { $api } = useNuxtApp()
-  const data = await $api<TrafficEntityItem[]>(`/v1/stats/traffic/domains/history?days=${days}`)
-  return EntityTrafficOutputSchema.parse({ items: data })
+  const data = await $api<DomainHierarchyOutput>(`/v1/stats/traffic/domains/history?days=${days}`)
+  return DomainHierarchyOutputSchema.parse(data)
+}
+
+export async function clearDomainHistory(): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api('/v1/stats/traffic/domains/history', { method: 'DELETE' })
 }

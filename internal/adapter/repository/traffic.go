@@ -45,6 +45,7 @@ func (inboundUsageModel) TableName() string { return "inbound_usage" }
 
 type domainUsageModel struct {
 	TokenID       string    `gorm:"column:token_id;primaryKey"`
+	NodeID        string    `gorm:"column:node_id;primaryKey"`
 	Domain        string    `gorm:"column:domain;primaryKey"`
 	PeriodType    string    `gorm:"column:period_type;primaryKey"`
 	PeriodStart   time.Time `gorm:"column:period_start;primaryKey"`
@@ -320,6 +321,7 @@ func (r *TrafficRepository) ListTokenUsageForPeriod(
 func (r *TrafficRepository) RecordDomainUsage(ctx context.Context, usage domain.DomainUsage) error {
 	model := domainUsageModel{
 		TokenID:       usage.TokenID,
+		NodeID:        usage.NodeID,
 		Domain:        usage.Domain,
 		PeriodType:    usage.PeriodType,
 		PeriodStart:   usage.PeriodStart.UTC(),
@@ -336,12 +338,12 @@ func (r *TrafficRepository) RecordDomainUsage(ctx context.Context, usage domain.
 
 // GetDomainUsage retrieves a single domain usage record.
 func (r *TrafficRepository) GetDomainUsage(
-	ctx context.Context, tokenID string, domainName string, periodType string, periodStart time.Time,
+	ctx context.Context, tokenID string, nodeID string, domainName string, periodType string, periodStart time.Time,
 ) (domain.DomainUsage, error) {
 	var model domainUsageModel
 	err := r.db.WithContext(ctx).
-		Where("token_id = ? AND domain = ? AND period_type = ? AND period_start = ?",
-			tokenID, domainName, periodType, periodStart.UTC()).
+		Where("token_id = ? AND node_id = ? AND domain = ? AND period_type = ? AND period_start = ?",
+			tokenID, nodeID, domainName, periodType, periodStart.UTC()).
 		First(&model).Error
 	if err != nil {
 		return domain.DomainUsage{}, fmt.Errorf("getting domain usage: %w", err)
@@ -375,6 +377,7 @@ func (r *TrafficRepository) ListDomainUsage(
 func toDomainDomainUsage(model domainUsageModel) domain.DomainUsage {
 	return domain.DomainUsage{
 		TokenID:       model.TokenID,
+		NodeID:        model.NodeID,
 		Domain:        model.Domain,
 		PeriodType:    model.PeriodType,
 		PeriodStart:   model.PeriodStart,
@@ -382,6 +385,15 @@ func toDomainDomainUsage(model domainUsageModel) domain.DomainUsage {
 		DownloadBytes: model.DownloadBytes,
 		UpdatedAt:     model.UpdatedAt,
 	}
+}
+
+// DeleteAllDomainUsage removes all domain usage records.
+func (r *TrafficRepository) DeleteAllDomainUsage(ctx context.Context) error {
+	result := r.db.WithContext(ctx).Delete(&domainUsageModel{})
+	if result.Error != nil {
+		return fmt.Errorf("deleting all domain usage: %w", result.Error)
+	}
+	return nil
 }
 
 // DeleteDomainUsageOlderThan removes day-level domain usage records older than cutoff.
@@ -393,6 +405,41 @@ func (r *TrafficRepository) DeleteDomainUsageOlderThan(ctx context.Context, cuto
 		return fmt.Errorf("deleting old domain usage: %w", result.Error)
 	}
 	return nil
+}
+
+type domainAggregateByUserRow struct {
+	TokenID       string `gorm:"column:token_id"`
+	NodeID        string `gorm:"column:node_id"`
+	Domain        string `gorm:"column:domain"`
+	UploadBytes   int64  `gorm:"column:upload_bytes"`
+	DownloadBytes int64  `gorm:"column:download_bytes"`
+}
+
+// ListDomainUsageAggregateByUser returns per-domain traffic summed over the last N days grouped by token/node/domain.
+func (r *TrafficRepository) ListDomainUsageAggregateByUser(ctx context.Context, days int) ([]domain.DomainUsage, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -days)
+	var rows []domainAggregateByUserRow
+	err := r.db.WithContext(ctx).
+		Table("domain_usage").
+		Select("token_id, node_id, domain, SUM(upload_bytes) as upload_bytes, SUM(download_bytes) as download_bytes").
+		Where("period_type = ? AND period_start >= ?", "day", cutoff).
+		Group("token_id, node_id, domain").
+		Order("SUM(upload_bytes + download_bytes) DESC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing domain usage aggregate by user: %w", err)
+	}
+	out := make([]domain.DomainUsage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.DomainUsage{
+			TokenID:       row.TokenID,
+			NodeID:        row.NodeID,
+			Domain:        row.Domain,
+			UploadBytes:   row.UploadBytes,
+			DownloadBytes: row.DownloadBytes,
+		})
+	}
+	return out, nil
 }
 
 type domainAggregateRow struct {

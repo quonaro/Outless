@@ -140,6 +140,7 @@ func (s *TrafficCollector) collect(ctx context.Context) error {
 
 type domainDeltaKey struct {
 	tokenID string
+	nodeID  string
 	domain  string
 }
 
@@ -171,7 +172,7 @@ func (s *TrafficCollector) aggregateDeltas(
 			tokenDeltas[tokenID] = st
 
 			if conn.Domain != "" {
-				dk := domainDeltaKey{tokenID: tokenID, domain: conn.Domain}
+				dk := domainDeltaKey{tokenID: tokenID, nodeID: conn.NodeID, domain: conn.Domain}
 				dst := domainDeltas[dk]
 				dst.upload += du
 				dst.download += dd
@@ -274,7 +275,7 @@ func (s *TrafficCollector) persistDomainDeltas(
 		}
 		dayStart := periodStart("day", now)
 		if err := s.upsertDomainDelta(
-			ctx, key.tokenID, key.domain, "day", dayStart, d.upload, d.download,
+			ctx, key.tokenID, key.nodeID, key.domain, "day", dayStart, d.upload, d.download,
 		); err != nil {
 			s.logger.Error("failed to record daily domain usage",
 				slog.String("token_id", key.tokenID),
@@ -284,7 +285,7 @@ func (s *TrafficCollector) persistDomainDeltas(
 		}
 		monthStart := periodStart("month", now)
 		if err := s.upsertDomainDelta(
-			ctx, key.tokenID, key.domain, "month", monthStart, d.upload, d.download,
+			ctx, key.tokenID, key.nodeID, key.domain, "month", monthStart, d.upload, d.download,
 		); err != nil {
 			s.logger.Error("failed to record monthly domain usage",
 				slog.String("token_id", key.tokenID),
@@ -298,16 +299,18 @@ func (s *TrafficCollector) persistDomainDeltas(
 func (s *TrafficCollector) upsertDomainDelta(
 	ctx context.Context,
 	tokenID string,
+	nodeID string,
 	domainName string,
 	periodType string,
 	periodStart int64,
 	uploadDelta int64,
 	downloadDelta int64,
 ) error {
-	usage, err := s.trafficRepo.GetDomainUsage(ctx, tokenID, domainName, periodType, time.Unix(0, periodStart).UTC())
+	usage, err := s.trafficRepo.GetDomainUsage(ctx, tokenID, nodeID, domainName, periodType, time.Unix(0, periodStart).UTC())
 	if err != nil {
 		usage = domain.DomainUsage{
 			TokenID:     tokenID,
+			NodeID:      nodeID,
 			Domain:      domainName,
 			PeriodType:  periodType,
 			PeriodStart: time.Unix(0, periodStart).UTC(),

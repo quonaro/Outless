@@ -26,7 +26,35 @@ export const EntityTrafficOutputSchema = z.object({
   items: z.array(TrafficEntityItemSchema),
 })
 
+export const HistoryDomainItemSchema = TrafficEntityItemSchema
+
+export const HistoryNodeItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  upload_bytes: z.number(),
+  download_bytes: z.number(),
+  total_bytes: z.number(),
+  domains: z.array(HistoryDomainItemSchema),
+})
+
+export const HistoryUserItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  upload_bytes: z.number(),
+  download_bytes: z.number(),
+  total_bytes: z.number(),
+  nodes: z.array(HistoryNodeItemSchema),
+})
+
+export const DomainHierarchyOutputSchema = z.object({
+  items: z.array(HistoryUserItemSchema),
+})
+
 export type Stats = z.infer<typeof StatsSchema>
 export type TrafficStats = z.infer<typeof TrafficStatsSchema>
 export type TrafficEntityItem = z.infer<typeof TrafficEntityItemSchema>
 export type EntityTrafficOutput = z.infer<typeof EntityTrafficOutputSchema>
+export type HistoryDomainItem = z.infer<typeof HistoryDomainItemSchema>
+export type HistoryNodeItem = z.infer<typeof HistoryNodeItemSchema>
+export type HistoryUserItem = z.infer<typeof HistoryUserItemSchema>
+export type DomainHierarchyOutput = z.infer<typeof DomainHierarchyOutputSchema>

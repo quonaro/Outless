@@ -58,6 +58,7 @@ func (h *StatsHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/stats/traffic/inbounds", h.GetInboundTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/domains", h.GetDomainTrafficStats)
 	huma.Get(api, "/v1/stats/traffic/domains/history", h.GetDomainTrafficHistory)
+	huma.Delete(api, "/v1/stats/traffic/domains/history", h.ClearDomainHistory)
 }
 
 type TrafficStatsOutput struct {
@@ -272,26 +273,143 @@ type DomainHistoryInput struct {
 	Days int `query:"days" default:"30" minimum:"1" maximum:"365"`
 }
 
-// GetDomainTrafficHistory returns per-domain traffic aggregated over the last N days.
-func (h *StatsHandler) GetDomainTrafficHistory(ctx context.Context, input *DomainHistoryInput) (*EntityTrafficOutput, error) {
-	usageList, err := h.trafficRepo.ListDomainUsageAggregate(ctx, input.Days)
-	if err != nil {
-		h.logger.Error("failed to list domain usage history", slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to fetch domain history")
-	}
+type HistoryDomainItem struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	UploadBytes   int64  `json:"upload_bytes"`
+	DownloadBytes int64  `json:"download_bytes"`
+	TotalBytes    int64  `json:"total_bytes"`
+}
 
-	out := &EntityTrafficOutput{}
-	out.Body = make([]TrafficEntityItem, 0, len(usageList))
+type HistoryNodeItem struct {
+	ID            string              `json:"id"`
+	Name          string              `json:"name"`
+	UploadBytes   int64               `json:"upload_bytes"`
+	DownloadBytes int64               `json:"download_bytes"`
+	TotalBytes    int64               `json:"total_bytes"`
+	Domains       []HistoryDomainItem `json:"domains"`
+}
+
+type HistoryUserItem struct {
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	UploadBytes   int64              `json:"upload_bytes"`
+	DownloadBytes int64              `json:"download_bytes"`
+	TotalBytes    int64              `json:"total_bytes"`
+	Nodes         []*HistoryNodeItem `json:"nodes"`
+}
+
+type DomainHierarchyOutput struct {
+	Body struct {
+		Items []*HistoryUserItem `json:"items"`
+	}
+}
+
+func buildDomainHierarchy(
+	usageList []domain.DomainUsage,
+	tokenName map[string]string,
+	nodeName map[string]string,
+) []*HistoryUserItem {
+	type nodeKey struct{ userID, nodeID string }
+	userMap := make(map[string]*HistoryUserItem)
+	nodeMap := make(map[nodeKey]*HistoryNodeItem)
+
 	for _, u := range usageList {
-		out.Body = append(out.Body, TrafficEntityItem{
+		userID := u.TokenID
+		userName := tokenName[userID]
+		if userName == "" {
+			userName = userID
+		}
+
+		nodeID := u.NodeID
+		nodeNameStr := nodeName[nodeID]
+		if nodeNameStr == "" {
+			nodeNameStr = nodeID
+		}
+
+		if userMap[userID] == nil {
+			userMap[userID] = &HistoryUserItem{
+				ID:   userID,
+				Name: userName,
+			}
+		}
+		user := userMap[userID]
+
+		nk := nodeKey{userID: userID, nodeID: nodeID}
+		if nodeMap[nk] == nil {
+			nodeMap[nk] = &HistoryNodeItem{
+				ID:   nodeID,
+				Name: nodeNameStr,
+			}
+			user.Nodes = append(user.Nodes, nodeMap[nk])
+		}
+		node := nodeMap[nk]
+
+		node.Domains = append(node.Domains, HistoryDomainItem{
 			ID:            u.Domain,
 			Name:          u.Domain,
 			UploadBytes:   u.UploadBytes,
 			DownloadBytes: u.DownloadBytes,
 			TotalBytes:    u.UploadBytes + u.DownloadBytes,
 		})
+
+		node.UploadBytes += u.UploadBytes
+		node.DownloadBytes += u.DownloadBytes
+		node.TotalBytes += u.UploadBytes + u.DownloadBytes
+		user.UploadBytes += u.UploadBytes
+		user.DownloadBytes += u.DownloadBytes
+		user.TotalBytes += u.UploadBytes + u.DownloadBytes
 	}
+
+	out := make([]*HistoryUserItem, 0, len(userMap))
+	for _, u := range userMap {
+		out = append(out, u)
+	}
+	return out
+}
+
+// GetDomainTrafficHistory returns per-domain traffic aggregated over the last N days grouped by user -> node -> domain.
+func (h *StatsHandler) GetDomainTrafficHistory(ctx context.Context, input *DomainHistoryInput) (*DomainHierarchyOutput, error) {
+	usageList, err := h.trafficRepo.ListDomainUsageAggregateByUser(ctx, input.Days)
+	if err != nil {
+		h.logger.Error("failed to list domain usage history", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch domain history")
+	}
+
+	tokens, err := h.tokenRepo.List(ctx)
+	if err != nil {
+		h.logger.Error("failed to list tokens", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch tokens")
+	}
+
+	nodes, err := h.nodeRepo.List(ctx)
+	if err != nil {
+		h.logger.Error("failed to list nodes", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to fetch nodes")
+	}
+
+	tokenName := make(map[string]string, len(tokens))
+	for _, t := range tokens {
+		tokenName[t.ID] = t.Owner
+	}
+
+	nodeName := make(map[string]string, len(nodes))
+	for _, n := range nodes {
+		nodeName[n.ID] = n.Country
+	}
+
+	out := &DomainHierarchyOutput{}
+	out.Body.Items = buildDomainHierarchy(usageList, tokenName, nodeName)
 	return out, nil
+}
+
+// ClearDomainHistory deletes all domain usage records.
+func (h *StatsHandler) ClearDomainHistory(ctx context.Context, _ *struct{}) (*struct{}, error) {
+	if err := h.trafficRepo.DeleteAllDomainUsage(ctx); err != nil {
+		h.logger.Error("failed to clear domain history", slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to clear domain history")
+	}
+	return nil, nil
 }
 
 // GetStats returns counters aggregated from node/token/group repositories.
