@@ -131,6 +131,12 @@ func (h *LogStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ch := h.broadcaster.Subscribe()
 	defer h.broadcaster.Unsubscribe(ch)
 
+	_, err := fmt.Fprintf(w, "data: logs is connected\n\n")
+	if err != nil {
+		return
+	}
+	flusher.Flush()
+
 	for {
 		select {
 		case msg, ok := <-ch:
