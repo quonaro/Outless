@@ -4,6 +4,9 @@ vars:
   - BINARY=outless
   - GO_TAGS=with_reality_server with_utls
   - GO_LDFLAGS=-s -w
+  - SDK_URL=https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+  - SDK_DIR=$HOME/openwrt-sdk
+  - SDK_ARCH=mediatek-mt7622
 
 build:
   desc: Build for different platforms
@@ -78,6 +81,48 @@ backend-dev:
   desc: Run Go backend with hot reload via air
   script: |
     air
+
+package:
+  desc: Build packages for different platforms
+  ipk:
+    desc: Build OpenWrt .ipk package (auto-downloads SDK if missing)
+    depends:
+      - build.arm64
+    script: |
+      set -euo pipefail
+      SDK_TARBALL="/tmp/$(basename "$SDK_URL")"
+      REAL_SDK_DIR="$SDK_DIR"
+
+      if [ ! -d "$REAL_SDK_DIR/staging_dir" ]; then
+        echo "OpenWrt SDK not found at $REAL_SDK_DIR"
+        if [ ! -f "$SDK_TARBALL" ]; then
+          echo "Downloading SDK... (~200 MB)"
+          wget -q --show-progress -O "$SDK_TARBALL" "$SDK_URL" || curl -L -o "$SDK_TARBALL" "$SDK_URL"
+        fi
+        echo "Extracting SDK..."
+        mkdir -p "$REAL_SDK_DIR"
+        tar xf "$SDK_TARBALL" -C "$REAL_SDK_DIR" --strip-components=1
+        rm -f "$SDK_TARBALL"
+        echo "SDK ready at $REAL_SDK_DIR"
+      fi
+
+      mkdir -p "$REAL_SDK_DIR/package/outless"
+      cp "${BINARY}-linux-arm64" "$REAL_SDK_DIR/package/outless/outless"
+      cp -r deploy/openwrt/files "$REAL_SDK_DIR/package/outless/"
+      cp deploy/openwrt/Makefile "$REAL_SDK_DIR/package/outless/"
+
+      echo "Building .ipk..."
+      cd "$REAL_SDK_DIR"
+      make package/outless/compile V=s -j$(nproc)
+
+      IPK_PATH=$(find "$REAL_SDK_DIR/bin/packages" -name "outless_*.ipk" | head -n1)
+      if [ -z "$IPK_PATH" ]; then
+        echo "ERROR: .ipk not found after build"
+        exit 1
+      fi
+      cp "$IPK_PATH" .
+      echo "IPK built:"
+      ls -lh ./outless_*.ipk
 
 lint:
   backend:

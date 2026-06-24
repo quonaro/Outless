@@ -1,13 +1,14 @@
 # Binaries
-
 /outless
+outless-linux-*
 outless_*
 *.exe
 *.dll
 *.so
 *.dylib
 
-
+# OpenWrt packages
+*.ipk
 
 # Test and build artifacts
 *.test
