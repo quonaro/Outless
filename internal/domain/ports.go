@@ -49,6 +49,11 @@ type TokenRepository interface {
 	RecordTokenConnection(ctx context.Context, id string, uploadDelta int64, downloadDelta int64, at time.Time) error
 	ResetTraffic(ctx context.Context, id string) error
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
+
+	AddIPRestriction(ctx context.Context, tokenID string, ip string, mode string) error
+	RemoveIPRestriction(ctx context.Context, tokenID string, ip string) error
+	ListIPRestrictions(ctx context.Context, tokenID string) ([]TokenIPRestriction, error)
+	CheckIPAllowed(ctx context.Context, tokenID string, ip string) (bool, error)
 }
 
 // AdminRepository provides persistence operations for admin users.

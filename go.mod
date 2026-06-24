@@ -3,9 +3,11 @@ module outless
 go 1.26.1
 
 require (
+	github.com/boombuler/barcode v1.1.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/pquerna/otp v1.5.0
 	github.com/quonaro/lota v1.16.3
 	github.com/sagernet/sing-box v1.10.7
 	golang.org/x/crypto v0.53.0

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -14,13 +15,18 @@ import (
 
 // SubscriptionHandler serves base64 VLESS subscriptions.
 type SubscriptionHandler struct {
-	service *service.SubscriptionService
-	logger  *slog.Logger
+	service   *service.SubscriptionService
+	tokenRepo domain.TokenRepository
+	logger    *slog.Logger
 }
 
 // NewSubscriptionHandler constructs subscription HTTP handler.
-func NewSubscriptionHandler(service *service.SubscriptionService, logger *slog.Logger) *SubscriptionHandler {
-	return &SubscriptionHandler{service: service, logger: logger}
+func NewSubscriptionHandler(
+	service *service.SubscriptionService,
+	tokenRepo domain.TokenRepository,
+	logger *slog.Logger,
+) *SubscriptionHandler {
+	return &SubscriptionHandler{service: service, tokenRepo: tokenRepo, logger: logger}
 }
 
 type getSubscriptionInput struct {
@@ -42,6 +48,25 @@ func (h *SubscriptionHandler) getSubscription(ctx context.Context, input *getSub
 	token := strings.TrimSpace(input.Token)
 	if token == "" || strings.Contains(token, "/") {
 		return nil, huma.Error400BadRequest("invalid token")
+	}
+
+	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
+	if err != nil {
+		return nil, huma.Error401Unauthorized("invalid or expired token")
+	}
+
+	// Check IP restrictions.
+	clientIP := GetClientIP(ctx)
+	if clientIP != "" {
+		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
+		if err != nil {
+			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
+			return nil, huma.Error500InternalServerError("ip check failed")
+		}
+		if !allowed {
+			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
+			return nil, huma.Error403Forbidden("access denied from this ip")
+		}
 	}
 
 	payload, err := h.service.BuildBase64VLESS(ctx, token, input.InboundID)

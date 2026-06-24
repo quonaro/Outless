@@ -15,6 +15,8 @@ type adminModel struct {
 	ID           string `gorm:"column:id;primaryKey"`
 	Username     string `gorm:"column:username;uniqueIndex"`
 	PasswordHash string `gorm:"column:password_hash"`
+	TOTPSecret   string `gorm:"column:totp_secret"`
+	TOTPEnabled  bool   `gorm:"column:totp_enabled"`
 	CreatedAt    string `gorm:"column:created_at"`
 }
 
@@ -41,7 +43,13 @@ func (r *AdminRepository) FindByUsername(ctx context.Context, username string) (
 		}
 		return domain.Admin{}, fmt.Errorf("querying admin by username: %w", err)
 	}
-	return domain.Admin{ID: model.ID, Username: model.Username, PasswordHash: model.PasswordHash}, nil
+	return domain.Admin{
+		ID:           model.ID,
+		Username:     model.Username,
+		PasswordHash: model.PasswordHash,
+		TOTPSecret:   model.TOTPSecret,
+		TOTPEnabled:  model.TOTPEnabled,
+	}, nil
 }
 
 // Count returns total admins in storage.
@@ -84,20 +92,30 @@ func (r *AdminRepository) List(ctx context.Context) ([]domain.Admin, error) {
 	}
 	admins := make([]domain.Admin, 0, len(models))
 	for _, model := range models {
-		admins = append(admins, domain.Admin{ID: model.ID, Username: model.Username, PasswordHash: model.PasswordHash})
+		admins = append(admins, domain.Admin{
+			ID:           model.ID,
+			Username:     model.Username,
+			PasswordHash: model.PasswordHash,
+			TOTPSecret:   model.TOTPSecret,
+			TOTPEnabled:  model.TOTPEnabled,
+		})
 	}
 	return admins, nil
 }
 
-// Update updates an admin's username and/or password. Only non-empty fields apply.
+// Update updates an admin's fields. Only non-empty / explicitly set fields apply.
 func (r *AdminRepository) Update(ctx context.Context, admin domain.Admin) error {
-	updates := make(map[string]any, 2)
+	updates := make(map[string]any, 0)
 	if admin.PasswordHash != "" {
 		updates["password_hash"] = admin.PasswordHash
 	}
 	if admin.Username != "" {
 		updates["username"] = admin.Username
 	}
+	if admin.TOTPSecret != "" {
+		updates["totp_secret"] = admin.TOTPSecret
+	}
+	updates["totp_enabled"] = admin.TOTPEnabled
 	if len(updates) == 0 {
 		return nil
 	}

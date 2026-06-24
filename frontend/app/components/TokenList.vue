@@ -16,6 +16,7 @@ import { useResetTrafficToken } from '~/composables/tokens/useResetTrafficToken'
 import { useTokenTraffic } from '~/composables/tokens/useTokenTraffic'
 import { useGroups } from '~/composables/groups/useGroups'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
+import { batchDeactivateTokens, batchRemoveTokens } from '~/utils/services/token'
 import {
   Plus,
   MoreVertical,
@@ -32,8 +33,10 @@ import {
   Wifi,
   Activity,
   Calendar,
+  Shield,
 } from 'lucide-vue-next'
 import TokenTrafficChart from '~/components/TokenTrafficChart.vue'
+import TokenIPRestrictions from '~/components/TokenIPRestrictions.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import UiCard from '~/components/ui/card/card.vue'
@@ -67,6 +70,8 @@ const showAccessURLDialog = ref(false)
 const showEditDialog = ref(false)
 const showTrafficDialog = ref(false)
 const trafficTokenId = ref('')
+const showIPRestrictionsDialog = ref(false)
+const ipRestrictionTokenId = ref('')
 const issuedToken = ref<IssuedToken | null>(null)
 const selectedAccessURL = ref('')
 const issuedAccessURL = ref('')
@@ -77,6 +82,7 @@ const pendingRemoveId = ref('')
 const pendingResetTrafficId = ref('')
 const editingTokenId = ref('')
 const isEditSubmitting = ref(false)
+const selectedTokenIDs = ref<Set<string>>(new Set())
 
 const ownerInput = ref('')
 const groupIdsInput = ref<string[]>([])
@@ -258,6 +264,16 @@ function resetForm() {
   isIssueSubmitting.value = false
 }
 
+function toggleTokenSelection(tokenId: string) {
+  const next = new Set(selectedTokenIDs.value)
+  if (next.has(tokenId)) {
+    next.delete(tokenId)
+  } else {
+    next.add(tokenId)
+  }
+  selectedTokenIDs.value = next
+}
+
 function openCreateDialog() {
   createMutation.reset()
   resetForm()
@@ -354,6 +370,44 @@ async function handleResetTraffic(token: Token) {
       pendingResetTrafficId.value = ''
     },
   })
+}
+
+async function handleBatchDeactivate() {
+  if (selectedTokenIDs.value.size === 0) return
+  const ok = await confirm({
+    title: 'Deactivate selected tokens',
+    message: `Deactivate ${selectedTokenIDs.value.size} selected tokens?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
+  try {
+    await batchDeactivateTokens(Array.from(selectedTokenIDs.value))
+    toast.success('Tokens deactivated')
+    selectedTokenIDs.value = new Set()
+    invalidate()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to deactivate tokens', { description: msg })
+  }
+}
+
+async function handleBatchRemove() {
+  if (selectedTokenIDs.value.size === 0) return
+  const ok = await confirm({
+    title: 'Remove selected tokens',
+    message: `Remove ${selectedTokenIDs.value.size} selected tokens permanently?`,
+    variant: 'destructive',
+  })
+  if (!ok) return
+  try {
+    await batchRemoveTokens(Array.from(selectedTokenIDs.value))
+    toast.success('Tokens removed')
+    selectedTokenIDs.value = new Set()
+    invalidate()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to remove tokens', { description: msg })
+  }
 }
 
 function openTrafficDialog(token: Token) {
@@ -604,6 +658,13 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       </UiButton>
     </div>
 
+    <div v-if="selectedTokenIDs.size > 0" class="flex items-center gap-2">
+      <span class="text-sm font-medium">{{ selectedTokenIDs.size }} selected</span>
+      <UiButton size="sm" variant="destructive" @click="handleBatchDeactivate">Deactivate</UiButton>
+      <UiButton size="sm" variant="destructive" @click="handleBatchRemove">Remove</UiButton>
+      <UiButton size="sm" variant="outline" @click="selectedTokenIDs = new Set()">Clear</UiButton>
+    </div>
+
     <div v-if="isLoading" class="py-8 text-center text-muted-foreground">Loading tokens...</div>
     <div v-else-if="sortedTokens.length === 0" class="py-8 text-center text-muted-foreground">
       No tokens issued yet
@@ -613,6 +674,12 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <CardContent class="p-0">
         <div class="flex items-start justify-between gap-3">
           <div class="flex items-center gap-2 min-w-0">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-input shrink-0"
+              :checked="selectedTokenIDs.has(token.id)"
+              @change="toggleTokenSelection(token.id)"
+            />
             <span
               class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
               :class="statusBadge(token).cls"
@@ -639,6 +706,15 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
               <DropdownMenuItem @click="openEditDialog(token)">
                 <Pencil class="h-4 w-4 mr-2" />
                 Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                @click="
+                  ipRestrictionTokenId = token.id
+                  showIPRestrictionsDialog = true
+                "
+              >
+                <Shield class="h-4 w-4 mr-2" />
+                IP Restrictions
               </DropdownMenuItem>
               <DropdownMenuItem @click="openTrafficDialog(token)">
                 <BarChart3 class="h-4 w-4 mr-2" />
@@ -1076,6 +1152,8 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    <TokenIPRestrictions v-model:open="showIPRestrictionsDialog" :token-id="ipRestrictionTokenId" />
   </div>
 </template>
 

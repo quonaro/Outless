@@ -95,3 +95,51 @@ export async function resetTokenTraffic(id: string): Promise<void> {
     method: 'POST',
   })
 }
+
+const IPRestrictionSchema = z.object({
+  ip: z.string(),
+  mode: z.enum(['allow', 'block']),
+})
+
+export type IPRestriction = z.infer<typeof IPRestrictionSchema>
+
+export async function fetchTokenIPRestrictions(id: string): Promise<IPRestriction[]> {
+  const { $api } = useNuxtApp()
+  const data = await $api<unknown[]>(`/v1/tokens/${id}/ips`)
+  return z.array(IPRestrictionSchema).parse(data)
+}
+
+export async function addTokenIPRestriction(
+  id: string,
+  ip: string,
+  mode: 'allow' | 'block'
+): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/tokens/${id}/ips`, {
+    method: 'POST',
+    body: { ip, mode },
+  })
+}
+
+export async function removeTokenIPRestriction(id: string, ip: string): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/tokens/${id}/ips/${encodeURIComponent(ip)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function batchDeactivateTokens(ids: string[]): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api('/v1/tokens/batch-deactivate', {
+    method: 'POST',
+    body: { ids },
+  })
+}
+
+export async function batchRemoveTokens(ids: string[]): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api('/v1/tokens/batch-delete', {
+    method: 'POST',
+    body: { ids },
+  })
+}

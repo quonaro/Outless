@@ -90,3 +90,11 @@ export async function deleteNode(id: string): Promise<void> {
     method: 'DELETE',
   })
 }
+
+export async function batchDeleteNodes(ids: string[]): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api('/v1/nodes/batch-delete', {
+    method: 'POST',
+    body: { ids },
+  })
+}

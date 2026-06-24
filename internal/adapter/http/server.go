@@ -32,30 +32,24 @@ type Config struct {
 
 // Handlers groups all HTTP handlers the server wires up.
 type Handlers struct {
-	Subscription *SubscriptionHandler
-	Auth         *AuthHandler
-	Token        *TokenManagementHandler
-	Node         *NodeManagementHandler
-	Group        *GroupManagementHandler
-	PublicSource *PublicSourceManagementHandler
-	Inbound      *InboundManagementHandler
-	Settings     *SettingsHandler
-	Admin        *AdminManagementHandler
-	Stats        *StatsHandler
-	Traffic      *TrafficHandler
-	LogStream    http.Handler
+	Subscription      *SubscriptionHandler
+	Auth              *AuthHandler
+	Token             *TokenManagementHandler
+	Node              *NodeManagementHandler
+	Group             *GroupManagementHandler
+	PublicSource      *PublicSourceManagementHandler
+	Inbound           *InboundManagementHandler
+	Settings          *SettingsHandler
+	Admin             *AdminManagementHandler
+	Stats             *StatsHandler
+	Traffic           *TrafficHandler
+	Connections       *ConnectionsHandler
+	StreamConnections http.Handler
+	ImportExport      *ImportExportHandler
+	LogStream         http.Handler
 }
 
-// NewServer builds HTTP server with injected handlers.
-func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, handlers Handlers) *Server {
-	apiMux := http.NewServeMux()
-	humaCfg := huma.DefaultConfig("Outless API", "0.1.0")
-	if cfg.DisableDocs {
-		humaCfg.OpenAPIPath = ""
-		humaCfg.DocsPath = ""
-		humaCfg.SchemasPath = ""
-	}
-	humaAPI := humago.New(apiMux, humaCfg)
+func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers) {
 	handlers.Subscription.Register(humaAPI)
 	handlers.Auth.Register(humaAPI)
 	handlers.Token.Register(humaAPI)
@@ -68,15 +62,37 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	handlers.Stats.Register(humaAPI)
 	handlers.Traffic.Register(humaAPI)
 
+	if handlers.Connections != nil {
+		handlers.Connections.Register(apiMux)
+	}
+	if handlers.StreamConnections != nil {
+		apiMux.HandleFunc("/v1/connections/stream", handlers.StreamConnections.ServeHTTP)
+	}
+	if handlers.ImportExport != nil {
+		handlers.ImportExport.Register(humaAPI)
+	}
 	if handlers.LogStream != nil {
 		apiMux.HandleFunc("/v1/events/logs", handlers.LogStream.ServeHTTP)
 	}
+}
+
+// NewServer builds HTTP server with injected handlers.
+func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, handlers Handlers) *Server {
+	apiMux := http.NewServeMux()
+	humaCfg := huma.DefaultConfig("Outless API", "0.1.0")
+	if cfg.DisableDocs {
+		humaCfg.OpenAPIPath = ""
+		humaCfg.DocsPath = ""
+		humaCfg.SchemasPath = ""
+	}
+	humaAPI := humago.New(apiMux, humaCfg)
+	registerHandlers(apiMux, humaAPI, handlers)
 
 	jwtMiddleware := NewJWTMiddleware(jwtService, logger)
 	rateLimitMiddleware := NewRateLimitMiddleware(logger)
 	loggingMiddleware := NewLoggingMiddleware(logger)
 
-	protectedAPI := jwtMiddleware.Wrap(rateLimitMiddleware.Wrap(apiMux))
+	protectedAPI := jwtMiddleware.Wrap(rateLimitMiddleware.Wrap(withClientIP(apiMux)))
 
 	rootMux := http.NewServeMux()
 	rootMux.Handle("/v1/", protectedAPI)

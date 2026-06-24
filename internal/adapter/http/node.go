@@ -96,6 +96,7 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/nodes/{id}", h.GetNode)
 	huma.Patch(api, "/v1/nodes/{id}", h.UpdateNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
+	huma.Post(api, "/v1/nodes/batch-delete", h.BatchDeleteNodes)
 }
 
 func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNodeInput) (*CreateNodeOutput, error) {
@@ -311,6 +312,25 @@ func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNod
 		return nil, huma.Error500InternalServerError("failed to delete node")
 	}
 
+	return nil, nil
+}
+
+type batchDeleteNodesInput struct {
+	Body struct {
+		IDs []string `json:"ids" required:"true"`
+	}
+}
+
+func (h *NodeManagementHandler) BatchDeleteNodes(ctx context.Context, input *batchDeleteNodesInput) (*struct{}, error) {
+	if len(input.Body.IDs) == 0 {
+		return nil, huma.Error400BadRequest("ids are required")
+	}
+	for _, id := range input.Body.IDs {
+		if err := h.nodeRepo.Delete(ctx, id); err != nil {
+			h.logger.Error("failed to delete node in batch", slog.String("id", id), slog.String("error", err.Error()))
+		}
+	}
+	h.logger.Info("batch deleted nodes", slog.Int("count", len(input.Body.IDs)))
 	return nil, nil
 }
 

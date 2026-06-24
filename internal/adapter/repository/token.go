@@ -50,6 +50,14 @@ type tokenInboundModel struct {
 
 func (tokenInboundModel) TableName() string { return "token_inbounds" }
 
+type tokenIPRestrictionModel struct {
+	TokenID string `gorm:"column:token_id;primaryKey"`
+	IP      string `gorm:"column:ip;primaryKey"`
+	Mode    string `gorm:"column:mode"`
+}
+
+func (tokenIPRestrictionModel) TableName() string { return "token_ip_restrictions" }
+
 // TokenRepository persists subscription tokens in SQLite.
 type TokenRepository struct {
 	db     *gorm.DB
@@ -479,6 +487,69 @@ func (r *TokenRepository) ResetTraffic(ctx context.Context, id string) error {
 	}
 	r.logger.Info("token traffic reset", slog.String("id", id))
 	return nil
+}
+
+// AddIPRestriction adds an IP restriction for a token.
+func (r *TokenRepository) AddIPRestriction(ctx context.Context, tokenID string, ip string, mode string) error {
+	model := tokenIPRestrictionModel{TokenID: tokenID, IP: ip, Mode: mode}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		return fmt.Errorf("adding ip restriction: %w", err)
+	}
+	r.logger.Info("ip restriction added", slog.String("token_id", tokenID), slog.String("ip", ip), slog.String("mode", mode))
+	return nil
+}
+
+// RemoveIPRestriction removes an IP restriction for a token.
+func (r *TokenRepository) RemoveIPRestriction(ctx context.Context, tokenID string, ip string) error {
+	result := r.db.WithContext(ctx).Where("token_id = ? AND ip = ?", tokenID, ip).Delete(&tokenIPRestrictionModel{})
+	if result.Error != nil {
+		return fmt.Errorf("removing ip restriction: %w", result.Error)
+	}
+	r.logger.Info("ip restriction removed", slog.String("token_id", tokenID), slog.String("ip", ip))
+	return nil
+}
+
+// ListIPRestrictions returns all IP restrictions for a token.
+func (r *TokenRepository) ListIPRestrictions(ctx context.Context, tokenID string) ([]domain.TokenIPRestriction, error) {
+	var models []tokenIPRestrictionModel
+	if err := r.db.WithContext(ctx).Where("token_id = ?", tokenID).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing ip restrictions: %w", err)
+	}
+	out := make([]domain.TokenIPRestriction, 0, len(models))
+	for _, m := range models {
+		out = append(out, domain.TokenIPRestriction{TokenID: m.TokenID, IP: m.IP, Mode: m.Mode})
+	}
+	return out, nil
+}
+
+// CheckIPAllowed checks if an IP is allowed for a token.
+func (r *TokenRepository) CheckIPAllowed(ctx context.Context, tokenID string, ip string) (bool, error) {
+	var restrictions []tokenIPRestrictionModel
+	if err := r.db.WithContext(ctx).Where("token_id = ?", tokenID).Find(&restrictions).Error; err != nil {
+		return false, fmt.Errorf("checking ip restrictions: %w", err)
+	}
+	if len(restrictions) == 0 {
+		return true, nil
+	}
+
+	var hasAllow bool
+	for _, r := range restrictions {
+		if r.Mode == "allow" {
+			hasAllow = true
+			if r.IP == ip {
+				return true, nil
+			}
+		}
+		if r.Mode == "block" && r.IP == ip {
+			return false, nil
+		}
+	}
+
+	// If there are allow rules but none matched, deny.
+	if hasAllow {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (r *TokenRepository) loadGroupIDsByTokenIDs(ctx context.Context, tokenIDs []string) (map[string][]string, error) {

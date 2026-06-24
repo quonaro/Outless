@@ -114,6 +114,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
 	cleanupService := service.NewCleanupService(tokenRepo, logger)
+	totpService := service.NewTOTPService()
 
 	// Runtime controller (embedded sing-box)
 	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0)
@@ -124,18 +125,21 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 
 	// HTTP handlers
 	handlers := httpadapter.Handlers{
-		Subscription: httpadapter.NewSubscriptionHandler(subscriptionService, logger),
-		Auth:         httpadapter.NewAuthHandler(adminRepo, jwtService, logger),
-		Token:        httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
-		Node:         httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
-		Group:        httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, subscriptionService, logger),
-		PublicSource: httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
-		Inbound:      httpadapter.NewInboundManagementHandler(inboundRepo, logger),
-		Settings:     httpadapter.NewSettingsHandler(cfgPath, logger),
-		Admin:        httpadapter.NewAdminManagementHandler(adminRepo, logger),
-		Stats:        httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, inboundRepo, trafficRepo, logger),
-		Traffic:      httpadapter.NewTrafficHandler(trafficRepo, tokenRepo, logger),
-		LogStream:    httpadapter.NewLogStreamHandler(broadcaster),
+		Subscription:      httpadapter.NewSubscriptionHandler(subscriptionService, tokenRepo, logger),
+		Auth:              httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
+		Token:             httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
+		Node:              httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, logger),
+		Group:             httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, subscriptionService, logger),
+		PublicSource:      httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
+		Inbound:           httpadapter.NewInboundManagementHandler(inboundRepo, logger),
+		Settings:          httpadapter.NewSettingsHandler(cfgPath, logger),
+		Admin:             httpadapter.NewAdminManagementHandler(adminRepo, logger),
+		Stats:             httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, inboundRepo, trafficRepo, logger),
+		Traffic:           httpadapter.NewTrafficHandler(trafficRepo, tokenRepo, logger),
+		Connections:       httpadapter.NewConnectionsHandler(runtime, logger),
+		StreamConnections: httpadapter.NewStreamConnectionsHandler(runtime, logger),
+		ImportExport:      httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, publicSourceRepo, inboundRepo, logger),
+		LogStream:         httpadapter.NewLogStreamHandler(broadcaster),
 	}
 
 	httpConfig := httpadapter.Config{

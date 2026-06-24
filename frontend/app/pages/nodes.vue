@@ -17,7 +17,7 @@ import GroupAccordion from '~/components/GroupAccordion.vue'
 import { useInfiniteNodes } from '~/composables/nodes/useInfiniteNodes'
 import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
-import { createNode, deleteNode, updateNode } from '~/utils/services/node'
+import { createNode, deleteNode, updateNode, batchDeleteNodes } from '~/utils/services/node'
 import { createGroup } from '~/utils/services/group'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
 import VlessUrlPreview from '~/components/VlessUrlPreview.vue'
@@ -270,16 +270,15 @@ async function handleBulkDelete() {
     variant: 'destructive',
   })
   if (!ok) return
-  const promises = Array.from(selectedNodeIDs.value).map((nodeId) => deleteNode(nodeId))
-  Promise.all(promises)
-    .then(() => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] })
-      queryClient.invalidateQueries({ queryKey: ['groups'] })
-      selectedNodeIDs.value = new Set()
-    })
-    .catch((err: Error) => {
-      toast.error('Bulk delete failed', { description: err.message })
-    })
+  try {
+    await batchDeleteNodes(Array.from(selectedNodeIDs.value))
+    queryClient.invalidateQueries({ queryKey: ['nodes'] })
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
+    selectedNodeIDs.value = new Set()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Bulk delete failed', { description: msg })
+  }
 }
 
 function handleUpdateNodeGroups(nodeId: string, groupIds: string[]) {

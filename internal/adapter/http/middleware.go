@@ -33,12 +33,27 @@ func NewJWTMiddleware(jwtService *service.JWTService, logger *slog.Logger) *JWTM
 type contextKey string
 
 const (
-	claimsKey contextKey = "claims"
+	claimsKey   contextKey = "claims"
+	clientIPKey contextKey = "client_ip"
 )
+
+// GetClientIP extracts the client IP from context.
+func GetClientIP(ctx context.Context) string {
+	ip, _ := ctx.Value(clientIPKey).(string)
+	return ip
+}
+
+// withClientIP returns an http.Handler that injects the client IP into context.
+func withClientIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), clientIPKey, extractRemoteIP(r.RemoteAddr))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // isPublicPath reports whether the request path is allowed without JWT auth.
 func isPublicPath(path string) bool {
-	if strings.HasPrefix(path, "/v1/auth/") {
+	if path == "/v1/auth/login" {
 		return true
 	}
 	if strings.HasPrefix(path, "/v1/sub/") {

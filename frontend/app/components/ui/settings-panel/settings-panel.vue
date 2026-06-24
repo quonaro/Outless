@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { toast } from 'vue-sonner'
-import { Settings2, KeyRound, Save, Loader2, AlertTriangle } from 'lucide-vue-next'
+import {
+  Settings2,
+  KeyRound,
+  Save,
+  Loader2,
+  AlertTriangle,
+  Shield,
+  ShieldOff,
+  QrCode,
+  Download,
+  Upload,
+} from 'lucide-vue-next'
+import { setupTOTP, verifyTOTP, disableTOTP } from '~/utils/services/auth'
 import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
 import UiButton from '~/components/ui/button/button.vue'
@@ -33,6 +45,96 @@ const formLogLevel = ref('info')
 const formShutdownGracetime = ref('10s')
 const formDisableDocs = ref(false)
 const isSaving = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
+
+const totpEnabled = ref(false)
+const showSetup = ref(false)
+const showDisable = ref(false)
+const secret = ref('')
+const uri = ref('')
+const qrBase64 = ref('')
+const setupCode = ref('')
+const disableCode = ref('')
+const disablePassword = ref('')
+
+async function handleSetup() {
+  try {
+    const response = await setupTOTP()
+    secret.value = response.secret
+    uri.value = response.uri
+    qrBase64.value = response.qr_base64
+    showSetup.value = true
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to setup 2FA', { description: msg })
+  }
+}
+
+async function handleVerify() {
+  try {
+    await verifyTOTP({ code: setupCode.value })
+    totpEnabled.value = true
+    showSetup.value = false
+    setupCode.value = ''
+    toast.success('2FA enabled successfully')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Invalid code', { description: msg })
+  }
+}
+
+async function handleDisable() {
+  try {
+    await disableTOTP({ code: disableCode.value, password: disablePassword.value })
+    totpEnabled.value = false
+    showDisable.value = false
+    disableCode.value = ''
+    disablePassword.value = ''
+    toast.success('2FA disabled')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to disable 2FA', { description: msg })
+  }
+}
+
+async function handleExport() {
+  try {
+    const { $api } = useNuxtApp()
+    const data = await $api<unknown>('/v1/export')
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `outless-config-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Configuration exported')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Export failed', { description: msg })
+  }
+}
+
+async function handleImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    const { $api } = useNuxtApp()
+    await $api('/v1/import', {
+      method: 'POST',
+      body: data,
+    })
+    toast.success('Configuration imported')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Import failed', { description: msg })
+  } finally {
+    input.value = ''
+  }
+}
 
 watch(
   () => settings.value,
@@ -198,6 +300,127 @@ async function handleSave(options?: { danger?: boolean }) {
               <UiButton class="shrink-0" @click="isChangePasswordOpen = true">
                 Change Password
               </UiButton>
+            </div>
+          </CardContent>
+        </UiCard>
+      </div>
+
+      <div>
+        <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+          <Shield class="h-5 w-5 text-primary" />
+          Two-Factor Authentication
+        </h2>
+        <UiCard class="p-4">
+          <CardContent class="p-0 space-y-4">
+            <div v-if="!totpEnabled && !showSetup">
+              <p class="text-sm text-muted-foreground mb-3">2FA is currently disabled.</p>
+              <UiButton @click="handleSetup">
+                <QrCode class="h-4 w-4 mr-2" />
+                Enable 2FA
+              </UiButton>
+            </div>
+
+            <div v-else-if="showSetup" class="space-y-4">
+              <p class="text-sm text-muted-foreground">
+                Scan the QR code with your authenticator app, then enter the code to verify.
+              </p>
+              <div v-if="qrBase64" class="flex justify-center">
+                <img
+                  :src="`data:image/png;base64,${qrBase64}`"
+                  alt="TOTP QR Code"
+                  class="rounded-lg"
+                />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-medium">Secret (manual entry)</label>
+                <code class="block p-2 bg-muted rounded text-sm break-all">{{ secret }}</code>
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-medium" for="totp-verify-code">Verification Code</label>
+                <UiInput
+                  id="totp-verify-code"
+                  v-model="setupCode"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6-digit code"
+                />
+              </div>
+              <div class="flex gap-2">
+                <UiButton :disabled="!setupCode" @click="handleVerify">Verify & Enable</UiButton>
+                <UiButton variant="ghost" @click="showSetup = false">Cancel</UiButton>
+              </div>
+            </div>
+
+            <div v-else-if="totpEnabled" class="space-y-4">
+              <p class="text-sm text-muted-foreground">2FA is enabled.</p>
+              <UiButton variant="destructive" @click="showDisable = true">
+                <ShieldOff class="h-4 w-4 mr-2" />
+                Disable 2FA
+              </UiButton>
+
+              <div v-if="showDisable" class="space-y-3 pt-2 border-t">
+                <p class="text-sm text-muted-foreground">
+                  Enter your password and current TOTP code to disable.
+                </p>
+                <div class="space-y-2">
+                  <label class="text-sm font-medium" for="totp-disable-password">Password</label>
+                  <UiInput id="totp-disable-password" v-model="disablePassword" type="password" />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-sm font-medium" for="totp-disable-code">TOTP Code</label>
+                  <UiInput
+                    id="totp-disable-code"
+                    v-model="disableCode"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="6"
+                    placeholder="6-digit code"
+                  />
+                </div>
+                <div class="flex gap-2">
+                  <UiButton
+                    variant="destructive"
+                    :disabled="!disablePassword || !disableCode"
+                    @click="handleDisable"
+                  >
+                    Confirm Disable
+                  </UiButton>
+                  <UiButton variant="ghost" @click="showDisable = false">Cancel</UiButton>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </UiCard>
+      </div>
+
+      <div>
+        <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+          <Download class="h-5 w-5 text-primary" />
+          Backup
+        </h2>
+        <UiCard class="p-4">
+          <CardContent class="p-0 space-y-4">
+            <p class="text-sm text-muted-foreground">
+              Export or import your full configuration (nodes, tokens, groups, inbounds, public
+              sources).
+            </p>
+            <div class="flex gap-2">
+              <UiButton @click="handleExport">
+                <Download class="h-4 w-4 mr-2" />
+                Export
+              </UiButton>
+              <UiButton variant="outline" @click="importFileInput?.click()">
+                <Upload class="h-4 w-4 mr-2" />
+                Import
+              </UiButton>
+              <input
+                ref="importFileInput"
+                type="file"
+                accept=".json"
+                class="hidden"
+                @change="handleImport"
+              />
             </div>
           </CardContent>
         </UiCard>

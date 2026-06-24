@@ -19,6 +19,7 @@ const FormSchema = toTypedSchema(
   z.object({
     username: z.string().min(1, 'Username is required'),
     password: z.string().min(1, 'Password is required'),
+    totp_code: z.string().max(6, 'Invalid code').optional(),
   })
 )
 
@@ -28,23 +29,40 @@ const { handleSubmit, errors, defineField } = useForm({
 
 const [username] = defineField('username')
 const [password] = defineField('password')
+const [totpCode] = defineField('totp_code')
 
 const auth = useAuth()
 const isLoading = ref(false)
 const errorMessage = ref('')
+const totpRequired = ref(false)
+const pendingUsername = ref('')
 
 const onSubmit = handleSubmit(async (values) => {
   isLoading.value = true
   errorMessage.value = ''
 
   try {
-    const response = await login(values)
-    auth.setToken(response.token)
-    auth.setUser({ username: response.username })
-    await nextTick()
-    await navigateTo('/dashboard')
+    const response = await login({
+      username: values.username || pendingUsername.value,
+      password: values.password,
+      totp_code: values.totp_code,
+    })
+
+    if (response.totp_required) {
+      totpRequired.value = true
+      pendingUsername.value = response.username || values.username || ''
+      isLoading.value = false
+      return
+    }
+
+    if (response.token) {
+      auth.setToken(response.token)
+      auth.setUser({ username: response.username || '' })
+      await nextTick()
+      await navigateTo('/dashboard')
+    }
   } catch {
-    errorMessage.value = 'Invalid username or password'
+    errorMessage.value = 'Invalid username, password, or TOTP code'
   } finally {
     isLoading.value = false
   }
@@ -145,6 +163,23 @@ onMounted(async () => {
               </p>
             </div>
 
+            <div v-if="totpRequired" class="space-y-2">
+              <Label for="totp_code" class="text-foreground">TOTP Code</Label>
+              <Input
+                id="totp_code"
+                v-model="totpCode"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                autocomplete="one-time-code"
+                placeholder="Enter 6-digit code"
+                class="bg-input border-border text-foreground placeholder:text-muted-foreground"
+              />
+              <p v-if="errors.totp_code" class="text-sm text-destructive">
+                {{ errors.totp_code }}
+              </p>
+            </div>
+
             <p v-if="errorMessage" class="text-sm text-destructive text-center">
               {{ errorMessage }}
             </p>
@@ -156,6 +191,7 @@ onMounted(async () => {
             >
               <LogIn v-if="!isLoading" class="mr-2 h-4 w-4" />
               <span v-if="isLoading">Signing in...</span>
+              <span v-else-if="totpRequired">Verify</span>
               <span v-else>Sign in</span>
             </Button>
           </form>

@@ -34,6 +34,13 @@ type Token struct {
 	CreatedAt       time.Time
 }
 
+// TokenIPRestriction defines an allow or deny rule for a token by IP.
+type TokenIPRestriction struct {
+	TokenID string
+	IP      string
+	Mode    string // "allow" or "block"
+}
+
 // TokenUsage aggregates per-token traffic for a specific period.
 type TokenUsage struct {
 	TokenID       string
@@ -85,6 +92,8 @@ type Admin struct {
 	ID           string
 	Username     string
 	PasswordHash string
+	TOTPSecret   string
+	TOTPEnabled  bool
 	CreatedAt    time.Time
 }
 

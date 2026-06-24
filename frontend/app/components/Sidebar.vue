@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutDashboard, Key, Globe, Settings, LogOut, Server, X } from 'lucide-vue-next'
+import { LayoutDashboard, Key, Globe, Settings, LogOut, Server, X, Activity } from 'lucide-vue-next'
 
 import { useSidebar } from '~/composables/useSidebar'
 import { useAuth } from '~/composables/useAuth'
@@ -22,6 +22,13 @@ const navItems = [
   },
   { id: 'tokens', label: 'Tokens', icon: Key, path: '/tokens', iconColor: 'text-amber-500' },
   { id: 'nodes', label: 'Nodes', icon: Globe, path: '/nodes', iconColor: 'text-sky-500' },
+  {
+    id: 'connections',
+    label: 'Connections',
+    icon: Activity,
+    path: '/connections',
+    iconColor: 'text-orange-500',
+  },
   {
     id: 'inbounds',
     label: 'Inbounds',

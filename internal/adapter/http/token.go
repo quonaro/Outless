@@ -119,6 +119,11 @@ func (h *TokenManagementHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/tokens/{id}/activate", h.ActivateToken)
 	huma.Post(api, "/v1/tokens/{id}/reset-traffic", h.ResetTraffic)
 	huma.Delete(api, "/v1/tokens/{id}", h.RemoveToken)
+	huma.Get(api, "/v1/tokens/{id}/ips", h.ListIPRestrictions)
+	huma.Post(api, "/v1/tokens/{id}/ips", h.AddIPRestriction)
+	huma.Delete(api, "/v1/tokens/{id}/ips/{ip}", h.RemoveIPRestriction)
+	huma.Post(api, "/v1/tokens/batch-deactivate", h.BatchDeactivateTokens)
+	huma.Post(api, "/v1/tokens/batch-delete", h.BatchRemoveTokens)
 }
 
 func (h *TokenManagementHandler) CreateToken(ctx context.Context, input *CreateTokenInput) (*CreateTokenOutput, error) {
@@ -379,6 +384,97 @@ func (h *TokenManagementHandler) ResetTraffic(ctx context.Context, input *Delete
 		return nil, huma.Error500InternalServerError("failed to reset token traffic")
 	}
 	h.logger.Info("token traffic reset", slog.String("id", input.ID))
+	return nil, nil
+}
+
+type ipRestrictionItem struct {
+	IP   string `json:"ip"`
+	Mode string `json:"mode"`
+}
+
+type listIPRestrictionsOutput struct {
+	Body []ipRestrictionItem `json:"restrictions"`
+}
+
+func (h *TokenManagementHandler) ListIPRestrictions(ctx context.Context, input *DeleteTokenInput) (*listIPRestrictionsOutput, error) {
+	restrictions, err := h.tokenRepo.ListIPRestrictions(ctx, input.ID)
+	if err != nil {
+		h.logger.Error("failed to list ip restrictions", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to list ip restrictions")
+	}
+	out := make([]ipRestrictionItem, 0, len(restrictions))
+	for _, r := range restrictions {
+		out = append(out, ipRestrictionItem{IP: r.IP, Mode: r.Mode})
+	}
+	return &listIPRestrictionsOutput{Body: out}, nil
+}
+
+type addIPRestrictionInput struct {
+	ID   string `path:"id" required:"true"`
+	Body struct {
+		IP   string `json:"ip" required:"true" maxLength:"45"`
+		Mode string `json:"mode" required:"true" enum:"allow,block"`
+	}
+}
+
+func (h *TokenManagementHandler) AddIPRestriction(ctx context.Context, input *addIPRestrictionInput) (*struct{}, error) {
+	if err := h.tokenRepo.AddIPRestriction(ctx, input.ID, input.Body.IP, input.Body.Mode); err != nil {
+		h.logger.Error("failed to add ip restriction", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to add ip restriction")
+	}
+	h.logger.Info("ip restriction added", slog.String("id", input.ID), slog.String("ip", input.Body.IP), slog.String("mode", input.Body.Mode))
+	return nil, nil
+}
+
+type removeIPRestrictionInput struct {
+	ID string `path:"id" required:"true"`
+	IP string `path:"ip" required:"true" maxLength:"45"`
+}
+
+func (h *TokenManagementHandler) RemoveIPRestriction(ctx context.Context, input *removeIPRestrictionInput) (*struct{}, error) {
+	if err := h.tokenRepo.RemoveIPRestriction(ctx, input.ID, input.IP); err != nil {
+		h.logger.Error("failed to remove ip restriction", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to remove ip restriction")
+	}
+	h.logger.Info("ip restriction removed", slog.String("id", input.ID), slog.String("ip", input.IP))
+	return nil, nil
+}
+
+type batchTokenIDsInput struct {
+	Body struct {
+		IDs []string `json:"ids" required:"true"`
+	}
+}
+
+func (h *TokenManagementHandler) BatchDeactivateTokens(ctx context.Context, input *batchTokenIDsInput) (*struct{}, error) {
+	return h.processBatchTokens(ctx, input.Body.IDs, "deactivate", h.tokenRepo.Deactivate)
+}
+
+func (h *TokenManagementHandler) BatchRemoveTokens(ctx context.Context, input *batchTokenIDsInput) (*struct{}, error) {
+	return h.processBatchTokens(ctx, input.Body.IDs, "remove", h.tokenRepo.Remove)
+}
+
+func (h *TokenManagementHandler) processBatchTokens(
+	ctx context.Context,
+	ids []string,
+	action string,
+	handler func(context.Context, string) error,
+) (*struct{}, error) {
+	if len(ids) == 0 {
+		return nil, huma.Error400BadRequest("ids are required")
+	}
+	for _, id := range ids {
+		if err := handler(ctx, id); err != nil {
+			h.logger.Error(
+				"failed to process token in batch",
+				slog.String("action", action), slog.String("id", id), slog.String("error", err.Error()),
+			)
+		}
+		if err := h.runtime.RemoveUser(id); err != nil {
+			h.logger.Warn("failed to remove user from runtime", slog.String("id", id), slog.String("error", err.Error()))
+		}
+	}
+	h.logger.Info("batch processed tokens", slog.String("action", action), slog.Int("count", len(ids)))
 	return nil, nil
 }
 
