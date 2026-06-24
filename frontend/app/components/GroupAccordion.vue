@@ -18,7 +18,6 @@ const emit = defineEmits<{
   addNode: [groupId: string]
   moveNode: [payload: { node: Node; targetGroupId: string }]
   toggleSelection: [nodeId: string]
-  duplicateNode: [node: Node]
   updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
 
@@ -143,7 +142,6 @@ function handleDeleteGroup(groupId: string) {
       @add-node="handleAddNode"
       @move-node="handleMoveNode"
       @toggle-selection="emit('toggleSelection', $event)"
-      @duplicate-node="emit('duplicateNode', $event)"
       @update-node-groups="(nodeId, groupIds) => emit('updateNodeGroups', nodeId, groupIds)"
       @remove-node="removeNode"
       @edit-group="handleEditGroup"

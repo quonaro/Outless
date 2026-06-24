@@ -5,7 +5,7 @@ import { Plus, Server } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
-import UiCard from '~/components/ui/card/card.vue'
+import NodeCard from '~/components/NodeCard.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import Sheet from '~/components/ui/sheet/Sheet.vue'
 import SheetContent from '~/components/ui/sheet/SheetContent.vue'
@@ -19,6 +19,8 @@ import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
 import { createNode, deleteNode, updateNode } from '~/utils/services/node'
 import { createGroup } from '~/utils/services/group'
+import { useInbounds } from '~/composables/inbounds/useInbounds'
+import VlessUrlPreview from '~/components/VlessUrlPreview.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -30,6 +32,7 @@ type ViewMode = 'grouped' | 'flat'
 
 const queryClient = useQueryClient()
 const { confirm } = useConfirm()
+const { data: inbounds } = useInbounds()
 const viewMode = ref<ViewMode>('grouped')
 
 const {
@@ -279,13 +282,6 @@ async function handleBulkDelete() {
     })
 }
 
-function handleDuplicateNode(node: Node) {
-  createNode({ url: node.url, group_ids: node.group_ids, is_self: node.is_self }).then(() => {
-    queryClient.invalidateQueries({ queryKey: ['nodes'] })
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-  })
-}
-
 function handleUpdateNodeGroups(nodeId: string, groupIds: string[]) {
   const next = new Set(editingNodeGroupIDs.value)
   next.add(nodeId)
@@ -376,9 +372,9 @@ onBeforeUnmount(() => {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div v-if="selectedNodeIDs.size > 0" class="flex items-center gap-2">
             <span class="text-sm font-medium">{{ selectedNodeIDs.size }} selected</span>
-            <UiButton size="sm" variant="outline" @click="openBulkMoveDialog"> Move </UiButton>
+            <UiButton size="sm" @click="openBulkMoveDialog"> Move </UiButton>
             <UiButton size="sm" variant="destructive" @click="handleBulkDelete"> Delete </UiButton>
-            <UiButton size="sm" variant="ghost" @click="selectedNodeIDs = new Set()">
+            <UiButton size="sm" variant="outline" @click="selectedNodeIDs = new Set()">
               Clear
             </UiButton>
           </div>
@@ -417,57 +413,33 @@ onBeforeUnmount(() => {
           @add-node="handleAddNode"
           @move-node="handleMoveNode"
           @toggle-selection="handleToggleSelection"
-          @duplicate-node="handleDuplicateNode"
           @update-node-groups="handleUpdateNodeGroups"
         />
 
         <div v-else class="space-y-2">
-          <UiCard v-for="node in filteredFlatNodes" :key="node.id" class="px-3 py-2">
-            <CardContent class="p-0">
-              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="min-w-0 flex-1">
-                  <div class="group relative min-w-0">
-                    <div class="flex items-center gap-2">
-                      <p class="truncate text-sm font-medium">
-                        {{ node.is_self ? 'Current Machine' : node.url }}
-                      </p>
-                      <span
-                        v-if="node.is_self"
-                        class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      >
-                        Self
-                      </span>
-                    </div>
-                    <div
-                      v-if="!node.is_self"
-                      class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-[min(90vw,40rem)] overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
-                    >
-                      {{ node.url }}
-                    </div>
-                  </div>
-                  <p class="text-xs text-muted-foreground">
-                    {{ node.id }} ·
-                    {{
-                      node.group_ids.length
-                        ? node.group_ids.map((id) => groupNameByID[id] ?? id).join(', ')
-                        : 'No group'
-                    }}
-                  </p>
-                </div>
-                <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap">
-                  <UiButton
-                    variant="destructive"
-                    size="sm"
-                    class="whitespace-nowrap"
-                    :disabled="deletingNodeIDs.has(node.id)"
-                    @click="removeNode(node)"
-                  >
-                    {{ deletingNodeIDs.has(node.id) ? 'Deleting...' : 'Delete' }}
-                  </UiButton>
-                </div>
-              </div>
-            </CardContent>
-          </UiCard>
+          <div v-for="node in filteredFlatNodes" :key="node.id" class="flex items-start gap-2">
+            <NodeCard
+              class="flex-1"
+              :node="node"
+              :inbounds="inbounds ?? []"
+              :group-label="
+                node.group_ids.length
+                  ? node.group_ids.map((id) => groupNameByID[id] ?? id).join(', ')
+                  : 'No group'
+              "
+            />
+            <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap pt-2">
+              <UiButton
+                variant="destructive"
+                size="sm"
+                class="whitespace-nowrap"
+                :disabled="deletingNodeIDs.has(node.id)"
+                @click="removeNode(node)"
+              >
+                {{ deletingNodeIDs.has(node.id) ? 'Deleting...' : 'Delete' }}
+              </UiButton>
+            </div>
+          </div>
         </div>
 
         <div
@@ -542,21 +514,17 @@ onBeforeUnmount(() => {
             <SheetDescription>Add a new VLESS node to a group.</SheetDescription>
           </SheetHeader>
           <div class="space-y-4 py-4">
-            <div class="flex items-center gap-2">
+            <div v-if="!hasSelfNode" class="flex items-center gap-2">
               <input
                 id="create-node-is-self"
                 v-model="nodeIsSelfInput"
                 type="checkbox"
-                :disabled="hasSelfNode"
-                class="h-4 w-4 rounded border-input disabled:cursor-not-allowed disabled:opacity-50"
+                class="h-4 w-4 rounded border-input"
               />
               <label for="create-node-is-self" class="text-sm font-medium"
                 >Use Current Machine</label
               >
             </div>
-            <p v-if="hasSelfNode" class="text-xs text-muted-foreground">
-              Current machine is already added.
-            </p>
             <div v-if="!nodeIsSelfInput" class="space-y-2">
               <label class="text-sm font-medium" for="create-node-url">VLESS URL</label>
               <UiInput
@@ -566,6 +534,7 @@ onBeforeUnmount(() => {
                 placeholder="vless://uuid@host:443?..."
                 @keyup.enter="submitCreateNode"
               />
+              <VlessUrlPreview :url="nodeURLInput" />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium">Groups</label>

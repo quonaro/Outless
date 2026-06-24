@@ -17,9 +17,7 @@ function levelClass(line: string): string {
 </script>
 
 <template>
-  <div
-    class="rounded-md border bg-black font-mono text-xs p-3 overflow-hidden h-full flex flex-col"
-  >
+  <div class="font-mono text-xs p-3 overflow-hidden h-full flex flex-col">
     <div class="flex-1 overflow-y-auto space-y-1 min-h-0">
       <div v-if="lines.length === 0" class="text-muted-foreground opacity-50">
         Waiting for logs...

@@ -4,14 +4,9 @@ import type { Group } from '~/utils/schemas/group'
 import type { Node } from '~/utils/schemas/node'
 import { useGroupNodesInfinite } from '~/composables/nodes/useGroupNodesInfinite'
 import UiButton from '~/components/ui/button/button.vue'
-import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '~/components/ui/dropdown-menu'
+import NodeCard from '~/components/NodeCard.vue'
+import { useInbounds } from '~/composables/inbounds/useInbounds'
 import {
   Dialog,
   DialogContent,
@@ -30,7 +25,13 @@ import {
 } from '~/components/ui/sheet'
 import UiInput from '~/components/ui/input/input.vue'
 import UiLabel from '~/components/ui/label/label.vue'
-import { ArrowRight, MoreHorizontal, Plus, Pencil, Tags, Trash2 } from 'lucide-vue-next'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
+import { Plus, Pencil, Trash2, MoreHorizontal } from 'lucide-vue-next'
 
 const props = withDefaults(
   defineProps<{
@@ -45,6 +46,8 @@ const props = withDefaults(
   }>(),
   { allGroups: () => [] }
 )
+
+const { data: inbounds } = useInbounds()
 
 const emit = defineEmits<{
   removeNode: [node: Node]
@@ -62,7 +65,6 @@ const emit = defineEmits<{
   toggleSelection: [nodeId: string]
   bulkMove: [targetGroupId: string]
   bulkDelete: []
-  duplicateNode: [node: Node]
   updateNodeGroups: [nodeId: string, groupIds: string[]]
 }>()
 
@@ -196,13 +198,6 @@ function confirmMoveNode() {
   moveNodeTarget.value = null
   moveTargetGroupId.value = ''
 }
-function handleDuplicateNode() {
-  if (!moveNodeTarget.value) return
-  emit('duplicateNode', moveNodeTarget.value)
-  moveNodeDialogOpen.value = false
-  moveNodeTarget.value = null
-  moveTargetGroupId.value = ''
-}
 
 const editGroupsDialogOpen = ref(false)
 const editGroupsTarget = ref<Node | null>(null)
@@ -271,75 +266,26 @@ function confirmEditGroups() {
         ref="scrollRoot"
         class="max-h-[min(70vh,28rem)] overflow-y-auto overscroll-contain rounded-md border border-border/60 bg-muted/20 px-4 py-3 pr-2 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.45)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-600/60 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500/80"
       >
-        <div class="space-y-2">
-          <UiCard v-for="node in displayNodes" :key="node.id" class="px-3 py-2">
-            <CardContent class="p-0">
-              <div class="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  :checked="props.selectedIds.has(node.id)"
-                  class="h-4 w-4 rounded border-gray-400 shrink-0"
-                  @change="emit('toggleSelection', node.id)"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="group relative min-w-0">
-                    <div class="flex items-center gap-2">
-                      <p class="truncate text-sm font-medium">
-                        {{ node.is_self ? 'Current Machine' : node.url }}
-                      </p>
-                      <span
-                        v-if="node.is_self"
-                        class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      >
-                        Self
-                      </span>
-                    </div>
-                    <div
-                      v-if="!node.is_self"
-                      class="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-h-48 w-full overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md group-hover:block"
-                    >
-                      {{ node.url }}
-                    </div>
-                  </div>
-                  <p class="text-xs text-muted-foreground">
-                    {{ node.id }}
-                  </p>
-                </div>
-                <div
-                  class="flex shrink-0 flex-nowrap items-center justify-end gap-1 whitespace-nowrap"
-                >
-                  <DropdownMenu>
-                    <DropdownMenuTrigger as-child>
-                      <UiButton variant="ghost" size="icon" class="h-7 w-7" @click.prevent>
-                        <MoreHorizontal class="h-3.5 w-3.5" />
-                      </UiButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        :disabled="props.movingIds.has(node.id)"
-                        @click.prevent="openMoveNodeDialog(node)"
-                      >
-                        <ArrowRight class="mr-2 h-3.5 w-3.5" />
-                        Move
-                      </DropdownMenuItem>
-                      <DropdownMenuItem @click.prevent="openEditGroupsDialog(node)">
-                        <Tags class="mr-2 h-3.5 w-3.5" />
-                        Groups
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        class="text-destructive focus:text-destructive"
-                        :disabled="props.deletingIds.has(node.id)"
-                        @click.prevent="emit('removeNode', node)"
-                      >
-                        <Trash2 class="mr-2 h-3.5 w-3.5" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </CardContent>
-          </UiCard>
+        <div class="space-y-2 pb-3">
+          <div v-for="node in displayNodes" :key="node.id" class="flex items-start gap-2">
+            <input
+              type="checkbox"
+              :checked="props.selectedIds.has(node.id)"
+              class="h-4 w-4 rounded border-gray-400 shrink-0 mt-2"
+              @change="emit('toggleSelection', node.id)"
+            />
+            <NodeCard
+              class="flex-1"
+              :node="node"
+              :inbounds="inbounds ?? []"
+              show-actions
+              :deleting="props.deletingIds.has(node.id)"
+              :moving="props.movingIds.has(node.id)"
+              @move-node="openMoveNodeDialog"
+              @edit-groups="openEditGroupsDialog"
+              @delete-node="emit('removeNode', $event)"
+            />
+          </div>
 
           <div ref="loadSentinel" class="h-2 shrink-0" aria-hidden="true" />
 
@@ -441,7 +387,6 @@ function confirmEditGroups() {
         </select>
       </div>
       <DialogFooter>
-        <UiButton variant="outline" @click="handleDuplicateNode">Duplicate</UiButton>
         <UiButton variant="outline" @click="moveNodeDialogOpen = false">Cancel</UiButton>
         <UiButton @click="confirmMoveNode">Move</UiButton>
       </DialogFooter>

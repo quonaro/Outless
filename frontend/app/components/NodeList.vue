@@ -262,19 +262,15 @@ async function handleDelete(node: Node) {
           <CardTitle>Add Node</CardTitle>
         </CardHeader>
         <CardContent class="space-y-4">
-          <div class="flex items-center gap-2">
+          <div v-if="!hasSelfNode" class="flex items-center gap-2">
             <input
               id="isSelf"
               v-model="isSelfNode"
               type="checkbox"
-              :disabled="hasSelfNode"
-              class="h-4 w-4 rounded border-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+              class="h-4 w-4 rounded border-gray-300"
             />
             <label for="isSelf" class="text-sm font-medium">Use Current Machine</label>
           </div>
-          <p v-if="hasSelfNode" class="text-xs text-muted-foreground">
-            Current machine is already added.
-          </p>
           <div v-if="!isSelfNode" class="space-y-2">
             <label class="text-sm font-medium">VLESS URL</label>
             <UiInput
