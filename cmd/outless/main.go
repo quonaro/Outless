@@ -135,6 +135,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		Settings:          httpadapter.NewSettingsHandler(cfgPath, logger),
 		Admin:             httpadapter.NewAdminManagementHandler(adminRepo, logger),
 		Stats:             httpadapter.NewStatsHandler(nodeRepo, tokenRepo, groupRepo, inboundRepo, trafficRepo, logger),
+		System:            httpadapter.NewSystemMetricsHandler(runtime, logger),
 		Traffic:           httpadapter.NewTrafficHandler(trafficRepo, tokenRepo, logger),
 		Connections:       httpadapter.NewConnectionsHandler(runtime, logger),
 		StreamConnections: httpadapter.NewStreamConnectionsHandler(runtime, logger),

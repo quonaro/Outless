@@ -241,21 +241,10 @@ func (h *StatsHandler) GetDomainTrafficStats(ctx context.Context, _ *struct{}) (
 		return nil, huma.Error500InternalServerError("failed to fetch domain traffic")
 	}
 
-	tokens, err := h.tokenRepo.List(ctx)
-	if err != nil {
-		h.logger.Error("failed to list tokens", slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to fetch tokens")
-	}
-
-	tokenName := make(map[string]string, len(tokens))
-	for _, t := range tokens {
-		tokenName[t.ID] = t.Owner
-	}
-
 	out := &EntityTrafficOutput{}
 	out.Body.Items = make([]TrafficEntityItem, 0, len(usageList))
 	for _, u := range usageList {
-		name := tokenName[u.TokenID]
+		name := u.Domain
 		if name == "" {
 			name = u.TokenID
 		}

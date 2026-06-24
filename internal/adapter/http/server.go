@@ -42,6 +42,7 @@ type Handlers struct {
 	Settings          *SettingsHandler
 	Admin             *AdminManagementHandler
 	Stats             *StatsHandler
+	System            *SystemMetricsHandler
 	Traffic           *TrafficHandler
 	Connections       *ConnectionsHandler
 	StreamConnections http.Handler
@@ -60,6 +61,9 @@ func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers
 	handlers.Settings.Register(humaAPI)
 	handlers.Admin.Register(humaAPI)
 	handlers.Stats.Register(humaAPI)
+	if handlers.System != nil {
+		handlers.System.Register(humaAPI)
+	}
 	handlers.Traffic.Register(humaAPI)
 
 	if handlers.Connections != nil {

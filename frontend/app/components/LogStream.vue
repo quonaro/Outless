@@ -1,7 +1,24 @@
 <script setup lang="ts">
-defineProps<{
+import { ref, watch, nextTick } from 'vue'
+
+const props = defineProps<{
   lines: string[]
+  fontSize: number
 }>()
+
+const scrollRef = ref<HTMLDivElement | null>(null)
+
+watch(
+  () => props.lines.length,
+  () => {
+    nextTick(() => {
+      const el = scrollRef.value
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+  }
+)
 
 function levelClass(line: string): string {
   const m = line.match(/^\[(\w+)\]/)
@@ -17,12 +34,17 @@ function levelClass(line: string): string {
 </script>
 
 <template>
-  <div class="font-mono text-xs p-3 overflow-hidden h-full flex flex-col">
-    <div class="flex-1 overflow-y-auto space-y-1 min-h-0">
+  <div class="font-mono overflow-hidden flex-1 min-h-0 flex flex-col">
+    <div ref="scrollRef" class="flex-1 overflow-y-auto space-y-1 min-h-0 p-3">
       <div v-if="lines.length === 0" class="text-muted-foreground opacity-50">
         Waiting for logs...
       </div>
-      <div v-for="(line, i) in lines" :key="i" class="flex gap-3 break-all">
+      <div
+        v-for="(line, i) in lines"
+        :key="i"
+        class="flex gap-3 break-all"
+        :style="{ fontSize: `${fontSize}px` }"
+      >
         <span class="select-none text-right text-muted-foreground/50 w-8 flex-shrink-0">
           {{ i + 1 }}
         </span>

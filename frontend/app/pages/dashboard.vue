@@ -4,11 +4,6 @@ import {
   Server,
   KeyRound,
   Users,
-  ArrowUpFromLine,
-  ArrowDownToLine,
-  TrendingUp,
-  TrendingDown,
-  BarChart3,
   Key,
   ArrowLeftRight,
   Globe,
@@ -19,15 +14,21 @@ import {
   LayoutGrid,
   Copy,
   Trash2,
+  Activity,
+  Minus,
+  Plus,
+  Brain,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-vue-next'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
-import TrafficBarChart from '~/components/TrafficBarChart.vue'
+import LiveMetrics from '~/components/LiveMetrics.vue'
 import TrafficEntityTable from '~/components/TrafficEntityTable.vue'
 import LogStream from '~/components/LogStream.vue'
 import { useStats } from '~/composables/stats/useStats'
-import { useTrafficStats } from '~/composables/stats/useTrafficStats'
+import { useSystemMetrics } from '~/composables/stats/useSystemMetrics'
 import { useTokens } from '~/composables/tokens/useTokens'
 import { useLogStream } from '~/composables/stats/useLogStream'
 import { formatBytes, periodLabel } from '~/utils/bytes'
@@ -47,9 +48,10 @@ useHead({
 })
 
 const { data: stats, isLoading, isError, error } = useStats()
-const { data: traffic, isLoading: isTrafficLoading } = useTrafficStats()
+const { current: systemMetrics, history: systemHistory } = useSystemMetrics()
 const { data: tokens, isLoading: isTokensLoading } = useTokens()
 const { lines: logLines, isConnected: isLogConnected } = useLogStream()
+const fontSize = ref(12)
 const { data: tokenTraffic, isLoading: isTokenTrafficLoading } = useTokenTrafficStats()
 const { data: nodeTraffic, isLoading: isNodeTrafficLoading } = useNodeTrafficStats()
 const { data: inboundTraffic, isLoading: isInboundTrafficLoading } = useInboundTrafficStats()
@@ -107,41 +109,6 @@ const cards = computed<StatCard[]>(() => {
   ]
 })
 
-const trafficCards = computed<StatCard[]>(() => {
-  const t = traffic.value
-  if (!t) return []
-  return [
-    {
-      label: 'Today upload',
-      value: formatBytes(t.day_upload_bytes),
-      icon: ArrowUpFromLine,
-      iconColor: 'text-blue-600',
-      iconBg: 'bg-blue-500/10',
-    },
-    {
-      label: 'Today download',
-      value: formatBytes(t.day_download_bytes),
-      icon: ArrowDownToLine,
-      iconColor: 'text-emerald-600',
-      iconBg: 'bg-emerald-500/10',
-    },
-    {
-      label: 'Month upload',
-      value: formatBytes(t.month_upload_bytes),
-      icon: TrendingUp,
-      iconColor: 'text-indigo-600',
-      iconBg: 'bg-indigo-500/10',
-    },
-    {
-      label: 'Month download',
-      value: formatBytes(t.month_download_bytes),
-      icon: TrendingDown,
-      iconColor: 'text-rose-600',
-      iconBg: 'bg-rose-500/10',
-    },
-  ]
-})
-
 const tokensWithQuota = computed(() => {
   const list = tokens.value ?? []
   return list.filter((t) => t.quota_bytes && t.quota_period)
@@ -186,6 +153,103 @@ const tokensWithQuota = computed(() => {
                 </UiCard>
               </div>
             </div>
+
+            <div>
+              <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Activity class="h-5 w-5 text-sky-500" />
+                System
+              </h2>
+              <div class="grid gap-4 md:grid-cols-2">
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-indigo-500/10">
+                        <Activity class="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">CPU</p>
+                        <p class="text-2xl font-bold">
+                          {{ systemMetrics ? `${systemMetrics.cpu_percent.toFixed(1)}%` : '—' }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-emerald-500/10">
+                        <Brain class="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">RAM</p>
+                        <p class="text-2xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.memory_used_bytes)} / ${formatBytes(systemMetrics.memory_total_bytes)}`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-blue-500/10">
+                        <ArrowDownToLine class="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">NET RX</p>
+                        <p class="text-2xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.net_rx_bytes_per_sec)}/s`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-rose-500/10">
+                        <ArrowUpFromLine class="h-5 w-5 text-rose-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">NET TX</p>
+                        <p class="text-2xl font-bold">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.net_tx_bytes_per_sec)}/s`
+                              : '—'
+                          }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+                <UiCard class="p-4 md:col-span-2">
+                  <CardContent class="p-0">
+                    <div class="flex items-center gap-3">
+                      <div class="rounded-xl p-2.5 bg-amber-500/10">
+                        <Users class="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-sm text-muted-foreground">Online</p>
+                        <p class="text-2xl font-bold">
+                          {{ systemMetrics ? systemMetrics.connections_count : '—' }}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </UiCard>
+              </div>
+            </div>
+
             <div class="flex-1 flex flex-col min-h-0">
               <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
@@ -197,6 +261,23 @@ const tokensWithQuota = computed(() => {
                   />
                 </h2>
                 <div class="flex items-center gap-1">
+                  <button
+                    class="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Decrease font size"
+                    @click="fontSize > 8 && fontSize--"
+                  >
+                    <Minus class="h-3 w-3" />
+                  </button>
+                  <span class="text-xs text-muted-foreground w-5 text-center"
+                    >{{ fontSize }}px</span
+                  >
+                  <button
+                    class="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Increase font size"
+                    @click="fontSize < 20 && fontSize++"
+                  >
+                    <Plus class="h-3 w-3" />
+                  </button>
                   <button
                     class="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                     title="Copy logs"
@@ -215,7 +296,7 @@ const tokensWithQuota = computed(() => {
               </div>
               <UiCard class="p-4 flex-1 flex flex-col min-h-0">
                 <CardContent class="p-0 flex-1 flex flex-col min-h-0">
-                  <LogStream :lines="logLines" class="flex-1 min-h-0" />
+                  <LogStream :lines="logLines" :font-size="fontSize" class="flex-1 min-h-0" />
                 </CardContent>
               </UiCard>
             </div>
@@ -223,45 +304,14 @@ const tokensWithQuota = computed(() => {
 
           <div class="flex flex-col h-full">
             <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-              <BarChart3 class="h-5 w-5 text-sky-500" />
-              Traffic
+              <Activity class="h-5 w-5 text-sky-500" />
+              Live Metrics
             </h2>
-            <div v-if="isTrafficLoading" class="py-4 text-center text-muted-foreground">
-              Loading traffic stats...
-            </div>
-            <div v-else class="space-y-8 flex-1 flex flex-col min-h-0">
-              <div class="grid gap-4 md:grid-cols-2">
-                <UiCard v-for="card in trafficCards" :key="card.label" class="p-4">
-                  <CardContent class="p-0">
-                    <div class="flex items-center gap-3">
-                      <div class="rounded-xl p-2.5" :class="card.iconBg">
-                        <component :is="card.icon" :class="['h-5 w-5', card.iconColor]" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">{{ card.label }}</p>
-                        <p class="text-2xl font-bold">{{ card.value }}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </UiCard>
-              </div>
-              <div class="flex-1 flex flex-col min-h-0">
-                <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <BarChart3 class="h-5 w-5 text-sky-500" />
-                  Traffic Chart
-                </h2>
-                <UiCard class="p-4 flex-1 flex flex-col min-h-0">
-                  <CardContent class="p-0 flex-1 flex flex-col min-h-0">
-                    <TrafficBarChart
-                      :day-upload="traffic?.day_upload_bytes ?? 0"
-                      :day-download="traffic?.day_download_bytes ?? 0"
-                      :month-upload="traffic?.month_upload_bytes ?? 0"
-                      :month-download="traffic?.month_download_bytes ?? 0"
-                    />
-                  </CardContent>
-                </UiCard>
-              </div>
-            </div>
+            <UiCard class="p-4 flex-1 flex flex-col min-h-0">
+              <CardContent class="p-0 flex-1 flex flex-col min-h-0">
+                <LiveMetrics :current="systemMetrics" :history="systemHistory" />
+              </CardContent>
+            </UiCard>
           </div>
         </div>
 
@@ -397,7 +447,7 @@ const tokensWithQuota = computed(() => {
                 <Globe class="h-5 w-5 text-emerald-500" />
                 Per-Domain Traffic (Today)
               </h2>
-              <UiCard class="p-4">
+              <UiCard class="p-4 max-h-96 overflow-y-auto">
                 <CardContent class="p-0">
                   <TrafficEntityTable
                     :items="domainTraffic?.items ?? []"
