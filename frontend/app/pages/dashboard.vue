@@ -228,15 +228,23 @@ const tokensWithQuota = computed(() => {
                     </div>
                   </CardContent>
                 </UiCard>
-                <UiCard class="p-4">
+                <UiCard class="p-4 group" title="Hover to show system RAM">
                   <CardContent class="p-0">
                     <div class="flex items-center gap-3">
                       <div class="rounded-xl p-2.5 bg-emerald-500/10">
                         <Brain class="h-5 w-5 text-emerald-600" />
                       </div>
                       <div class="min-w-0">
-                        <p class="text-sm text-muted-foreground">RAM</p>
-                        <p class="text-2xl font-bold">
+                        <p class="text-sm text-muted-foreground group-hover:hidden">Outless RAM</p>
+                        <p class="text-sm text-muted-foreground hidden group-hover:block">RAM</p>
+                        <p class="text-2xl font-bold group-hover:hidden">
+                          {{
+                            systemMetrics
+                              ? `${formatBytes(systemMetrics.process_memory_used_bytes ?? 0)} / ${formatBytes(systemMetrics.memory_total_bytes)}`
+                              : '—'
+                          }}
+                        </p>
+                        <p class="text-2xl font-bold hidden group-hover:block">
                           {{
                             systemMetrics
                               ? `${formatBytes(systemMetrics.memory_used_bytes)} / ${formatBytes(systemMetrics.memory_total_bytes)}`

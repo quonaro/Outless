@@ -14,6 +14,7 @@ export interface SystemMetrics {
   memory_percent: number
   memory_used_bytes: number
   memory_total_bytes: number
+  process_memory_used_bytes: number
   net_rx_bytes_per_sec: number
   net_tx_bytes_per_sec: number
   connections_count: number

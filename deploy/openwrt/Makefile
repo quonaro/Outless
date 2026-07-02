@@ -23,7 +23,6 @@ endef
 
 define Package/outless/conffiles
 /etc/config/outless
-/etc/outless/config.yaml
 endef
 
 define Build/Prepare

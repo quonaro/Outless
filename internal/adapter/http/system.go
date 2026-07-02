@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -13,19 +14,21 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/process"
 
 	"outless/internal/domain"
 )
 
 // SystemMetricsBody is the flat JSON payload for system metrics.
 type SystemMetricsBody struct {
-	CPUPercent       float64 `json:"cpu_percent"`
-	MemoryPercent    float64 `json:"memory_percent"`
-	MemoryUsedBytes  uint64  `json:"memory_used_bytes"`
-	MemoryTotalBytes uint64  `json:"memory_total_bytes"`
-	NetRXBytesPerSec float64 `json:"net_rx_bytes_per_sec"`
-	NetTXBytesPerSec float64 `json:"net_tx_bytes_per_sec"`
-	ConnectionsCount int     `json:"connections_count"`
+	CPUPercent             float64 `json:"cpu_percent"`
+	MemoryPercent          float64 `json:"memory_percent"`
+	MemoryUsedBytes        uint64  `json:"memory_used_bytes"`
+	MemoryTotalBytes       uint64  `json:"memory_total_bytes"`
+	ProcessMemoryUsedBytes uint64  `json:"process_memory_used_bytes"`
+	NetRXBytesPerSec       float64 `json:"net_rx_bytes_per_sec"`
+	NetTXBytesPerSec       float64 `json:"net_tx_bytes_per_sec"`
+	ConnectionsCount       int     `json:"connections_count"`
 }
 
 // SystemMetricsOutput is the Huma response wrapper.
@@ -37,6 +40,7 @@ type SystemMetricsOutput struct {
 type SystemMetricsHandler struct {
 	runtime     domain.RuntimeController
 	logger      *slog.Logger
+	selfProcess *process.Process
 	mu          sync.Mutex
 	lastNetRX   uint64
 	lastNetTX   uint64
@@ -49,10 +53,15 @@ type SystemMetricsHandler struct {
 
 // NewSystemMetricsHandler creates a system metrics handler and starts background collection.
 func NewSystemMetricsHandler(runtime domain.RuntimeController, logger *slog.Logger) *SystemMetricsHandler {
+	self, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		logger.Warn("failed to create self process handle", slog.String("error", err.Error()))
+	}
 	h := &SystemMetricsHandler{
-		runtime: runtime,
-		logger:  logger,
-		stopCh:  make(chan struct{}),
+		runtime:     runtime,
+		logger:      logger,
+		selfProcess: self,
+		stopCh:      make(chan struct{}),
 	}
 	go h.collectLoop()
 	return h
@@ -104,6 +113,15 @@ func (h *SystemMetricsHandler) collectOnce() {
 		body.MemoryPercent = vmStat.UsedPercent
 		body.MemoryUsedBytes = vmStat.Used
 		body.MemoryTotalBytes = vmStat.Total
+	}
+
+	if h.selfProcess != nil {
+		memInfo, err := h.selfProcess.MemoryInfo()
+		if err != nil {
+			h.logger.Warn("failed to get process memory info", slog.String("error", err.Error()))
+		} else if memInfo != nil {
+			body.ProcessMemoryUsedBytes = memInfo.RSS
+		}
 	}
 
 	now := time.Now()
