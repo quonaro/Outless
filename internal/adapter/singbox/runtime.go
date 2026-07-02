@@ -213,7 +213,7 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 
 	r.closeLocked()
 
-	if r.logger != nil {
+	if r.logger != nil && r.logger.Enabled(ctx, slog.LevelDebug) {
 		debugJSON, _ := json.MarshalIndent(opts, "", "  ")
 		r.logger.Debug("sing-box options", slog.String("config", string(debugJSON)))
 	}

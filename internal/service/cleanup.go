@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"outless/internal/domain"
@@ -81,8 +82,10 @@ func (s *CleanupService) Stop() error {
 
 func (s *CleanupService) loop(ctx context.Context) {
 	defer close(s.stoppedCh)
-	ticker := time.NewTicker(s.interval)
-	defer ticker.Stop()
+	cleanupTicker := time.NewTicker(s.interval)
+	defer cleanupTicker.Stop()
+	memTicker := time.NewTicker(3 * time.Minute)
+	defer memTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -91,10 +94,13 @@ func (s *CleanupService) loop(ctx context.Context) {
 		case <-s.stopCh:
 			s.logger.Info("token cleanup service stopped")
 			return
-		case <-ticker.C:
+		case <-cleanupTicker.C:
 			if err := s.runCleanup(ctx); err != nil {
 				s.logger.Error("periodic token cleanup failed", slog.String("error", err.Error()))
 			}
+		case <-memTicker.C:
+			debug.FreeOSMemory()
+			s.logger.Debug("freed OS memory")
 		}
 	}
 }

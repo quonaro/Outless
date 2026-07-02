@@ -19,6 +19,13 @@ func NewDB(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("opening sqlite connection: %w", err)
 	}
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("getting raw sql.DB: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+
 	if err := migrateDomainUsageSchema(db); err != nil {
 		return nil, fmt.Errorf("migrating domain usage schema: %w", err)
 	}
