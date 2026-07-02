@@ -28,6 +28,7 @@ type Config struct {
 	IdleTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
 	DisableDocs       bool
+	Version           string
 }
 
 // Handlers groups all HTTP handlers the server wires up.
@@ -111,6 +112,13 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	apiProxy := http.StripPrefix("/api", protectedAPI)
 	rootMux.Handle("/api/v1/", apiProxy)
 	rootMux.Handle("/api/v1", apiProxy)
+
+	// Public version endpoint (no auth required).
+	rootMux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `{"version":%q}`+"\n", cfg.Version)
+	})
 
 	static, err := web.FS()
 	if err != nil {

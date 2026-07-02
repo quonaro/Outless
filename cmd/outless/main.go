@@ -33,6 +33,9 @@ var cliYAML []byte
 
 const defaultConfigPath = "config.yaml"
 
+// version is injected at build time via -ldflags "-X main.version=<hash>".
+var version string
+
 func main() {
 	builder := engine.NewBuilder("outless", cliYAML)
 	builder.RegisterNative("run", runServer)
@@ -162,6 +165,18 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		LogStream:           httpadapter.NewLogStreamHandler(broadcaster),
 	}
 
+	v := version
+	if v == "" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range info.Settings {
+				if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+					v = s.Value[:7]
+					break
+				}
+			}
+		}
+	}
+
 	httpConfig := httpadapter.Config{
 		Address:           fmt.Sprintf("0.0.0.0:%d", cfg.App.HTTPPort),
 		ReadTimeout:       10 * time.Second,
@@ -169,6 +184,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		IdleTimeout:       120 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 		DisableDocs:       cfg.App.DisableDocs,
+		Version:           v,
 	}
 	server := httpadapter.NewServer(httpConfig, logger, jwtService, handlers)
 
@@ -298,11 +314,21 @@ func resetAdminPassword(ctx context.Context, nctx engine.NativeContext) error {
 }
 
 func showVersion(_ context.Context, nctx engine.NativeContext) error {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
+	v := version
+	if v == "" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range info.Settings {
+				if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+					v = s.Value[:7]
+					break
+				}
+			}
+		}
+	}
+	if v == "" {
 		_, _ = fmt.Fprintln(nctx.Stdout, "outless version unknown")
 		return nil
 	}
-	_, _ = fmt.Fprintf(nctx.Stdout, "outless version %s\n", info.Main.Version)
+	_, _ = fmt.Fprintf(nctx.Stdout, "outless version %s\n", v)
 	return nil
 }

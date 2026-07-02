@@ -18,9 +18,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /frontend/.output/public /build/web/dist
+ARG VERSION
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
     go build -trimpath -tags "with_reality_server with_utls" \
-    -ldflags="-s -w" -o outless ./cmd/outless
+    -ldflags="-s -w -X main.version=${VERSION}" -o outless ./cmd/outless
 
 # Stage 3: Minimal scratch image
 FROM scratch

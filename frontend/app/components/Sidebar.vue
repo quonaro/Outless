@@ -12,6 +12,21 @@ const sidebar = useSidebar()
 const auth = useAuth()
 const route = useRoute()
 
+interface VersionInfo {
+  version: string
+}
+
+const version = ref('')
+
+onMounted(async () => {
+  try {
+    const data = await $fetch<VersionInfo>('/api/version')
+    version.value = data.version
+  } catch {
+    // ignore
+  }
+})
+
 const navItems = [
   {
     id: 'dashboard',
@@ -83,7 +98,12 @@ const handleCloseMobile = () => {
       <div class="flex items-center justify-between border-b border-border p-4">
         <div class="flex items-center gap-3">
           <img :src="logoImage" alt="Outless Logo" class="h-10 w-10 flex-shrink-0" />
-          <span class="font-bold text-lg text-foreground"> Outless </span>
+          <div class="flex items-baseline gap-2">
+            <span class="font-bold text-lg text-foreground">Outless</span>
+            <span v-if="version" class="text-xs text-muted-foreground font-mono">{{
+              version
+            }}</span>
+          </div>
         </div>
         <button
           class="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -138,7 +158,12 @@ const handleCloseMobile = () => {
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <img :src="logoImage" alt="Outless Logo" class="h-12 w-12 flex-shrink-0" />
-          <span v-if="sidebar.isExpanded" class="font-bold text-lg text-foreground"> Outless </span>
+          <div v-if="sidebar.isExpanded" class="flex items-baseline gap-2">
+            <span class="font-bold text-lg text-foreground">Outless</span>
+            <span v-if="version" class="text-xs text-muted-foreground font-mono">{{
+              version
+            }}</span>
+          </div>
         </div>
         <ThemeToggle />
       </div>

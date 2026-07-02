@@ -51,7 +51,7 @@ start_service() {
 
 	procd_open_instance
 	procd_set_param command "$PROG" server run
-	procd_set_param env OUTLESS_CONFIG="$CONF_FILE"
+	procd_set_param env OUTLESS_CONFIG="$CONF_FILE" GOMEMLIMIT="40MiB"
 	procd_set_param respawn
 	procd_set_param stdout 1
 	procd_set_param stderr 1
