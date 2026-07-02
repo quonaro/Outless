@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -84,6 +86,19 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	}
 
 	logger = logging.NewFromConfig("outless", cfg.App.LogLevel, "")
+
+	if cfg.App.PprofEnabled {
+		addr := cfg.App.PprofBind
+		if addr == "" {
+			addr = "127.0.0.1:6060"
+		}
+		go func() {
+			logger.Info("starting pprof server", slog.String("addr", addr))
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				logger.Error("pprof server stopped", slog.String("error", err.Error()))
+			}
+		}()
+	}
 
 	broadcaster := httpadapter.NewLogBroadcaster()
 	logger = slog.New(httpadapter.NewBroadcastHandler(logger.Handler(), broadcaster))

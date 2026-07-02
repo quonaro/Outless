@@ -10,7 +10,7 @@ CONF_DIR=/etc/outless
 CONF_FILE=$CONF_DIR/config.yaml
 
 generate_config() {
-	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs
+	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs pprof_enabled pprof_bind
 
 	config_load outless
 
@@ -19,6 +19,8 @@ generate_config() {
 	config_get log_level app log_level "info"
 	config_get singbox_log_level app singbox_log_level "warn"
 	config_get disable_docs app disable_docs "0"
+	config_get pprof_enabled app pprof_enabled "0"
+	config_get pprof_bind app pprof_bind "127.0.0.1:6060"
 
 	config_get jwt_secret jwt secret ""
 	config_get jwt_expiry jwt expiry "24h"
@@ -35,6 +37,8 @@ app:
   singbox_log_level: $singbox_log_level
   log_level: $log_level
   disable_docs: $([ "$disable_docs" = "1" ] && echo "true" || echo "false")
+  pprof_enabled: $([ "$pprof_enabled" = "1" ] && echo "true" || echo "false")
+  pprof_bind: "$pprof_bind"
 jwt:
   secret: "$jwt_secret"
   expiry: ${jwt_expiry}0m0s

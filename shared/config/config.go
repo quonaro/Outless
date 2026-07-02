@@ -26,6 +26,8 @@ type AppConfig struct {
 	SingboxLogLevel   string        `yaml:"singbox_log_level"` // sing-box log level: trace/debug/info/warn/error/fatal/panic; empty = warn
 	LogLevel          string        `yaml:"log_level"`         // process log level: debug/info/warn/error
 	DisableDocs       bool          `yaml:"disable_docs"`
+	PprofEnabled      bool          `yaml:"pprof_enabled"` // enable Go pprof endpoint
+	PprofBind         string        `yaml:"pprof_bind"`    // pprof bind address, default 127.0.0.1:6060
 }
 
 // Database is the path to the SQLite database file.
