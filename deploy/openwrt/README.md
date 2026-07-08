@@ -76,13 +76,13 @@ This directory contains files needed to build an `.ipk` package for OpenWrt.
 
 ### One-liner build script
 
-If you have the SDK extracted at `~/openwrt-sdk`:
+If you have the SDK extracted at `.cache/openwrt-sdk`:
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
-SDK_DIR="${SDK_DIR:-$HOME/openwrt-sdk}"
+SDK_DIR="${SDK_DIR:-.cache/openwrt-sdk}"
 OUTLESS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 TARGET="mediatek-mt7622"
 
