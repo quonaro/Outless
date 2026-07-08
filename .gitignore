@@ -45,3 +45,6 @@ frontend/.output/
 frontend/dist/
 frontend/dist
 
+# Cache directories
+.cache/
+

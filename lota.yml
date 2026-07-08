@@ -5,7 +5,7 @@ vars:
   - GO_TAGS=with_reality_server with_utls
   - GO_LDFLAGS=-s -w
   - SDK_URL=https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/mt7622/openwrt-sdk-23.05.4-mediatek-mt7622_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-  - SDK_DIR=$HOME/openwrt-sdk
+  - SDK_DIR=.cache/openwrt-sdk
   - SDK_ARCH=mediatek-mt7622
 
 build:
