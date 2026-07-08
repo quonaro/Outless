@@ -1233,6 +1233,57 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
                 </div>
               </AccordionContent>
             </AccordionItem>
+            <AccordionItem value="base64">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">Base64</span>
+                  <span class="text-xs text-muted-foreground">(Legacy)</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">For older clients, Hiddify</p>
+                  <pre
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'base64') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'base64'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy Base64 URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="json">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">JSON</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">For Sing-box, Hiddify Next</p>
+                  <pre
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'json') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'json'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy JSON URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           </Accordion>
         </div>
         <SheetFooter>

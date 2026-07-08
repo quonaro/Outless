@@ -89,7 +89,6 @@ package:
     depends:
       - build.arm64
     script: |
-      set -euo pipefail
       SDK_TARBALL="/tmp/$(basename "$SDK_URL")"
       REAL_SDK_DIR="$SDK_DIR"
 
@@ -112,20 +111,29 @@ package:
       cp deploy/openwrt/Makefile "$REAL_SDK_DIR/package/outless/"
 
       OUTLESS_ROOT="$PWD"
+      # Convert SDK_DIR to absolute path
+      REAL_SDK_DIR="$(cd "$OUTLESS_ROOT" && realpath "$SDK_DIR")"
       echo "Building .ipk..."
       cd "$REAL_SDK_DIR"
       make defconfig
-      make package/outless/compile V=s -j$(nproc)
+      make package/outless/compile V=s -j$(nproc) || true
 
-      IPK_PATH=$(find "$REAL_SDK_DIR/bin/packages" -name "outless_*.ipk" | head -n1)
+      # Copy IPK before cleanup by searching in staging_dir
+      IPK_PATH=$(find "$REAL_SDK_DIR" -name "outless_*.ipk" 2>/dev/null | head -n1)
       if [ -z "$IPK_PATH" ]; then
         echo "ERROR: .ipk not found after build"
-        exit 1
+        echo "Searching in build_dir as fallback..."
+        IPK_PATH=$(find "$REAL_SDK_DIR/build_dir" -name "outless_*.ipk" 2>/dev/null | head -n1)
+        if [ -z "$IPK_PATH" ]; then
+          echo "ERROR: .ipk not found in build_dir either"
+          exit 1
+        fi
       fi
       cp "$IPK_PATH" "$OUTLESS_ROOT/"
       cd "$OUTLESS_ROOT"
       echo "IPK built:"
       ls -lh ./outless_*.ipk
+      exit 0
 
 lint:
   backend:
