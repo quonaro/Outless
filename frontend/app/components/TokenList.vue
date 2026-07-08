@@ -54,6 +54,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import Accordion from '~/components/ui/accordion/Accordion.vue'
+import AccordionItem from '~/components/ui/accordion/AccordionItem.vue'
+import AccordionTrigger from '~/components/ui/accordion/AccordionTrigger.vue'
+import AccordionContent from '~/components/ui/accordion/AccordionContent.vue'
 
 const config = useRuntimeConfig()
 const apiBase = (config.public.apiBase as string).replace(/\/+$/, '')
@@ -170,7 +174,7 @@ const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tokens'] })
 const createMutation = useCreateToken({
   onSuccess: (token) => {
     issuedToken.value = token
-    issuedAccessURL.value = resolveAccessURL(token)
+    issuedAccessURL.value = resolveAccessURL(token, 'clash')
     showIssuedDialog.value = true
     showCreateDialog.value = false
     resetForm()
@@ -388,7 +392,7 @@ async function handleReissue(token: Token) {
       token: result.token,
       access_url: result.access_url,
     } as IssuedToken
-    issuedAccessURL.value = resolveAccessURL({ access_url: result.access_url })
+    issuedAccessURL.value = resolveAccessURL({ access_url: result.access_url }, 'clash')
     showIssuedDialog.value = true
     toast.success('Token re-issued')
     invalidate()
@@ -441,18 +445,20 @@ function openTrafficDialog(token: Token) {
   showTrafficDialog.value = true
 }
 
-function resolveAccessURL(token: Pick<Token, 'access_url'>): string {
+function resolveAccessURL(token: Pick<Token, 'access_url'>, format: string = 'clash'): string {
   if (!token.access_url) return ''
-  if (token.access_url.startsWith('http://') || token.access_url.startsWith('https://')) {
-    return token.access_url
+  let path = token.access_url
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    const url = new URL(path)
+    path = url.pathname
   }
-  const path = token.access_url.startsWith('/') ? token.access_url : `/${token.access_url}`
+  const tokenPart = path.split('/').pop() || ''
   let base = apiBase
   if (base.startsWith('/')) {
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     base = origin + base
   }
-  return `${base}${path}`
+  return `${base}/v1/sub/${tokenPart}${format !== 'base64' ? `/${format}` : ''}`
 }
 
 async function copyText(value: string) {
@@ -490,18 +496,14 @@ function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-async function copyAccessURL(token: Token) {
-  const url = resolveAccessURL(token)
-  if (!url) {
+function copyAccessURL(token: Token) {
+  if (!token.access_url) {
     toast.error('Access URL is unavailable for this legacy token. Re-issue token to recover URL.')
     return
   }
-  try {
-    await navigator.clipboard?.writeText(url)
-    toast.success('URL copied to clipboard')
-  } catch {
-    toast.error('Failed to copy URL')
-  }
+  issuedToken.value = { ...token, token: '' } as IssuedToken
+  issuedAccessURL.value = resolveAccessURL(token, 'clash')
+  showIssuedDialog.value = true
 }
 
 function statusBadge(token: Token): { label: string; cls: string } {
@@ -1119,20 +1121,121 @@ function handleEditGroupCheckboxChange(groupID: string, event: Event) {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Token Issued</SheetTitle>
-          <SheetDescription>Token has been generated successfully.</SheetDescription>
+          <SheetDescription>Select a subscription format to copy.</SheetDescription>
         </SheetHeader>
         <div v-if="issuedToken" class="space-y-3 py-4">
           <p class="text-sm text-muted-foreground">
-            Copy and share this subscription URL. Users can import it directly in VLESS clients.
+            Choose the format compatible with your client. Clash Meta is recommended for most users.
           </p>
-          <pre
-            ref="issuedUrlRef"
-            class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
-            >{{ issuedAccessURL }}</pre
-          >
+          <Accordion type="single" :default-value="'clash'" collapsible>
+            <AccordionItem value="clash">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">Clash Meta</span>
+                  <span class="text-xs text-muted-foreground">(Recommended)</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">
+                    For Clash Verge Rev, FlClash, CMFA, Shadowrocket
+                  </p>
+                  <pre
+                    ref="issuedUrlRef"
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'clash') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'clash'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy Clash Meta URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="singbox">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">Sing-box</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">For Hiddify Next, SFA, NekoBox</p>
+                  <pre
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'singbox') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'singbox'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy Sing-box URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="v2ray">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">V2Ray</span>
+                  <span class="text-xs text-muted-foreground">(Legacy)</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">For V2RayN, older clients</p>
+                  <pre
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'v2ray') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'v2ray'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy V2Ray URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="surge">
+              <AccordionTrigger>
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold">Surge</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div class="space-y-2">
+                  <p class="text-xs text-muted-foreground">For Surge iOS/macOS</p>
+                  <pre
+                    class="overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 p-3 font-mono text-xs no-scrollbar"
+                    >{{ resolveAccessURL(issuedToken, 'surge') }}</pre
+                  >
+                  <UiButton
+                    size="sm"
+                    variant="outline"
+                    class="w-full"
+                    @click="copyText(resolveAccessURL(issuedToken, 'surge'))"
+                  >
+                    <Copy class="h-3 w-3 mr-2" />
+                    Copy Surge URL
+                  </UiButton>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
         <SheetFooter>
-          <UiButton variant="outline" @click="copyText(issuedAccessURL)">Copy URL</UiButton>
           <UiButton @click="closeIssuedDialog">Close</UiButton>
         </SheetFooter>
       </SheetContent>
