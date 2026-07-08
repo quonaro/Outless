@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,6 +17,8 @@ import (
 	"outless/internal/utils"
 	"outless/shared/template"
 	"outless/shared/vless"
+
+	"gopkg.in/yaml.v3"
 )
 
 // HubConfig describes the Hub endpoint clients connect to.
@@ -131,7 +134,7 @@ func (s *SubscriptionService) resolveInbound(ctx context.Context, inboundID stri
 		return HubConfig{}, fmt.Errorf("loading inbounds: %w", err)
 	}
 	if len(inbounds) == 0 {
-		return HubConfig{}, fmt.Errorf("no inbounds configured")
+		return HubConfig{}, nil
 	}
 
 	if inboundID == "" {
@@ -143,7 +146,7 @@ func (s *SubscriptionService) resolveInbound(ctx context.Context, inboundID stri
 			return toHubConfig(inbound), nil
 		}
 	}
-	return HubConfig{}, fmt.Errorf("inbound not found: %s", inboundID)
+	return HubConfig{}, nil
 }
 
 func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token domain.Token) ([]HubConfig, error) {
@@ -152,7 +155,7 @@ func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token
 		return nil, fmt.Errorf("loading inbounds: %w", err)
 	}
 	if len(inbounds) == 0 {
-		return nil, fmt.Errorf("no inbounds configured")
+		return []HubConfig{}, nil
 	}
 
 	// If token has no inbound restrictions, return all inbounds.
@@ -530,4 +533,568 @@ func countryFlagEmoji(code string) string {
 		regionalIndicatorA + (first - 'A'),
 		regionalIndicatorA + (second - 'A'),
 	})
+}
+
+// ClashMetaProxy represents a proxy in Clash Meta YAML format.
+type ClashMetaProxy struct {
+	Name         string            `yaml:"name"`
+	Type         string            `yaml:"type"`
+	Server       string            `yaml:"server"`
+	Port         int               `yaml:"port"`
+	UUID         string            `yaml:"uuid"`
+	UDP          bool              `yaml:"udp"`
+	Flow         string            `yaml:"flow,omitempty"`
+	Network      string            `yaml:"network,omitempty"`
+	TLS          bool              `yaml:"tls"`
+	ServerName   string            `yaml:"servername,omitempty"`
+	Fingerprint  string            `yaml:"fingerprint,omitempty"`
+	RealityOpts  *ClashRealityOpts `yaml:"reality-opts,omitempty"`
+	Encryption   string            `yaml:"encryption,omitempty"`
+}
+
+// ClashRealityOpts contains Reality options for Clash Meta.
+type ClashRealityOpts struct {
+	PublicKey string `yaml:"public-key"`
+	ShortID   string `yaml:"short-id"`
+}
+
+// ClashMetaConfig represents the full Clash Meta YAML configuration.
+type ClashMetaConfig struct {
+	Proxies     []ClashMetaProxy `yaml:"proxies"`
+	ProxyGroups []ClashProxyGroup `yaml:"proxy-groups"`
+}
+
+// ClashProxyGroup represents a proxy group in Clash Meta.
+type ClashProxyGroup struct {
+	Name    string   `yaml:"name"`
+	Type    string   `yaml:"type"`
+	Proxies []string `yaml:"proxies"`
+}
+
+// SingBoxOutbound represents an outbound in Sing-box JSON format.
+type SingBoxOutbound struct {
+	Type         string              `json:"type"`
+	Tag          string              `json:"tag"`
+	Server       string              `json:"server"`
+	ServerPort   int                 `json:"server_port"`
+	UUID         string              `json:"uuid"`
+	Flow         string              `json:"flow,omitempty"`
+	Network      string              `json:"network,omitempty"`
+	TLS          *SingBoxTLS         `json:"tls,omitempty"`
+	PacketEncoding string            `json:"packet_encoding,omitempty"`
+}
+
+// SingBoxTLS contains TLS configuration for Sing-box.
+type SingBoxTLS struct {
+	Enabled   bool           `json:"enabled"`
+	ServerName string         `json:"server_name,omitempty"`
+	UTLS      *SingBoxUTLS   `json:"utls,omitempty"`
+	Reality   *SingBoxReality `json:"reality,omitempty"`
+}
+
+// SingBoxUTLS contains uTLS fingerprint configuration.
+type SingBoxUTLS struct {
+	Enabled     bool   `json:"enabled"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+}
+
+// SingBoxReality contains Reality configuration for Sing-box.
+type SingBoxReality struct {
+	Enabled   bool   `json:"enabled"`
+	PublicKey string `json:"public_key"`
+	ShortID   string `json:"short_id"`
+}
+
+// SingBoxConfig represents the full Sing-box JSON configuration.
+type SingBoxConfig struct {
+	Outbounds []SingBoxOutbound `json:"outbounds"`
+	Route     *SingBoxRoute     `json:"route,omitempty"`
+	DNS       *SingBoxDNS       `json:"dns,omitempty"`
+}
+
+// SingBoxRoute contains routing configuration.
+type SingBoxRoute struct {
+	Rules []map[string]any `json:"rules,omitempty"`
+}
+
+// SingBoxDNS contains DNS configuration.
+type SingBoxDNS struct {
+	Servers []map[string]any `json:"servers,omitempty"`
+}
+
+// BuildClashMetaYAML generates Clash Meta YAML subscription.
+func (s *SubscriptionService) BuildClashMetaYAML(ctx context.Context, token string, inboundID string) (string, error) {
+	now := time.Now().UTC()
+
+	tokenInfo, err := s.tokenRepo.GetTokenByPlain(ctx, token, now)
+	if err != nil {
+		return "", err
+	}
+	if tokenInfo.UUID == "" {
+		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
+	}
+
+	groupSettings, err := s.loadGroupSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	nodes, err := s.repo.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("loading nodes metadata: %w", err)
+	}
+
+	groupNames, err := s.loadGroupNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var hubs []HubConfig
+	if inboundID != "" {
+		hub, err := s.resolveInbound(ctx, inboundID)
+		if err != nil {
+			return "", err
+		}
+		hubs = []HubConfig{hub}
+	} else {
+		hubs, err = s.resolveInboundsForToken(ctx, tokenInfo)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	config := ClashMetaConfig{
+		Proxies:     []ClashMetaProxy{},
+		ProxyGroups: []ClashProxyGroup{},
+	}
+
+	proxyNames := []string{}
+
+	for _, hub := range hubs {
+		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
+		for _, node := range selectedNodes {
+			proxy, name := s.buildClashMetaProxy(node, groupNames, hub, tokenInfo)
+			config.Proxies = append(config.Proxies, proxy)
+			proxyNames = append(proxyNames, name)
+		}
+	}
+
+	if len(config.Proxies) > 0 {
+		config.ProxyGroups = []ClashProxyGroup{
+			{
+				Name:    "🚀 节点选择",
+				Type:    "select",
+				Proxies: append([]string{"♻️ 自动选择", "DIRECT"}, proxyNames...),
+			},
+			{
+				Name:    "♻️ 自动选择",
+				Type:    "url-test",
+				Proxies: proxyNames,
+			},
+		}
+	}
+
+	output, err := yaml.Marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("marshaling yaml: %w", err)
+	}
+
+	return string(output), nil
+}
+
+// BuildSingBoxJSON generates Sing-box JSON subscription.
+func (s *SubscriptionService) BuildSingBoxJSON(ctx context.Context, token string, inboundID string) (string, error) {
+	now := time.Now().UTC()
+
+	tokenInfo, err := s.tokenRepo.GetTokenByPlain(ctx, token, now)
+	if err != nil {
+		return "", err
+	}
+	if tokenInfo.UUID == "" {
+		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
+	}
+
+	groupSettings, err := s.loadGroupSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	nodes, err := s.repo.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("loading nodes metadata: %w", err)
+	}
+
+	groupNames, err := s.loadGroupNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var hubs []HubConfig
+	if inboundID != "" {
+		hub, err := s.resolveInbound(ctx, inboundID)
+		if err != nil {
+			return "", err
+		}
+		hubs = []HubConfig{hub}
+	} else {
+		hubs, err = s.resolveInboundsForToken(ctx, tokenInfo)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	config := SingBoxConfig{
+		Outbounds: []SingBoxOutbound{},
+		Route: &SingBoxRoute{
+			Rules: []map[string]any{
+				{
+					"outbound": "proxy",
+				},
+			},
+		},
+		DNS: &SingBoxDNS{
+			Servers: []map[string]any{
+				{
+					"tag":      "dns-remote",
+					"address":  "8.8.8.8",
+					"detour":   "proxy",
+				},
+			},
+		},
+	}
+
+	for _, hub := range hubs {
+		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
+		for _, node := range selectedNodes {
+			outbound := s.buildSingBoxOutbound(node, groupNames, hub, tokenInfo)
+			config.Outbounds = append(config.Outbounds, outbound)
+		}
+	}
+
+	if len(config.Outbounds) > 0 {
+		config.Route.Rules[0]["outbound"] = config.Outbounds[0].Tag
+	}
+
+	output, err := json.Marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("marshaling json: %w", err)
+	}
+
+	return string(output), nil
+}
+
+// BuildV2RayBase64 generates V2Ray Base64 subscription (list of vless:// URIs).
+func (s *SubscriptionService) BuildV2RayBase64(ctx context.Context, token string, inboundID string) (string, error) {
+	now := time.Now().UTC()
+
+	tokenInfo, err := s.tokenRepo.GetTokenByPlain(ctx, token, now)
+	if err != nil {
+		return "", err
+	}
+	if tokenInfo.UUID == "" {
+		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
+	}
+
+	groupSettings, err := s.loadGroupSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	nodes, err := s.repo.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("loading nodes metadata: %w", err)
+	}
+
+	groupNames, err := s.loadGroupNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var hubs []HubConfig
+	if inboundID != "" {
+		hub, err := s.resolveInbound(ctx, inboundID)
+		if err != nil {
+			return "", err
+		}
+		hubs = []HubConfig{hub}
+	} else {
+		hubs, err = s.resolveInboundsForToken(ctx, tokenInfo)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	var allURLs []string
+	for _, hub := range hubs {
+		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
+		for _, node := range selectedNodes {
+			url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
+			if url != "" {
+				allURLs = append(allURLs, url)
+			}
+		}
+	}
+
+	if len(allURLs) == 0 {
+		return "", nil
+	}
+
+	payload := strings.Join(allURLs, "\n")
+	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
+}
+
+// BuildSurgeConf generates Surge configuration.
+func (s *SubscriptionService) BuildSurgeConf(ctx context.Context, token string, inboundID string) (string, error) {
+	now := time.Now().UTC()
+
+	tokenInfo, err := s.tokenRepo.GetTokenByPlain(ctx, token, now)
+	if err != nil {
+		return "", err
+	}
+	if tokenInfo.UUID == "" {
+		return "", fmt.Errorf("token %s has no uuid assigned", tokenInfo.ID)
+	}
+
+	groupSettings, err := s.loadGroupSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	nodes, err := s.repo.List(ctx)
+	if err != nil {
+		return "", fmt.Errorf("loading nodes metadata: %w", err)
+	}
+
+	groupNames, err := s.loadGroupNames(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var hubs []HubConfig
+	if inboundID != "" {
+		hub, err := s.resolveInbound(ctx, inboundID)
+		if err != nil {
+			return "", err
+		}
+		hubs = []HubConfig{hub}
+	} else {
+		hubs, err = s.resolveInboundsForToken(ctx, tokenInfo)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	var lines []string
+	lines = append(lines, "[Proxy]")
+
+	proxyNames := []string{}
+	for _, hub := range hubs {
+		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
+		for _, node := range selectedNodes {
+			line, name := s.buildSurgeProxy(node, groupNames, hub, tokenInfo)
+			if line != "" {
+				lines = append(lines, line)
+				proxyNames = append(proxyNames, name)
+			}
+		}
+	}
+
+	if len(proxyNames) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, "[Proxy Group]")
+		lines = append(lines, fmt.Sprintf("🚀 节点选择 = select, %s, DIRECT", strings.Join(proxyNames, ", ")))
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
+func (s *SubscriptionService) getSelectedNodes(token domain.Token, allNodes []domain.Node, groupSettings map[string]domain.Group) []domain.Node {
+	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
+	for _, groupID := range token.GroupIDs {
+		allowedGroups[groupID] = struct{}{}
+	}
+	if len(allowedGroups) == 0 && token.GroupID != "" {
+		allowedGroups[token.GroupID] = struct{}{}
+	}
+	allGroupsAllowed := len(allowedGroups) == 0
+
+	nodesByGroup := make(map[string][]domain.Node)
+	for _, node := range allNodes {
+		if !allGroupsAllowed {
+			allowed := false
+			for _, gid := range node.GroupIDs {
+				if _, ok := allowedGroups[gid]; ok {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+		for _, gid := range node.GroupIDs {
+			nodesByGroup[gid] = append(nodesByGroup[gid], node)
+		}
+	}
+
+	var selectedNodes []domain.Node
+	for groupID, nodes := range nodesByGroup {
+		settings := groupSettings[groupID]
+		groupNodes := nodes
+		if settings.RandomEnabled {
+			shuffleNodes(groupNodes)
+		}
+		if settings.RandomLimit != nil && *settings.RandomLimit > 0 && len(groupNodes) > *settings.RandomLimit {
+			groupNodes = groupNodes[:*settings.RandomLimit]
+		}
+		selectedNodes = append(selectedNodes, groupNodes...)
+	}
+
+	return selectedNodes
+}
+
+func (s *SubscriptionService) buildClashMetaProxy(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) (ClashMetaProxy, string) {
+	remark, _ := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
+	if remark == "" {
+		remark = node.ID
+	}
+
+	uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
+
+	sni := hub.SNI
+	if sni == "" {
+		sni = hub.Handshake
+	}
+	if sni == "" {
+		sni = "www.google.com"
+	}
+
+	fingerprint := hub.Fingerprint
+	if fingerprint == "" {
+		fingerprint = "chrome"
+	}
+
+	shortID := hub.ShortID
+	if shortID == "" {
+		shortID = "0000000000000000"
+	}
+
+	return ClashMetaProxy{
+		Name:        remark,
+		Type:        "vless",
+		Server:      s.externalHost,
+		Port:        hub.Port,
+		UUID:        uuid,
+		UDP:         true,
+		Flow:        "xtls-rprx-vision",
+		Network:     "tcp",
+		TLS:         true,
+		ServerName:  sni,
+		Fingerprint: fingerprint,
+		RealityOpts: &ClashRealityOpts{
+			PublicKey: hub.PublicKey,
+			ShortID:   shortID,
+		},
+		Encryption: "",
+	}, remark
+}
+
+func (s *SubscriptionService) buildSingBoxOutbound(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) SingBoxOutbound {
+	remark, _ := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
+	if remark == "" {
+		remark = node.ID
+	}
+
+	uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
+
+	sni := hub.SNI
+	if sni == "" {
+		sni = hub.Handshake
+	}
+	if sni == "" {
+		sni = "www.google.com"
+	}
+
+	fingerprint := hub.Fingerprint
+	if fingerprint == "" {
+		fingerprint = "chrome"
+	}
+
+	shortID := hub.ShortID
+	if shortID == "" {
+		shortID = "0000000000000000"
+	}
+
+	return SingBoxOutbound{
+		Type:         "vless",
+		Tag:          remark,
+		Server:       s.externalHost,
+		ServerPort:   hub.Port,
+		UUID:         uuid,
+		Flow:         "xtls-rprx-vision",
+		Network:      "tcp",
+		PacketEncoding: "xudp",
+		TLS: &SingBoxTLS{
+			Enabled:   true,
+			ServerName: sni,
+			UTLS: &SingBoxUTLS{
+				Enabled:     true,
+				Fingerprint: fingerprint,
+			},
+			Reality: &SingBoxReality{
+				Enabled:   true,
+				PublicKey: hub.PublicKey,
+				ShortID:   shortID,
+			},
+		},
+	}
+}
+
+func (s *SubscriptionService) buildV2RayURL(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) string {
+	remark, ok := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
+	if !ok {
+		return ""
+	}
+
+	uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
+	return s.formatVLESSURL(uuid, remark, hub)
+}
+
+func (s *SubscriptionService) buildSurgeProxy(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) (string, string) {
+	remark, ok := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
+	if !ok {
+		return "", ""
+	}
+
+	uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
+	
+	sni := hub.SNI
+	if sni == "" {
+		sni = hub.Handshake
+	}
+	if sni == "" {
+		sni = "www.google.com"
+	}
+
+	fingerprint := hub.Fingerprint
+	if fingerprint == "" {
+		fingerprint = "chrome"
+	}
+
+	shortID := hub.ShortID
+	if shortID == "" {
+		shortID = "0000000000000000"
+	}
+
+	line := fmt.Sprintf("%s = vless, %s, %d, uuid=%s, tls=true, sni=%s, fp=%s, pbk=%s, sid=%s, flow=xtls-rprx-vision",
+		remark, s.externalHost, hub.Port, uuid, sni, fingerprint, hub.PublicKey, shortID)
+
+	return line, remark
+}
+
+func getNodePrimaryGroup(node domain.Node) string {
+	if len(node.GroupIDs) > 0 {
+		return node.GroupIDs[0]
+	}
+	return ""
 }

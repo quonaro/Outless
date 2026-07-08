@@ -89,6 +89,7 @@ func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers
 func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, handlers Handlers) *Server {
 	apiMux := http.NewServeMux()
 	humaCfg := huma.DefaultConfig("Outless API", "0.1.0")
+	humaCfg.CreateHooks = nil
 	if cfg.DisableDocs {
 		humaCfg.OpenAPIPath = ""
 		humaCfg.DocsPath = ""
