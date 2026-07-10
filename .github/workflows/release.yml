@@ -30,8 +30,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/outvless/outless:${{ github.ref_name }}
-            ghcr.io/outvless/outless:latest
+            ghcr.io/quonaro/outless:${{ github.ref_name }}
+            ghcr.io/quonaro/outless:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -132,7 +132,7 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#v}"
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$VER/" "$SDK_DIR/package/outless/Makefile"
-          sed -i 's|^URL:=https://github.com/quonaro/outless|URL:=https://github.com/OutVless/Outless|' "$SDK_DIR/package/outless/Makefile"
+          sed -i 's|^URL:=https://github.com/OutVless/Outless|URL:=https://github.com/quonaro/Outless|' "$SDK_DIR/package/outless/Makefile"
       - name: Build IPK
         run: |
           cd "$SDK_DIR"

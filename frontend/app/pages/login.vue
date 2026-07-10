@@ -101,7 +101,7 @@ onMounted(async () => {
         </div>
 
         <a
-          href="https://github.com/OutVless/Outless"
+          href="https://github.com/quonaro/Outless"
           target="_blank"
           rel="noopener noreferrer"
           class="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:text-white hover:border-slate-400 transition-colors"
