@@ -10,7 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import { MoreHorizontal, Trash2, Clock, Monitor, Pencil } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
+import { MoreHorizontal, Trash2, Clock, Monitor, Pencil, Copy } from 'lucide-vue-next'
 
 const props = defineProps<{
   nodes: Node[]
@@ -129,6 +130,15 @@ function onToggle(nodeId: string) {
   emit('toggleSelection', nodeId)
 }
 
+async function copyLink(url: string) {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success('Link copied to clipboard')
+  } catch {
+    toast.error('Failed to copy link')
+  }
+}
+
 function onToggleAll() {
   const allSelected = rows.value.every((row) => isSelected(row.node.id))
   for (const row of rows.value) {
@@ -238,6 +248,10 @@ const allVisibleSelected = computed(() => {
                 >
                   <Pencil class="mr-2 h-3.5 w-3.5" />
                   Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem :disabled="!row.node.url" @click.prevent="copyLink(row.node.url)">
+                  <Copy class="mr-2 h-3.5 w-3.5" />
+                  Copy link
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   class="text-destructive focus:text-destructive"

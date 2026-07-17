@@ -46,7 +46,7 @@ func (r *PublicSourceRepository) Create(ctx context.Context, source domain.Publi
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return fmt.Errorf("creating public source: %w", err)
 	}
-	r.logger.Info("public source created", slog.String("id", model.ID), slog.String("url", model.URL))
+	r.logger.Info("public source created", slog.String("id", model.ID), slog.String(urlColumn, model.URL))
 	return nil
 }
 
@@ -91,7 +91,7 @@ func (r *PublicSourceRepository) Update(ctx context.Context, source domain.Publi
 		Model(&publicSourceModel{}).
 		Where("id = ?", source.ID).
 		Updates(map[string]any{
-			"url":             source.URL,
+			urlColumn:         source.URL,
 			"group_id":        source.GroupID,
 			"last_fetched_at": source.LastFetchedAt,
 		})

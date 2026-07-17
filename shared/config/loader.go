@@ -78,7 +78,7 @@ func (l *Loader) LoadOrCreate(path string, defaults any) error {
 
 func (l *Loader) createDefault(path string, config any) error {
 	if cfg, ok := config.(*Config); ok {
-		if cfg.JWT.Secret == "CHANGE_ME_IN_PRODUCTION" {
+		if cfg.JWT.Secret == defaultJWTSecret {
 			secret, err := GenerateRandomSecret(32)
 			if err != nil {
 				return fmt.Errorf("generating JWT secret: %w", err)

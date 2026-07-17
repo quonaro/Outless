@@ -111,8 +111,6 @@ type EntityTrafficOutput struct {
 }
 
 // GetTokenTrafficStats returns per-token traffic for the current day.
-//
-//nolint:dupl
 func (h *StatsHandler) GetTokenTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -149,8 +147,6 @@ func (h *StatsHandler) GetTokenTrafficStats(ctx context.Context, _ *struct{}) (*
 }
 
 // GetNodeTrafficStats returns per-node traffic for the current day.
-//
-//nolint:dupl
 func (h *StatsHandler) GetNodeTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -193,8 +189,6 @@ func (h *StatsHandler) GetNodeTrafficStats(ctx context.Context, _ *struct{}) (*E
 }
 
 // GetInboundTrafficStats returns per-inbound traffic for the current day.
-//
-//nolint:dupl
 func (h *StatsHandler) GetInboundTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -235,8 +229,6 @@ func (h *StatsHandler) GetInboundTrafficStats(ctx context.Context, _ *struct{}) 
 }
 
 // GetDomainTrafficStats returns per-domain traffic for the current day.
-//
-//nolint:dupl
 func (h *StatsHandler) GetDomainTrafficStats(ctx context.Context, _ *struct{}) (*EntityTrafficOutput, error) {
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

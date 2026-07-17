@@ -101,14 +101,15 @@ type ExportOutput struct {
 	}
 }
 
-// ImportInput accepts a full configuration to import.
+// ImportInput accepts a configuration to import. Only groups and nodes are
+// required; inbounds, public_sources and tokens are optional.
 type ImportInput struct {
 	Body struct {
 		Nodes         []exportNode         `json:"nodes"`
 		Groups        []exportGroup        `json:"groups"`
-		Inbounds      []exportInbound      `json:"inbounds"`
-		PublicSources []exportPublicSource `json:"public_sources"`
-		Tokens        []exportToken        `json:"tokens"`
+		Inbounds      []exportInbound      `json:"inbounds,omitempty"`
+		PublicSources []exportPublicSource `json:"public_sources,omitempty"`
+		Tokens        []exportToken        `json:"tokens,omitempty"`
 	}
 }
 

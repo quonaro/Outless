@@ -39,6 +39,9 @@ type JWTConfig struct {
 	Expiry time.Duration `yaml:"expiry"`
 }
 
+// defaultJWTSecret is the placeholder secret used before configuration is loaded.
+const defaultJWTSecret = "CHANGE_ME_IN_PRODUCTION"
+
 // DefaultConfig returns default configuration tuned for a single-binary deployment.
 func DefaultConfig() Config {
 	return Config{
@@ -48,7 +51,7 @@ func DefaultConfig() Config {
 			LogLevel:          "info",
 		},
 		JWT: JWTConfig{
-			Secret: "CHANGE_ME_IN_PRODUCTION",
+			Secret: defaultJWTSecret,
 			Expiry: 24 * time.Hour,
 		},
 		Database: "/var/lib/outless/outless.db",
