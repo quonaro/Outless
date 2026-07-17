@@ -46,7 +46,10 @@ const {
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
-} = useInfiniteNodes(computed(() => viewMode.value === 'flat'))
+} = useInfiniteNodes(
+  computed(() => viewMode.value === 'flat'),
+  groupFilter
+)
 const { data: groups, isLoading: groupsLoading } = useGroups()
 /** Full-page skeleton: flat mode waits for global infinite list; grouped mode only waits for groups. */
 const showInitialNodesShell = computed(
@@ -138,10 +141,8 @@ const groupNameByID = computed<Record<string, string>>(() => {
 const filteredFlatNodes = computed<Node[]>(() => {
   const list = infiniteNodesFlat.value
   const searchValue = search.value.trim().toLowerCase()
-  const groupFilterValue = groupFilter.value
+  if (!searchValue) return list
   return list.filter((node) => {
-    if (groupFilterValue && !node.group_ids.includes(groupFilterValue)) return false
-    if (!searchValue) return true
     const groupNames = node.group_ids.map((id) => groupNameByID.value[id] ?? '').join(' ')
     return `${node.url} ${node.id} ${node.country} ${groupNames}`
       .toLowerCase()
