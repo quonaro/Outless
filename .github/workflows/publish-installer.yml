@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - "scripts/public/install-xray.sh"
+      - "public/**"
 
 permissions:
   contents: write
@@ -18,13 +18,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Stage installer for Pages
+      - name: Stage public files for Pages
         run: |
           mkdir -p /tmp/xray-installer
-          cp scripts/public/install-xray.sh /tmp/xray-installer/install-xray.sh
-
-          # Alias: serve the same installer under /node
-          cp scripts/public/install-xray.sh /tmp/xray-installer/node
+          cp -r public/. /tmp/xray-installer/
 
           # Disable Jekyll processing so files without extensions are served as-is
           touch /tmp/xray-installer/.nojekyll
@@ -52,16 +49,17 @@ jobs:
           python3 - <<'PY'
           from textwrap import dedent
           from datetime import datetime, timezone
+          from pathlib import Path
 
-          files = [
-            ('install-xray.sh', 'Installer script'),
-            ('node', 'Alias for the installer (used as /node)'),
-          ]
+          base = Path('/tmp/xray-installer')
+          exclude = {'.nojekyll', 'index.html', '404.html'}
 
           rows = []
-          for name, desc in files:
-            size = f'{len(open(f"/tmp/xray-installer/{name}", "rb").read()) / 1024:.2f} KB'
-            rows.append(f'<tr><td><a href="{name}">{name}</a></td><td>{desc}</td><td>{size}</td></tr>')
+          for path in sorted(base.rglob('*')):
+              if path.is_file() and path.name not in exclude:
+                  rel = path.relative_to(base).as_posix()
+                  size = f'{path.stat().st_size / 1024:.2f} KB'
+                  rows.append(f'<tr><td><a href="{rel}">{rel}</a></td><td>{size}</td></tr>')
 
           html = dedent(f'''
           <!DOCTYPE html>
@@ -69,7 +67,7 @@ jobs:
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Outless Installer</title>
+            <title>Outless Public Files</title>
             <style>
               body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; color: #eee; margin: 0; padding: 2rem; }}
               .container {{ max-width: 800px; margin: 0 auto; }}
@@ -81,28 +79,22 @@ jobs:
               th {{ color: #aaa; font-weight: 600; }}
               a {{ color: #4ea8ff; text-decoration: none; }}
               a:hover {{ text-decoration: underline; }}
-              .cmd {{ background: #1a1a1a; padding: 1rem; border-radius: 8px; margin-top: 2rem; overflow-x: auto; }}
-              .cmd pre {{ margin: 0; color: #0f0; }}
               footer {{ margin-top: 3rem; color: #666; font-size: 0.875rem; }}
             </style>
           </head>
           <body>
             <div class="container">
-              <h1>Outless Installer</h1>
+              <h1>Outless Public Files</h1>
               <p class="hint">Generated {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
 
               <table>
                 <thead>
-                  <tr><th>Name</th><th>Description</th><th>Size</th></tr>
+                  <tr><th>Name</th><th>Size</th></tr>
                 </thead>
                 <tbody>
-                  {''.join(rows)}
+                  {''.join(rows) if rows else '<tr><td colspan="2">No files</td></tr>'}
                 </tbody>
               </table>
-
-              <div class="cmd">
-                <pre>curl -fsSL https://quonaro.github.io/Outless/node | bash</pre>
-              </div>
 
               <footer>Repository quonaro/Outless</footer>
             </div>
@@ -114,10 +106,10 @@ jobs:
             f.write(html.lstrip())
           PY
 
-      - name: Deploy to xray-installer branch
+      - name: Deploy to public branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: xray-installer
+          publish_branch: public
           publish_dir: /tmp/xray-installer
           force_orphan: true
