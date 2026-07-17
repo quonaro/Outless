@@ -18,6 +18,46 @@ export interface ParsedVless {
   name: string
 }
 
+export function buildVlessUrl(parsed: ParsedVless): string {
+  const url = new URL('vless://example.com')
+  url.hostname = parsed.host
+  url.port = String(parsed.port)
+  url.username = parsed.uuid
+
+  const params = new URLSearchParams()
+  if (parsed.encryption && parsed.encryption !== 'none') params.set('encryption', parsed.encryption)
+  if (parsed.flow) params.set('flow', parsed.flow)
+  if (parsed.network && parsed.network !== 'tcp') params.set('type', parsed.network)
+  if (parsed.security && parsed.security !== 'none') params.set('security', parsed.security)
+  if (parsed.sni) params.set('sni', parsed.sni)
+  if (parsed.fp) params.set('fp', parsed.fp)
+  if (parsed.pbk) params.set('pbk', parsed.pbk)
+  if (parsed.sid) params.set('sid', parsed.sid)
+  if (parsed.path) params.set('path', parsed.path)
+  if (parsed.hostHeader) params.set('host', parsed.hostHeader)
+  if (parsed.service) params.set('serviceName', parsed.service)
+  if (parsed.spx) params.set('spx', parsed.spx)
+  if (parsed.alpn.length) params.set('alpn', parsed.alpn.join(','))
+  url.search = params.toString()
+
+  if (parsed.name.trim()) url.hash = encodeURIComponent(parsed.name.trim())
+
+  return url.toString()
+}
+
+export function updateVlessName(raw: string, name: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith('vless://')) return null
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'vless:') return null
+    parsed.hash = encodeURIComponent(name.trim())
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
 export function parseVlessUrl(raw: string): ParsedVless | null {
   const trimmed = raw.trim()
   if (!trimmed.startsWith('vless://')) {
