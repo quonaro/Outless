@@ -1,0 +1,31 @@
+name: Publish installer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/public/install-xray.sh'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage installer for Pages
+        run: |
+          mkdir -p /tmp/xray-installer
+          cp scripts/public/install-xray.sh /tmp/xray-installer/install-xray.sh
+
+      - name: Deploy to xray-installer branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: xray-installer
+          publish_dir: /tmp/xray-installer
+          force_orphan: true

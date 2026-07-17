@@ -9,7 +9,7 @@
 #   ./install-xray.sh --target yandex.ru:443 --sni yandex.ru --port 44333
 #
 # Remote install:
-#   curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh | bash
+#   curl -fsSL https://quonaro.github.io/Outless/install-xray.sh | bash
 
 set -euo pipefail
 
