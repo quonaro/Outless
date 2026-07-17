@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { Plus, Server, Pencil, Hash, Monitor, Link, Tags } from 'lucide-vue-next'
+import { Plus, Server, Pencil, Hash, Monitor, Link, Tags, LayoutGrid, List } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
-import NodeCard from '~/components/NodeCard.vue'
+import NodeTable from '~/components/NodeTable.vue'
 import UiInput from '~/components/ui/input/input.vue'
 import NodeLifetimeInput from '~/components/NodeLifetimeInput.vue'
 import Sheet from '~/components/ui/sheet/Sheet.vue'
@@ -20,8 +20,11 @@ import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
 import { createNode, deleteNode, updateNode, batchDeleteNodes } from '~/utils/services/node'
 import { createGroup } from '~/utils/services/group'
+import { resolveCreateNodeErrorMessage } from '~/utils/node'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
 import VlessUrlPreview from '~/components/VlessUrlPreview.vue'
+import UiSelect from '~/components/ui/select/select.vue'
+import EditNodeDialog from '~/components/EditNodeDialog.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -34,7 +37,8 @@ type ViewMode = 'grouped' | 'flat'
 const queryClient = useQueryClient()
 const { confirm } = useConfirm()
 const { data: inbounds } = useInbounds()
-const viewMode = ref<ViewMode>('grouped')
+const viewMode = ref<ViewMode>('flat')
+const groupFilter = ref<string>('')
 
 const {
   data: nodePages,
@@ -81,6 +85,9 @@ const isCreateNodeSubmitting = ref(false)
 const deletingNodeIDs = ref<Set<string>>(new Set())
 const selectedNodeIDs = ref<Set<string>>(new Set())
 const editingNodeGroupIDs = ref<Set<string>>(new Set())
+
+const showEditNodeDialog = ref(false)
+const editNodeTarget = ref<Node | null>(null)
 
 const createGroupMutation = useMutation({
   mutationFn: (payload: { name: string; random_enabled: boolean; random_limit: number | null }) =>
@@ -131,7 +138,9 @@ const groupNameByID = computed<Record<string, string>>(() => {
 const filteredFlatNodes = computed<Node[]>(() => {
   const list = infiniteNodesFlat.value
   const searchValue = search.value.trim().toLowerCase()
+  const groupFilterValue = groupFilter.value
   return list.filter((node) => {
+    if (groupFilterValue && !node.group_ids.includes(groupFilterValue)) return false
     if (!searchValue) return true
     const groupNames = node.group_ids.map((id) => groupNameByID.value[id] ?? '').join(' ')
     return `${node.url} ${node.id} ${node.country} ${groupNames}`
@@ -188,24 +197,6 @@ function submitCreateNode() {
       },
     }
   )
-}
-
-function resolveCreateNodeErrorMessage(error: unknown): string {
-  const statusCode = Number((error as { statusCode?: unknown })?.statusCode)
-  if (statusCode === 409) {
-    return 'A node with this identifier already exists.'
-  }
-
-  const data = (error as { data?: unknown })?.data as
-    | { message?: unknown; detail?: unknown; title?: unknown }
-    | undefined
-  if (typeof data?.message === 'string' && data.message.trim()) return data.message
-  if (typeof data?.detail === 'string' && data.detail.trim()) return data.detail
-  if (typeof data?.title === 'string' && data.title.trim()) return data.title
-
-  const message = (error as { message?: unknown })?.message
-  if (typeof message === 'string' && message.trim()) return message
-  return 'Failed to create node.'
 }
 
 function handleAddNode(groupId: string) {
@@ -267,6 +258,31 @@ function handleUpdateNodeGroups(nodeId: string, groupIds: string[]) {
       current.delete(nodeId)
       editingNodeGroupIDs.value = current
     })
+}
+
+function openEditNodeDialog(node: Node) {
+  editNodeTarget.value = node
+  showEditNodeDialog.value = true
+}
+
+async function submitEditNode(payload: { url?: string; groupIds: string[]; expiresAt?: string }) {
+  if (!editNodeTarget.value) return
+  const nodeId = editNodeTarget.value.id
+  const body: { url?: string; group_ids?: string[]; expires_at?: string } = {
+    group_ids: payload.groupIds,
+  }
+  if (payload.url) body.url = payload.url
+  if (payload.expiresAt !== undefined) body.expires_at = payload.expiresAt || undefined
+  try {
+    await updateNode(nodeId, body)
+    queryClient.invalidateQueries({ queryKey: ['nodes'] })
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
+    showEditNodeDialog.value = false
+    editNodeTarget.value = null
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    toast.error('Failed to update node', { description: msg })
+  }
 }
 
 async function removeNode(node: Node) {
@@ -366,6 +382,35 @@ onBeforeUnmount(() => {
             placeholder="Search by URL, ID, group..."
             class="w-full sm:max-w-md"
           />
+          <div class="flex items-center gap-1 rounded-md border p-1">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :class="{ 'bg-muted': viewMode === 'flat' }"
+              @click="viewMode = 'flat'"
+            >
+              <List class="h-4 w-4 mr-1.5" />
+              Table
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :class="{ 'bg-muted': viewMode === 'grouped' }"
+              @click="viewMode = 'grouped'"
+            >
+              <LayoutGrid class="h-4 w-4 mr-1.5" />
+              Grouped
+            </UiButton>
+          </div>
+          <UiSelect
+            v-if="viewMode === 'flat'"
+            v-model="groupFilter"
+            :options="[
+              { label: 'All groups', value: '' },
+              ...(groups ?? []).map((g) => ({ label: g.name, value: g.id })),
+            ]"
+            class="w-full sm:w-48"
+          />
         </div>
 
         <div v-if="showInitialNodesShell" class="py-8 text-center text-muted-foreground">
@@ -382,31 +427,17 @@ onBeforeUnmount(() => {
           @update-node-groups="handleUpdateNodeGroups"
         />
 
-        <div v-else class="space-y-2">
-          <div v-for="node in filteredFlatNodes" :key="node.id" class="flex items-start gap-2">
-            <NodeCard
-              class="flex-1"
-              :node="node"
-              :inbounds="inbounds ?? []"
-              :group-label="
-                node.group_ids.length
-                  ? node.group_ids.map((id) => groupNameByID[id] ?? id).join(', ')
-                  : 'No group'
-              "
-            />
-            <div class="flex shrink-0 flex-wrap gap-1 sm:flex-nowrap pt-2">
-              <UiButton
-                variant="destructive"
-                size="sm"
-                class="whitespace-nowrap"
-                :disabled="deletingNodeIDs.has(node.id)"
-                @click="removeNode(node)"
-              >
-                {{ deletingNodeIDs.has(node.id) ? 'Deleting...' : 'Delete' }}
-              </UiButton>
-            </div>
-          </div>
-        </div>
+        <NodeTable
+          v-else
+          :nodes="filteredFlatNodes"
+          :inbounds="inbounds ?? []"
+          :group-name-by-i-d="groupNameByID"
+          :selected-node-i-ds="selectedNodeIDs"
+          :deleting-node-i-ds="deletingNodeIDs"
+          @toggle-selection="handleToggleSelection"
+          @delete-node="removeNode"
+          @edit-node="openEditNodeDialog"
+        />
 
         <div
           v-if="viewMode === 'flat'"
@@ -561,6 +592,13 @@ onBeforeUnmount(() => {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <EditNodeDialog
+        v-model="showEditNodeDialog"
+        :node="editNodeTarget"
+        :groups="groups ?? []"
+        @save="submitEditNode"
+      />
     </ClientOnly>
   </UiPageLayout>
 </template>
