@@ -1,0 +1,62 @@
+name: Publish installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/public/install-xray.sh'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage installer for Pages
+        run: |
+          mkdir -p /tmp/xray-installer
+          cp scripts/public/install-xray.sh /tmp/xray-installer/install-xray.sh
+
+          # Alias: serve the same installer under /node
+          cp scripts/public/install-xray.sh /tmp/xray-installer/node
+
+          # Disable Jekyll processing so files without extensions are served as-is
+          touch /tmp/xray-installer/.nojekyll
+
+          # Plain 404 to override the inherited user-site SPA 404.html,
+          # which would otherwise redirect every missing page into a loop.
+          cat > /tmp/xray-installer/404.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>404 - Not Found</title>
+          </head>
+          <body>
+            <h1>404 - Not Found</h1>
+            <p>The requested page does not exist.</p>
+            <p><a href="/outless/">Back to Outless</a></p>
+          </body>
+          </html>
+          EOF
+
+      - name: Generate directory index
+        uses: gacts/directory-listing@v1
+        with:
+          target: /tmp/xray-installer
+          overwrite: true
+
+      - name: Deploy to xray-installer branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: xray-installer
+          publish_dir: /tmp/xray-installer
+          force_orphan: true
