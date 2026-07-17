@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Version: 1.0.1
 # install-xray.sh — one-click Xray-core installer for VLESS+REALITY+mldsa65.
 # Generates all credentials automatically (UUID, REALITY keys, mldsa65 keys, shortIds).
 # Requires bash. Do not pipe to sh.
@@ -36,6 +37,10 @@ XVER=0
 SHOW=false
 MIN_CLIENT_VER=""
 MAX_CLIENT_VER=""
+
+STOP=false
+DISABLE=false
+REMOVE=false
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -107,11 +112,18 @@ Optional overrides:
   --mldsa65-verify VERIFY
   --short-ids a,b,c
 
+Management:
+  --stop                        Stop the Xray service
+  --disable                     Disable Xray from starting on boot
+  --remove, --uninstall         Stop, disable and remove Xray binary, config
+                                  and generated credential files
+
   -h, --help                    Show this help
 
 Examples:
   ./install-xray.sh
   ./install-xray.sh --port 44333 --fingerprint firefox
+  ./install-xray.sh --remove
   curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh | bash
 USAGE
 }
@@ -147,6 +159,9 @@ while [[ $# -gt 0 ]]; do
     --mldsa65-verify) MLDSA65_VERIFY="${2:-}"; shift 2 ;;
     --short-ids=*)  IFS=',' read -r -a SHORT_IDS <<<"${1#*=}"; shift ;;
     --short-ids)    IFS=',' read -r -a SHORT_IDS <<<"${2:-}"; shift 2 ;;
+    --stop)         STOP=true; shift ;;
+    --disable)      DISABLE=true; shift ;;
+    --remove|--uninstall) REMOVE=true; shift ;;
     -h|--help)      usage; exit 0 ;;
     *)              die "Unknown option: $1 (run with --help)" ;;
   esac
@@ -165,6 +180,7 @@ done
 # ---------------------------------------------------------------------------
 PKG_MGR=""
 OS=""
+INIT_SYSTEM=""
 
 detect_os() {
   if [[ ! -f /etc/os-release ]]; then
@@ -196,6 +212,21 @@ detect_os() {
       die "Unsupported OS: $OS"
       ;;
   esac
+}
+
+# ---------------------------------------------------------------------------
+# Init system detection
+# ---------------------------------------------------------------------------
+detect_init_system() {
+  if command -v systemctl &>/dev/null && [[ -d /etc/systemd/system ]]; then
+    INIT_SYSTEM="systemd"
+  elif command -v rc-update &>/dev/null && [[ -d /etc/init.d ]]; then
+    INIT_SYSTEM="openrc"
+  elif [[ "$OS" == "alpine" ]]; then
+    INIT_SYSTEM="openrc"
+  else
+    die "Cannot detect a supported init system (systemd or openrc)"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -426,10 +457,13 @@ generate_xray_config() {
 }
 
 # ---------------------------------------------------------------------------
-# Systemd service
+# Init service
 # ---------------------------------------------------------------------------
 create_service() {
-  cat > /etc/systemd/system/xray.service <<EOF
+  case "$INIT_SYSTEM" in
+    systemd)
+      mkdir -p /etc/systemd/system
+      cat > /etc/systemd/system/xray.service <<EOF
 [Unit]
 Description=Xray Service
 Documentation=https://github.com/XTLS/Xray-core
@@ -447,18 +481,109 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-  systemctl daemon-reload
-  systemctl enable xray.service
+      systemctl daemon-reload
+      systemctl enable xray.service
+      ;;
+
+    openrc)
+      mkdir -p /etc/init.d
+      cat > /etc/init.d/xray <<EOF
+#!/sbin/openrc-run
+
+description="Xray Service"
+command="$INSTALL_DIR/xray"
+command_args="run -config $CONFIG_DIR_XRAY/config.json"
+command_background="yes"
+pidfile="/run/\${RC_SVCNAME}.pid"
+
+depend() {
+    need net
+    after firewall
+}
+EOF
+
+      chmod +x /etc/init.d/xray
+      rc-update add xray default
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
 # Start
 # ---------------------------------------------------------------------------
 start_service() {
-  log_info "Starting xray.service..."
-  systemctl restart xray.service
-  sleep 1
-  systemctl status xray.service --no-pager || true
+  log_info "Starting xray..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl restart xray.service
+      sleep 1
+      systemctl status xray.service --no-pager || true
+      ;;
+    openrc)
+      rc-service xray restart
+      sleep 1
+      rc-service xray status || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Stop
+# ---------------------------------------------------------------------------
+stop_service() {
+  log_info "Stopping xray..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl stop xray.service || true
+      ;;
+    openrc)
+      rc-service xray stop || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Disable autostart
+# ---------------------------------------------------------------------------
+disable_service() {
+  log_info "Disabling xray autostart..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl disable xray.service || true
+      ;;
+    openrc)
+      rc-update del xray default || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Remove node
+# ---------------------------------------------------------------------------
+remove_node() {
+  log_info "Removing Xray node..."
+
+  stop_service
+  disable_service
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      rm -f /etc/systemd/system/xray.service
+      systemctl daemon-reload 2>/dev/null || true
+      ;;
+    openrc)
+      rm -f /etc/init.d/xray
+      ;;
+  esac
+
+  rm -f "$INSTALL_DIR/xray" "$INSTALL_DIR/geoip.dat" "$INSTALL_DIR/geosite.dat"
+  rm -rf "$CONFIG_DIR_XRAY"
+  rm -f "$CREDS_FILE" "$LINK_FILE"
+
+  log_info "Xray node removed."
 }
 
 # ---------------------------------------------------------------------------
@@ -545,7 +670,24 @@ main() {
   ensure_root "$@"
 
   detect_os
+  detect_init_system
   detect_arch
+
+  if $REMOVE; then
+    remove_node
+    exit 0
+  fi
+
+  if $STOP; then
+    stop_service
+    exit 0
+  fi
+
+  if $DISABLE; then
+    disable_service
+    exit 0
+  fi
+
   install_deps
   install_xray
   generate_all
