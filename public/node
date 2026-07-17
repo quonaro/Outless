@@ -41,7 +41,7 @@ MAX_CLIENT_VER=""
 STOP=false
 DISABLE=false
 REMOVE=false
-SHOW_LINKS=false
+LIST_LINKS=false
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -130,7 +130,7 @@ Optional overrides:
 Management:
   --stop                        Stop the Xray service
   --disable                     Disable Xray from starting on boot
-  --show-links                  Show all VLESS links from Xray config
+  --list                        List all VLESS links from Xray config
   --remove, --uninstall         Stop, disable and remove Xray binary, config
                                   and generated credential files
 
@@ -177,7 +177,7 @@ while [[ $# -gt 0 ]]; do
     --short-ids)    IFS=',' read -r -a SHORT_IDS <<<"${2:-}"; shift 2 ;;
     --stop)         STOP=true; shift ;;
     --disable)      DISABLE=true; shift ;;
-    --show-links)   SHOW_LINKS=true; shift ;;
+    --list)         LIST_LINKS=true; shift ;;
     --remove|--uninstall) REMOVE=true; shift ;;
     -h|--help)      usage; exit 0 ;;
     *)              die "Unknown option: $1 (run with --help)" ;;
@@ -340,7 +340,7 @@ generate_uuid() {
 
 generate_email() {
   [[ -n "$EMAIL" ]] && return 0
-  EMAIL="${UUID%%-*}@outless"
+  EMAIL="$(random_hex 8)"
 }
 
 generate_reality_keys() {
@@ -629,7 +629,7 @@ build_link_for_client() {
   [[ "$port" == "null" || -z "$port" ]] && die "Could not parse port from config"
   [[ "$public_key" == "null" || -z "$public_key" ]] && die "Could not parse public key from config"
 
-  [[ "$email" == "null" || -z "$email" ]] && email="${uuid%%-*}@outless"
+  [[ "$email" == "null" || -z "$email" ]] && email="$(random_hex 8)"
   [[ "$short_id" == "null" ]] && short_id=""
   [[ "$sni" == "null" ]] && sni=""
   [[ "$fingerprint" == "null" || -z "$fingerprint" ]] && fingerprint="chrome"
@@ -684,7 +684,7 @@ print_and_save_link() {
   printf '%s\n' "$link"
 }
 
-show_links() {
+list_links() {
   command -v jq &>/dev/null || die "jq is required to parse the Xray config"
 
   local config_file="$CONFIG_DIR_XRAY/config.json"
@@ -715,8 +715,8 @@ show_links() {
 # Main
 # ---------------------------------------------------------------------------
 main() {
-  if $SHOW_LINKS; then
-    show_links
+  if $LIST_LINKS; then
+    list_links
     exit 0
   fi
 
