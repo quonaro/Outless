@@ -41,11 +41,12 @@ func NewImportExportHandler(
 
 // exportNode is a serializable node representation.
 type exportNode struct {
-	ID       string   `json:"id"`
-	URL      string   `json:"url"`
-	GroupIDs []string `json:"group_ids"`
-	Country  string   `json:"country"`
-	IsSelf   bool     `json:"is_self"`
+	ID        string   `json:"id"`
+	URL       string   `json:"url"`
+	GroupIDs  []string `json:"group_ids"`
+	Country   string   `json:"country"`
+	IsSelf    bool     `json:"is_self"`
+	ExpiresAt string   `json:"expires_at,omitempty"`
 }
 
 // exportGroup is a serializable group representation.
@@ -162,13 +163,17 @@ func (h *ImportExportHandler) exportNodes(ctx context.Context) ([]exportNode, er
 	}
 	items := make([]exportNode, 0, len(nodes))
 	for _, n := range nodes {
-		items = append(items, exportNode{
+		item := exportNode{
 			ID:       n.ID,
 			URL:      n.URL,
 			GroupIDs: n.GroupIDs,
 			Country:  n.Country,
 			IsSelf:   n.IsSelf,
-		})
+		}
+		if n.ExpiresAt != nil {
+			item.ExpiresAt = n.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }
@@ -288,13 +293,22 @@ func (h *ImportExportHandler) importGroups(ctx context.Context, groups []exportG
 
 func (h *ImportExportHandler) importNodes(ctx context.Context, nodes []exportNode) {
 	for _, n := range nodes {
-		if err := h.nodeRepo.Upsert(ctx, domain.Node{
+		node := domain.Node{
 			ID:       n.ID,
 			URL:      n.URL,
 			GroupIDs: n.GroupIDs,
 			Country:  n.Country,
 			IsSelf:   n.IsSelf,
-		}); err != nil {
+		}
+		if n.ExpiresAt != "" {
+			expiresAt, err := time.Parse(time.RFC3339, n.ExpiresAt)
+			if err != nil {
+				h.logger.Warn("import node skipped", slog.String("id", n.ID), slog.String("error", err.Error()))
+				continue
+			}
+			node.ExpiresAt = &expiresAt
+		}
+		if err := h.nodeRepo.Upsert(ctx, node); err != nil {
 			h.logger.Warn("import node skipped", slog.String("id", n.ID), slog.String("error", err.Error()))
 		}
 	}

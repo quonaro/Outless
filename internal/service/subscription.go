@@ -93,6 +93,7 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 	if err != nil {
 		return "", fmt.Errorf("loading nodes metadata: %w", err)
 	}
+	nodes = filterActiveNodes(nodes, now)
 
 	groupNames, err := s.loadGroupNames(ctx)
 	if err != nil {
@@ -126,6 +127,17 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 
 	payload := strings.Join(allURLs, "\n")
 	return base64.StdEncoding.EncodeToString([]byte(payload)), nil
+}
+
+func filterActiveNodes(nodes []domain.Node, now time.Time) []domain.Node {
+	active := make([]domain.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if n.ExpiresAt != nil && n.ExpiresAt.Before(now) {
+			continue
+		}
+		active = append(active, n)
+	}
+	return active
 }
 
 func (s *SubscriptionService) resolveInbound(ctx context.Context, inboundID string) (HubConfig, error) {
@@ -537,19 +549,19 @@ func countryFlagEmoji(code string) string {
 
 // ClashMetaProxy represents a proxy in Clash Meta YAML format.
 type ClashMetaProxy struct {
-	Name         string            `yaml:"name"`
-	Type         string            `yaml:"type"`
-	Server       string            `yaml:"server"`
-	Port         int               `yaml:"port"`
-	UUID         string            `yaml:"uuid"`
-	UDP          bool              `yaml:"udp"`
-	Flow         string            `yaml:"flow,omitempty"`
-	Network      string            `yaml:"network,omitempty"`
-	TLS          bool              `yaml:"tls"`
-	ServerName   string            `yaml:"servername,omitempty"`
-	Fingerprint  string            `yaml:"fingerprint,omitempty"`
-	RealityOpts  *ClashRealityOpts `yaml:"reality-opts,omitempty"`
-	Encryption   string            `yaml:"encryption,omitempty"`
+	Name        string            `yaml:"name"`
+	Type        string            `yaml:"type"`
+	Server      string            `yaml:"server"`
+	Port        int               `yaml:"port"`
+	UUID        string            `yaml:"uuid"`
+	UDP         bool              `yaml:"udp"`
+	Flow        string            `yaml:"flow,omitempty"`
+	Network     string            `yaml:"network,omitempty"`
+	TLS         bool              `yaml:"tls"`
+	ServerName  string            `yaml:"servername,omitempty"`
+	Fingerprint string            `yaml:"fingerprint,omitempty"`
+	RealityOpts *ClashRealityOpts `yaml:"reality-opts,omitempty"`
+	Encryption  string            `yaml:"encryption,omitempty"`
 }
 
 // ClashRealityOpts contains Reality options for Clash Meta.
@@ -560,7 +572,7 @@ type ClashRealityOpts struct {
 
 // ClashMetaConfig represents the full Clash Meta YAML configuration.
 type ClashMetaConfig struct {
-	Proxies     []ClashMetaProxy `yaml:"proxies"`
+	Proxies     []ClashMetaProxy  `yaml:"proxies"`
 	ProxyGroups []ClashProxyGroup `yaml:"proxy-groups"`
 }
 
@@ -573,23 +585,23 @@ type ClashProxyGroup struct {
 
 // SingBoxOutbound represents an outbound in Sing-box JSON format.
 type SingBoxOutbound struct {
-	Type         string              `json:"type"`
-	Tag          string              `json:"tag"`
-	Server       string              `json:"server"`
-	ServerPort   int                 `json:"server_port"`
-	UUID         string              `json:"uuid"`
-	Flow         string              `json:"flow,omitempty"`
-	Network      string              `json:"network,omitempty"`
-	TLS          *SingBoxTLS         `json:"tls,omitempty"`
-	PacketEncoding string            `json:"packet_encoding,omitempty"`
+	Type           string      `json:"type"`
+	Tag            string      `json:"tag"`
+	Server         string      `json:"server"`
+	ServerPort     int         `json:"server_port"`
+	UUID           string      `json:"uuid"`
+	Flow           string      `json:"flow,omitempty"`
+	Network        string      `json:"network,omitempty"`
+	TLS            *SingBoxTLS `json:"tls,omitempty"`
+	PacketEncoding string      `json:"packet_encoding,omitempty"`
 }
 
 // SingBoxTLS contains TLS configuration for Sing-box.
 type SingBoxTLS struct {
-	Enabled   bool           `json:"enabled"`
-	ServerName string         `json:"server_name,omitempty"`
-	UTLS      *SingBoxUTLS   `json:"utls,omitempty"`
-	Reality   *SingBoxReality `json:"reality,omitempty"`
+	Enabled    bool            `json:"enabled"`
+	ServerName string          `json:"server_name,omitempty"`
+	UTLS       *SingBoxUTLS    `json:"utls,omitempty"`
+	Reality    *SingBoxReality `json:"reality,omitempty"`
 }
 
 // SingBoxUTLS contains uTLS fingerprint configuration.
@@ -755,9 +767,9 @@ func (s *SubscriptionService) BuildSingBoxJSON(ctx context.Context, token string
 		DNS: &SingBoxDNS{
 			Servers: []map[string]any{
 				{
-					"tag":      "dns-remote",
-					"address":  "8.8.8.8",
-					"detour":   "proxy",
+					"tag":     "dns-remote",
+					"address": "8.8.8.8",
+					"detour":  "proxy",
 				},
 			},
 		},
@@ -1026,16 +1038,16 @@ func (s *SubscriptionService) buildSingBoxOutbound(node domain.Node, groupNames 
 	}
 
 	return SingBoxOutbound{
-		Type:         "vless",
-		Tag:          remark,
-		Server:       s.externalHost,
-		ServerPort:   hub.Port,
-		UUID:         uuid,
-		Flow:         "xtls-rprx-vision",
-		Network:      "tcp",
+		Type:           "vless",
+		Tag:            remark,
+		Server:         s.externalHost,
+		ServerPort:     hub.Port,
+		UUID:           uuid,
+		Flow:           "xtls-rprx-vision",
+		Network:        "tcp",
 		PacketEncoding: "xudp",
 		TLS: &SingBoxTLS{
-			Enabled:   true,
+			Enabled:    true,
 			ServerName: sni,
 			UTLS: &SingBoxUTLS{
 				Enabled:     true,
@@ -1067,7 +1079,7 @@ func (s *SubscriptionService) buildSurgeProxy(node domain.Node, groupNames map[s
 	}
 
 	uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
-	
+
 	sni := hub.SNI
 	if sni == "" {
 		sni = hub.Handshake

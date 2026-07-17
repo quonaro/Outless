@@ -9,11 +9,12 @@ import (
 
 // Node represents a proxy endpoint (exit VLESS server) managed by Outless.
 type Node struct {
-	ID       string
-	URL      string
-	GroupIDs []string
-	Country  string
-	IsSelf   bool
+	ID        string
+	URL       string
+	GroupIDs  []string
+	Country   string
+	IsSelf    bool
+	ExpiresAt *time.Time
 }
 
 // Token describes subscription access token metadata.

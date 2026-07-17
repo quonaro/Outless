@@ -35,6 +35,7 @@ import {
   Sparkles,
   Monitor,
   Network,
+  Clock,
 } from 'lucide-vue-next'
 
 interface Field {
@@ -171,6 +172,33 @@ const title = computed(() => {
   const p = parsed.value
   return p?.name || props.node.url
 })
+
+const expiresAt = computed(() => {
+  if (!props.node.expires_at) return null
+  const d = new Date(props.node.expires_at)
+  return Number.isNaN(d.getTime()) ? null : d
+})
+
+const isExpired = computed(() => {
+  if (!expiresAt.value) return false
+  return expiresAt.value.getTime() < Date.now()
+})
+
+const expiresInDays = computed(() => {
+  if (!expiresAt.value) return null
+  const diff = expiresAt.value.getTime() - Date.now()
+  if (diff <= 0) return 0
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+})
+
+const expiresLabel = computed(() => {
+  if (!expiresAt.value) return ''
+  if (isExpired.value) return 'Expired'
+  const days = expiresInDays.value ?? 0
+  if (days === 0) return 'Expires today'
+  if (days === 1) return 'Expires in 1 day'
+  return `Expires in ${days} days`
+})
 </script>
 
 <template>
@@ -187,6 +215,27 @@ const title = computed(() => {
               class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
             >
               Self
+            </span>
+            <span
+              v-if="isExpired"
+              class="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+            >
+              <Clock class="h-3 w-3" />
+              Expired
+            </span>
+            <span
+              v-else-if="expiresAt && (expiresInDays ?? 0) <= 3"
+              class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+            >
+              <Clock class="h-3 w-3" />
+              {{ expiresLabel }}
+            </span>
+            <span
+              v-else-if="expiresAt"
+              class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+            >
+              <Clock class="h-3 w-3" />
+              {{ expiresLabel }}
             </span>
           </div>
 

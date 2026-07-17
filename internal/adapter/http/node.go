@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -36,18 +38,20 @@ func NewNodeManagementHandler(
 
 type CreateNodeInput struct {
 	Body struct {
-		URL      string   `json:"url"`
-		GroupIDs []string `json:"group_ids" required:"true"`
-		IsSelf   bool     `json:"is_self"`
+		URL       string   `json:"url"`
+		GroupIDs  []string `json:"group_ids" required:"true"`
+		IsSelf    bool     `json:"is_self"`
+		ExpiresAt *string  `json:"expires_at,omitempty"`
 	}
 }
 
 type CreateNodeOutput struct {
 	Body struct {
-		ID       string   `json:"id"`
-		URL      string   `json:"url"`
-		GroupIDs []string `json:"group_ids"`
-		IsSelf   bool     `json:"is_self"`
+		ID        string   `json:"id"`
+		URL       string   `json:"url"`
+		GroupIDs  []string `json:"group_ids"`
+		IsSelf    bool     `json:"is_self"`
+		ExpiresAt *string  `json:"expires_at,omitempty"`
 	}
 }
 
@@ -68,8 +72,9 @@ type ListNodesInput struct {
 type UpdateNodeInput struct {
 	ID   string `path:"id" required:"true"`
 	Body struct {
-		URL      string   `json:"url,omitempty"`
-		GroupIDs []string `json:"group_ids,omitempty"`
+		URL       string   `json:"url,omitempty"`
+		GroupIDs  []string `json:"group_ids,omitempty"`
+		ExpiresAt *string  `json:"expires_at,omitempty"`
 	}
 }
 
@@ -86,11 +91,12 @@ type GetNodeOutput struct {
 }
 
 type NodeItem struct {
-	ID       string   `json:"id"`
-	URL      string   `json:"url"`
-	GroupIDs []string `json:"group_ids"`
-	Country  string   `json:"country"`
-	IsSelf   bool     `json:"is_self"`
+	ID        string   `json:"id"`
+	URL       string   `json:"url"`
+	GroupIDs  []string `json:"group_ids"`
+	Country   string   `json:"country"`
+	IsSelf    bool     `json:"is_self"`
+	ExpiresAt *string  `json:"expires_at,omitempty"`
 }
 
 func (h *NodeManagementHandler) Register(api huma.API) {
@@ -138,11 +144,17 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 		nodeID = "self_" + strings.Join(input.Body.GroupIDs, "_")
 	}
 
+	expiresAt, err := parseOptionalExpiresAt(input.Body.ExpiresAt)
+	if err != nil {
+		return nil, huma.Error400BadRequest("invalid expires_at")
+	}
+
 	node := domain.Node{
-		ID:       nodeID,
-		URL:      input.Body.URL,
-		GroupIDs: input.Body.GroupIDs,
-		IsSelf:   input.Body.IsSelf,
+		ID:        nodeID,
+		URL:       input.Body.URL,
+		GroupIDs:  input.Body.GroupIDs,
+		IsSelf:    input.Body.IsSelf,
+		ExpiresAt: expiresAt,
 	}
 
 	if err := h.nodeRepo.Create(ctx, node); err != nil {
@@ -162,6 +174,7 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	out.Body.URL = input.Body.URL
 	out.Body.GroupIDs = input.Body.GroupIDs
 	out.Body.IsSelf = input.Body.IsSelf
+	out.Body.ExpiresAt = formatOptionalExpiresAt(expiresAt)
 
 	return out, nil
 }
@@ -232,11 +245,12 @@ func (h *NodeManagementHandler) buildNodeItems(
 	response := make([]NodeItem, 0, len(nodes))
 	for _, n := range nodes {
 		response = append(response, NodeItem{
-			ID:       n.ID,
-			URL:      n.URL,
-			GroupIDs: n.GroupIDs,
-			Country:  domain.NormalizeCountryCode(n.Country),
-			IsSelf:   n.IsSelf,
+			ID:        n.ID,
+			URL:       n.URL,
+			GroupIDs:  n.GroupIDs,
+			Country:   domain.NormalizeCountryCode(n.Country),
+			IsSelf:    n.IsSelf,
+			ExpiresAt: formatOptionalExpiresAt(n.ExpiresAt),
 		})
 	}
 
@@ -262,13 +276,22 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 	}
 
 	updates := domain.Node{
-		ID:       input.ID,
-		URL:      existingNode.URL,
-		GroupIDs: existingNode.GroupIDs,
+		ID:        input.ID,
+		URL:       existingNode.URL,
+		GroupIDs:  existingNode.GroupIDs,
+		ExpiresAt: existingNode.ExpiresAt,
 	}
 
 	if input.Body.URL != "" {
 		updates.URL = input.Body.URL
+	}
+
+	if input.Body.ExpiresAt != nil {
+		expiresAt, err := parseOptionalExpiresAt(input.Body.ExpiresAt)
+		if err != nil {
+			return nil, huma.Error400BadRequest("invalid expires_at")
+		}
+		updates.ExpiresAt = expiresAt
 	}
 
 	if len(input.Body.GroupIDs) > 0 {
@@ -309,11 +332,12 @@ func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput
 
 	return &GetNodeOutput{
 		Body: NodeItem{
-			ID:       node.ID,
-			URL:      node.URL,
-			GroupIDs: node.GroupIDs,
-			Country:  domain.NormalizeCountryCode(node.Country),
-			IsSelf:   node.IsSelf,
+			ID:        node.ID,
+			URL:       node.URL,
+			GroupIDs:  node.GroupIDs,
+			Country:   domain.NormalizeCountryCode(node.Country),
+			IsSelf:    node.IsSelf,
+			ExpiresAt: formatOptionalExpiresAt(node.ExpiresAt),
 		},
 	}, nil
 }
@@ -358,4 +382,24 @@ func (h *NodeManagementHandler) BatchDeleteNodes(ctx context.Context, input *bat
 func generateNodeID(url string, groupIDs []string) string {
 	hash := sha256.Sum256([]byte(url + "|" + strings.Join(groupIDs, ",")))
 	return "node_" + hex.EncodeToString(hash[:8])
+}
+
+func parseOptionalExpiresAt(s *string) (*time.Time, error) {
+	if s == nil || *s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, *s)
+	if err != nil {
+		return nil, fmt.Errorf("parsing expires_at: %w", err)
+	}
+	t = t.UTC()
+	return &t, nil
+}
+
+func formatOptionalExpiresAt(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.UTC().Format(time.RFC3339)
+	return &s
 }
