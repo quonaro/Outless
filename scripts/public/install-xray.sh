@@ -65,7 +65,22 @@ log_error() { printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2; }
 
 die() { log_error "$1"; exit 1; }
 
-url_encode() { jq -nr --arg s "$1" '@uri $s'; }
+url_encode() {
+  local input="$1"
+  local output=""
+  local i ch
+
+  for ((i = 0; i < ${#input}; i++)); do
+    ch="${input:$i:1}"
+    if [[ "$ch" =~ [A-Za-z0-9_.~-] ]]; then
+      output+="$ch"
+    else
+      output+=$(printf '%%%02X' "'$ch")
+    fi
+  done
+
+  printf '%s\n' "$output"
+}
 
 # ---------------------------------------------------------------------------
 # Root privileges check
@@ -592,12 +607,11 @@ remove_node() {
 build_link() {
   local ip="$1"
   local sid="${SHORT_IDS[0]}"
-  local remark params
-  remark="$(url_encode "${EMAIL}")"
+  local params
 
   params="security=reality&encryption=none&fp=${FINGERPRINT}&pbk=${REALITY_PUBLIC_KEY}&sid=${sid}&spx=$(url_encode "$SPIDERX")&flow=${FLOW}&type=tcp&headerType=none&sni=${REALITY_SNI}&pqv=$(url_encode "$MLDSA65_VERIFY")"
 
-  echo "vless://${UUID}@${ip}:${PORT}?${params}#${remark}"
+  echo "vless://${UUID}@${ip}:${PORT}?${params}#"
 }
 
 save_credentials() {
@@ -639,28 +653,7 @@ print_and_save_link() {
   printf '%s\n' "$link" > "$LINK_FILE"
   save_credentials
 
-  cat <<EOF
-
-============================================================
- Share link (also saved to $LINK_FILE):
- $link
-------------------------------------------------------------
- Server IP     : $ip
- Port          : $PORT
- UUID          : $UUID
- Email         : $EMAIL
- Flow          : $FLOW
- SNI           : $REALITY_SNI
- Target        : $REALITY_TARGET
- Fingerprint   : $FINGERPRINT
- Public key    : $REALITY_PUBLIC_KEY
- First shortId : ${SHORT_IDS[0]}
- mldsa65Verify : $MLDSA65_VERIFY
-------------------------------------------------------------
- Full credentials saved to: $CREDS_FILE
-============================================================
-
-EOF
+  printf '%s\n' "$link"
 }
 
 # ---------------------------------------------------------------------------
