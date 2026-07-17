@@ -19,6 +19,8 @@ dist_frontend/
 build/
 tmp/
 
+/private/
+
 # SQLite databases
 *.db
 *.db-shm

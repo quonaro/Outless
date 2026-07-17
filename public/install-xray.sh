@@ -97,7 +97,7 @@ ensure_root() {
       # Running via "curl | bash". Re-download to a temp file and re-execute.
       local tmp_script
       tmp_script="$(mktemp /tmp/install-xray.XXXXXX.sh)"
-      curl -fsSL "https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh" > "$tmp_script"
+      curl -fsSL "https://raw.githubusercontent.com/quonaro/Outless/main/public/install-xray.sh" > "$tmp_script"
       chmod +x "$tmp_script"
       exec sudo bash "$tmp_script" "$@"
     fi
@@ -139,7 +139,7 @@ Examples:
   ./install-xray.sh
   ./install-xray.sh --port 44333 --fingerprint firefox
   ./install-xray.sh --remove
-  curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/public/install-xray.sh | bash
 USAGE
 }
 
@@ -611,7 +611,7 @@ build_link() {
 
   params="security=reality&encryption=none&fp=${FINGERPRINT}&pbk=${REALITY_PUBLIC_KEY}&sid=${sid}&spx=$(url_encode "$SPIDERX")&flow=${FLOW}&type=tcp&headerType=none&sni=${REALITY_SNI}&pqv=$(url_encode "$MLDSA65_VERIFY")"
 
-  echo "vless://${UUID}@${ip}:${PORT}?${params}#"
+  echo "vless://${UUID}@${ip}:${PORT}?${params}#${EMAIL}"
 }
 
 save_credentials() {
