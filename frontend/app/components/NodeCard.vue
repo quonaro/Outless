@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { toast } from 'vue-sonner'
 import type { Node } from '~/utils/schemas/node'
 import type { Inbound } from '~/utils/schemas/inbound'
 import { parseVlessUrl } from '~/utils/vless'
@@ -16,6 +17,7 @@ import {
   MoreHorizontal,
   Tags,
   Trash2,
+  Copy,
   type LucideIcon,
   Tag,
   Globe,
@@ -117,6 +119,15 @@ const selfInbound = computed(() => {
   }
   return props.inbounds[0]
 })
+
+async function copyLink(url: string) {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success('Link copied to clipboard')
+  } catch {
+    toast.error('Failed to copy link')
+  }
+}
 
 function buildFields(): Field[] {
   const ib = selfInbound.value
@@ -272,6 +283,10 @@ const expiresLabel = computed(() => {
               <DropdownMenuItem @click.prevent="emit('editGroups', node)">
                 <Tags class="mr-2 h-3.5 w-3.5" />
                 Groups
+              </DropdownMenuItem>
+              <DropdownMenuItem :disabled="!node.url" @click.prevent="copyLink(node.url)">
+                <Copy class="mr-2 h-3.5 w-3.5" />
+                Copy link
               </DropdownMenuItem>
               <DropdownMenuItem
                 class="text-destructive focus:text-destructive"

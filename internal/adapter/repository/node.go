@@ -100,7 +100,7 @@ func (r *NodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.Node
 	return func(yield func(domain.Node, error) bool) {
 		models := make([]nodeModel, 0, 256)
 		if err := r.db.WithContext(ctx).
-			Select("id", "url", "country", "is_self", "expires_at").
+			Select("id", urlColumn, "country", "is_self", "expires_at").
 			Find(&models).Error; err != nil {
 			yield(domain.Node{}, fmt.Errorf("querying nodes: %w", err))
 			return
@@ -287,7 +287,7 @@ func (r *NodeRepository) Upsert(ctx context.Context, node domain.Node) error {
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"url"}),
+			DoUpdates: clause.AssignmentColumns([]string{urlColumn}),
 		}).
 		Create(&model).Error
 	if err != nil {
@@ -393,7 +393,7 @@ func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	result := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Where("id = ?", node.ID).
-		Updates(map[string]any{"url": node.URL, "is_self": node.IsSelf, "expires_at": node.ExpiresAt})
+		Updates(map[string]any{urlColumn: node.URL, "is_self": node.IsSelf, "expires_at": node.ExpiresAt})
 	if result.Error != nil {
 		return fmt.Errorf("updating node: %w", result.Error)
 	}

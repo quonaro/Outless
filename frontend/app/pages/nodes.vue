@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { Plus, Server, Pencil, Hash, Monitor, Link, Tags, LayoutGrid, List } from 'lucide-vue-next'
+import { Plus, Server, Pencil, Hash, Monitor, Link, Tags } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
@@ -14,7 +14,6 @@ import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
 import SheetFooter from '~/components/ui/sheet/SheetFooter.vue'
 import SheetTitle from '~/components/ui/sheet/SheetTitle.vue'
 import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
-import GroupAccordion from '~/components/GroupAccordion.vue'
 import { useInfiniteNodes } from '~/composables/nodes/useInfiniteNodes'
 import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
@@ -25,6 +24,7 @@ import { useInbounds } from '~/composables/inbounds/useInbounds'
 import VlessUrlPreview from '~/components/VlessUrlPreview.vue'
 import UiSelect from '~/components/ui/select/select.vue'
 import EditNodeDialog from '~/components/EditNodeDialog.vue'
+import ImportNodesMenu from '~/components/ImportNodesMenu.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -32,12 +32,9 @@ useHead({
   title: 'Nodes',
 })
 
-type ViewMode = 'grouped' | 'flat'
-
 const queryClient = useQueryClient()
 const { confirm } = useConfirm()
 const { data: inbounds } = useInbounds()
-const viewMode = ref<ViewMode>('flat')
 const groupFilter = ref<string>('')
 
 const {
@@ -47,15 +44,13 @@ const {
   hasNextPage,
   isFetchingNextPage,
 } = useInfiniteNodes(
-  computed(() => viewMode.value === 'flat'),
+  computed(() => true),
   groupFilter
 )
 const { data: groups, isLoading: groupsLoading } = useGroups()
-/** Full-page skeleton: flat mode waits for global infinite list; grouped mode only waits for groups. */
 const showInitialNodesShell = computed(
   () =>
-    (groupsLoading.value && groups.value == null) ||
-    (viewMode.value === 'flat' && nodesLoading.value && nodePages.value == null)
+    (groupsLoading.value && groups.value == null) || (nodesLoading.value && nodePages.value == null)
 )
 const loadMoreAnchor = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
@@ -87,7 +82,6 @@ const isCreateGroupSubmitting = ref(false)
 const isCreateNodeSubmitting = ref(false)
 const deletingNodeIDs = ref<Set<string>>(new Set())
 const selectedNodeIDs = ref<Set<string>>(new Set())
-const editingNodeGroupIDs = ref<Set<string>>(new Set())
 
 const showEditNodeDialog = ref(false)
 const editNodeTarget = ref<Node | null>(null)
@@ -200,12 +194,6 @@ function submitCreateNode() {
   )
 }
 
-function handleAddNode(groupId: string) {
-  nodeGroupIDsInput.value = [groupId]
-  nodeIsSelfInput.value = false
-  showCreateNodeDialog.value = true
-}
-
 function closeCreateNodeDialog() {
   showCreateNodeDialog.value = false
   nodeIsSelfInput.value = false
@@ -240,25 +228,6 @@ async function handleBulkDelete() {
     const msg = err instanceof Error ? err.message : String(err)
     toast.error('Bulk delete failed', { description: msg })
   }
-}
-
-function handleUpdateNodeGroups(nodeId: string, groupIds: string[]) {
-  const next = new Set(editingNodeGroupIDs.value)
-  next.add(nodeId)
-  editingNodeGroupIDs.value = next
-  updateNode(nodeId, { group_ids: groupIds })
-    .then(() => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] })
-      queryClient.invalidateQueries({ queryKey: ['groups'] })
-    })
-    .catch((err: Error) => {
-      toast.error('Failed to update groups', { description: err.message })
-    })
-    .finally(() => {
-      const current = new Set(editingNodeGroupIDs.value)
-      current.delete(nodeId)
-      editingNodeGroupIDs.value = current
-    })
 }
 
 function openEditNodeDialog(node: Node) {
@@ -306,10 +275,14 @@ async function removeNode(node: Node) {
 }
 
 function maybeLoadMore() {
-  if (viewMode.value !== 'flat') return
   if (hasNextPage.value && !isFetchingNextPage.value) {
     fetchNextPage()
   }
+}
+
+function handleImportFinished() {
+  queryClient.invalidateQueries({ queryKey: ['nodes'] })
+  queryClient.invalidateQueries({ queryKey: ['groups'] })
 }
 
 onMounted(() => {
@@ -363,11 +336,12 @@ onBeforeUnmount(() => {
             </UiButton>
           </div>
           <div v-else class="flex flex-wrap items-center gap-2">
-            <UiButton @click="showCreateGroupDialog = true">
+            <UiButton class="w-36 whitespace-nowrap" @click="showCreateGroupDialog = true">
               <Plus class="h-4 w-4 mr-2" />
               Create Group
             </UiButton>
             <UiButton
+              class="w-36 whitespace-nowrap"
               :disabled="!groups?.length"
               :title="groups?.length ? '' : 'Create a group first'"
               @click="showCreateNodeDialog = true"
@@ -375,6 +349,7 @@ onBeforeUnmount(() => {
               <Server class="h-4 w-4 mr-2" />
               Create Node
             </UiButton>
+            <ImportNodesMenu @imported="handleImportFinished" />
           </div>
           <UiInput
             id="node-search"
@@ -383,28 +358,7 @@ onBeforeUnmount(() => {
             placeholder="Search by URL, ID, group..."
             class="w-full sm:max-w-md"
           />
-          <div class="flex items-center gap-1 rounded-md border p-1">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :class="{ 'bg-muted': viewMode === 'flat' }"
-              @click="viewMode = 'flat'"
-            >
-              <List class="h-4 w-4 mr-1.5" />
-              Table
-            </UiButton>
-            <UiButton
-              variant="ghost"
-              size="sm"
-              :class="{ 'bg-muted': viewMode === 'grouped' }"
-              @click="viewMode = 'grouped'"
-            >
-              <LayoutGrid class="h-4 w-4 mr-1.5" />
-              Grouped
-            </UiButton>
-          </div>
           <UiSelect
-            v-if="viewMode === 'flat'"
             v-model="groupFilter"
             :options="[
               { label: 'All groups', value: '' },
@@ -418,16 +372,6 @@ onBeforeUnmount(() => {
           Loading data...
         </div>
 
-        <GroupAccordion
-          v-else-if="viewMode === 'grouped'"
-          :groups="groups ?? []"
-          :search="search"
-          :selected-node-ids="selectedNodeIDs"
-          @add-node="handleAddNode"
-          @toggle-selection="handleToggleSelection"
-          @update-node-groups="handleUpdateNodeGroups"
-        />
-
         <NodeTable
           v-else
           :nodes="filteredFlatNodes"
@@ -440,11 +384,7 @@ onBeforeUnmount(() => {
           @edit-node="openEditNodeDialog"
         />
 
-        <div
-          v-if="viewMode === 'flat'"
-          ref="loadMoreAnchor"
-          class="h-10 text-center text-xs text-muted-foreground"
-        >
+        <div ref="loadMoreAnchor" class="h-10 text-center text-xs text-muted-foreground">
           <span v-if="isFetchingNextPage">Loading more nodes...</span>
         </div>
       </div>

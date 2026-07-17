@@ -50,267 +50,50 @@ func (h *SubscriptionHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/sub/{token}/surge", h.getSurgeSubscription)
 }
 
+type subscriptionBuilder func(ctx context.Context, token string, inboundID string) (string, error)
+
+const (
+	contentTypeTextPlain       = "text/plain"
+	contentTypeTextPlainUTF8   = "text/plain; charset=utf-8"
+	contentTypeTextYAML        = "text/yaml"
+	contentTypeApplicationJSON = "application/json"
+)
+
 func (h *SubscriptionHandler) getSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
-
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
-
-	// Check IP restrictions.
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
-
-	payload, err := h.service.BuildBase64VLESS(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-
-		h.logger.Error("failed to build subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "text/plain",
-		Body:        []byte(payload),
-	}, nil
-}
-
-func (h *SubscriptionHandler) getClashSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
-
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
-
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
-
-	payload, err := h.service.BuildClashMetaYAML(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-		h.logger.Error("failed to build clash subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "text/yaml",
-		Body:        []byte(payload),
-	}, nil
-}
-
-func (h *SubscriptionHandler) getSingBoxSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
-
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
-
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
-
-	payload, err := h.service.BuildSingBoxJSON(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-		h.logger.Error("failed to build singbox subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "application/json",
-		Body:        []byte(payload),
-	}, nil
-}
-
-func (h *SubscriptionHandler) getV2RaySubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
-
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
-
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
-
-	payload, err := h.service.BuildV2RayBase64(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-		h.logger.Error("failed to build v2ray subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "text/plain",
-		Body:        []byte(payload),
-	}, nil
-}
-
-func (h *SubscriptionHandler) getSurgeSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
-
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
-
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
-
-	payload, err := h.service.BuildSurgeConf(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-		h.logger.Error("failed to build surge subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "text/plain; charset=utf-8",
-		Body:        []byte(payload),
-	}, nil
+	return h.buildSubscription(ctx, input, contentTypeTextPlain, "subscription", h.service.BuildBase64VLESS)
 }
 
 func (h *SubscriptionHandler) getBase64Subscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
-	token := strings.TrimSpace(input.Token)
-	if token == "" || strings.Contains(token, "/") {
-		return nil, huma.Error400BadRequest("invalid token")
-	}
+	return h.buildSubscription(ctx, input, contentTypeTextPlain, "base64 subscription", h.service.BuildBase64VLESS)
+}
 
-	tok, err := h.tokenRepo.GetTokenByPlain(ctx, token, time.Now().UTC())
-	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid or expired token")
-	}
+func (h *SubscriptionHandler) getV2RaySubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
+	return h.buildSubscription(ctx, input, contentTypeTextPlain, "v2ray subscription", h.service.BuildV2RayBase64)
+}
 
-	clientIP := GetClientIP(ctx)
-	if clientIP != "" {
-		allowed, err := h.tokenRepo.CheckIPAllowed(ctx, tok.ID, clientIP)
-		if err != nil {
-			h.logger.Error("failed to check ip", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("ip check failed")
-		}
-		if !allowed {
-			h.logger.Warn("subscription denied by ip restriction", slog.String("token_id", tok.ID), slog.String("ip", clientIP))
-			return nil, huma.Error403Forbidden("access denied from this ip")
-		}
-	}
+func (h *SubscriptionHandler) getClashSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
+	return h.buildSubscription(ctx, input, contentTypeTextYAML, "clash subscription", h.service.BuildClashMetaYAML)
+}
 
-	payload, err := h.service.BuildBase64VLESS(ctx, token, input.InboundID)
-	if err != nil {
-		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, huma.Error401Unauthorized("invalid or expired token")
-		}
-		h.logger.Error("failed to build base64 subscription", slog.String("token", token), slog.String("error", err.Error()))
-		return nil, huma.Error422UnprocessableEntity(err.Error())
-	}
-
-	if payload == "" {
-		return nil, huma.Error404NotFound("subscription is empty")
-	}
-
-	return &getSubscriptionOutput{
-		ContentType: "text/plain",
-		Body:        []byte(payload),
-	}, nil
+func (h *SubscriptionHandler) getSingBoxSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
+	return h.buildSubscription(ctx, input, contentTypeApplicationJSON, "singbox subscription", h.service.BuildSingBoxJSON)
 }
 
 func (h *SubscriptionHandler) getJSONSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
+	return h.buildSubscription(ctx, input, contentTypeApplicationJSON, "json subscription", h.service.BuildSingBoxJSON)
+}
+
+func (h *SubscriptionHandler) getSurgeSubscription(ctx context.Context, input *getSubscriptionInput) (*getSubscriptionOutput, error) {
+	return h.buildSubscription(ctx, input, contentTypeTextPlainUTF8, "surge subscription", h.service.BuildSurgeConf)
+}
+
+func (h *SubscriptionHandler) buildSubscription(
+	ctx context.Context,
+	input *getSubscriptionInput,
+	contentType string,
+	logType string,
+	build subscriptionBuilder,
+) (*getSubscriptionOutput, error) {
 	token := strings.TrimSpace(input.Token)
 	if token == "" || strings.Contains(token, "/") {
 		return nil, huma.Error400BadRequest("invalid token")
@@ -334,12 +117,13 @@ func (h *SubscriptionHandler) getJSONSubscription(ctx context.Context, input *ge
 		}
 	}
 
-	payload, err := h.service.BuildSingBoxJSON(ctx, token, input.InboundID)
+	payload, err := build(ctx, token, input.InboundID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
 			return nil, huma.Error401Unauthorized("invalid or expired token")
 		}
-		h.logger.Error("failed to build json subscription", slog.String("token", token), slog.String("error", err.Error()))
+
+		h.logger.Error("failed to build "+logType, slog.String("token", token), slog.String("error", err.Error()))
 		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
 
@@ -348,7 +132,7 @@ func (h *SubscriptionHandler) getJSONSubscription(ctx context.Context, input *ge
 	}
 
 	return &getSubscriptionOutput{
-		ContentType: "application/json",
+		ContentType: contentType,
 		Body:        []byte(payload),
 	}, nil
 }

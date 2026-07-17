@@ -19,7 +19,11 @@ type InboundManagementHandler struct {
 	logger      *slog.Logger
 }
 
-func NewInboundManagementHandler(inboundRepo domain.InboundRepository, runtime RuntimeController, logger *slog.Logger) *InboundManagementHandler {
+func NewInboundManagementHandler(
+	inboundRepo domain.InboundRepository,
+	runtime RuntimeController,
+	logger *slog.Logger,
+) *InboundManagementHandler {
 	return &InboundManagementHandler{inboundRepo: inboundRepo, runtime: runtime, logger: logger}
 }
 

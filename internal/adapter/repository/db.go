@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+const urlColumn = "url"
+
 // NewDB opens a pure-Go SQLite connection (no CGO) and runs schema migrations.
 func NewDB(path string) (*gorm.DB, error) {
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"

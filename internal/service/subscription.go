@@ -21,6 +21,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultFlow        = "xtls-rprx-vision"
+	defaultSNI         = "www.google.com"
+	defaultFingerprint = "chrome"
+	defaultShortID     = "0000000000000000"
+)
+
 // HubConfig describes the Hub endpoint clients connect to.
 type HubConfig struct {
 	Port         int
@@ -223,7 +230,7 @@ func (s *SubscriptionService) buildNodeRemark(
 				SNI:        hub.SNI,
 				Security:   "reality",
 				Encryption: "none",
-				Flow:       "xtls-rprx-vision",
+				Flow:       defaultFlow,
 				FP:         hub.Fingerprint,
 			}
 			templateData := template.BuildTemplateData(
@@ -394,18 +401,18 @@ func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub Hub
 		sni = hub.Handshake
 	}
 	if sni == "" {
-		sni = "www.google.com"
+		sni = defaultSNI
 	}
 	fingerprint := hub.Fingerprint
 	if fingerprint == "" {
-		fingerprint = "chrome"
+		fingerprint = defaultFingerprint
 	}
 
 	params := url.Values{}
 	params.Set("encryption", "none")
 	params.Set("security", "reality")
 	params.Set("type", "tcp")
-	params.Set("flow", "xtls-rprx-vision")
+	params.Set("flow", defaultFlow)
 	params.Set("sni", sni)
 	params.Set("fp", fingerprint)
 	if hub.PublicKey != "" {
@@ -413,7 +420,7 @@ func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub Hub
 	}
 	sid := hub.ShortID
 	if sid == "" {
-		sid = "0000000000000000"
+		sid = defaultShortID
 	}
 	params.Set("sid", sid)
 
@@ -920,7 +927,11 @@ func (s *SubscriptionService) BuildSurgeConf(ctx context.Context, token string, 
 	return strings.Join(lines, "\n"), nil
 }
 
-func (s *SubscriptionService) getSelectedNodes(token domain.Token, allNodes []domain.Node, groupSettings map[string]domain.Group) []domain.Node {
+func (s *SubscriptionService) getSelectedNodes(
+	token domain.Token,
+	allNodes []domain.Node,
+	groupSettings map[string]domain.Group,
+) []domain.Node {
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
 	for _, groupID := range token.GroupIDs {
 		allowedGroups[groupID] = struct{}{}
@@ -965,7 +976,12 @@ func (s *SubscriptionService) getSelectedNodes(token domain.Token, allNodes []do
 	return selectedNodes
 }
 
-func (s *SubscriptionService) buildClashMetaProxy(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) (ClashMetaProxy, string) {
+func (s *SubscriptionService) buildClashMetaProxy(
+	node domain.Node,
+	groupNames map[string]string,
+	hub HubConfig,
+	token domain.Token,
+) (ClashMetaProxy, string) {
 	remark, _ := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
 	if remark == "" {
 		remark = node.ID
@@ -978,17 +994,17 @@ func (s *SubscriptionService) buildClashMetaProxy(node domain.Node, groupNames m
 		sni = hub.Handshake
 	}
 	if sni == "" {
-		sni = "www.google.com"
+		sni = defaultSNI
 	}
 
 	fingerprint := hub.Fingerprint
 	if fingerprint == "" {
-		fingerprint = "chrome"
+		fingerprint = defaultFingerprint
 	}
 
 	shortID := hub.ShortID
 	if shortID == "" {
-		shortID = "0000000000000000"
+		shortID = defaultShortID
 	}
 
 	return ClashMetaProxy{
@@ -998,7 +1014,7 @@ func (s *SubscriptionService) buildClashMetaProxy(node domain.Node, groupNames m
 		Port:        hub.Port,
 		UUID:        uuid,
 		UDP:         true,
-		Flow:        "xtls-rprx-vision",
+		Flow:        defaultFlow,
 		Network:     "tcp",
 		TLS:         true,
 		ServerName:  sni,
@@ -1011,7 +1027,12 @@ func (s *SubscriptionService) buildClashMetaProxy(node domain.Node, groupNames m
 	}, remark
 }
 
-func (s *SubscriptionService) buildSingBoxOutbound(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) SingBoxOutbound {
+func (s *SubscriptionService) buildSingBoxOutbound(
+	node domain.Node,
+	groupNames map[string]string,
+	hub HubConfig,
+	token domain.Token,
+) SingBoxOutbound {
 	remark, _ := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
 	if remark == "" {
 		remark = node.ID
@@ -1024,17 +1045,17 @@ func (s *SubscriptionService) buildSingBoxOutbound(node domain.Node, groupNames 
 		sni = hub.Handshake
 	}
 	if sni == "" {
-		sni = "www.google.com"
+		sni = defaultSNI
 	}
 
 	fingerprint := hub.Fingerprint
 	if fingerprint == "" {
-		fingerprint = "chrome"
+		fingerprint = defaultFingerprint
 	}
 
 	shortID := hub.ShortID
 	if shortID == "" {
-		shortID = "0000000000000000"
+		shortID = defaultShortID
 	}
 
 	return SingBoxOutbound{
@@ -1043,7 +1064,7 @@ func (s *SubscriptionService) buildSingBoxOutbound(node domain.Node, groupNames 
 		Server:         s.externalHost,
 		ServerPort:     hub.Port,
 		UUID:           uuid,
-		Flow:           "xtls-rprx-vision",
+		Flow:           defaultFlow,
 		Network:        "tcp",
 		PacketEncoding: "xudp",
 		TLS: &SingBoxTLS{
@@ -1072,7 +1093,12 @@ func (s *SubscriptionService) buildV2RayURL(node domain.Node, groupNames map[str
 	return s.formatVLESSURL(uuid, remark, hub)
 }
 
-func (s *SubscriptionService) buildSurgeProxy(node domain.Node, groupNames map[string]string, hub HubConfig, token domain.Token) (string, string) {
+func (s *SubscriptionService) buildSurgeProxy(
+	node domain.Node,
+	groupNames map[string]string,
+	hub HubConfig,
+	token domain.Token,
+) (string, string) {
 	remark, ok := s.buildNodeRemark(node, resolveGroupLabel(groupNames, getNodePrimaryGroup(node)), hub, token)
 	if !ok {
 		return "", ""
@@ -1085,21 +1111,21 @@ func (s *SubscriptionService) buildSurgeProxy(node domain.Node, groupNames map[s
 		sni = hub.Handshake
 	}
 	if sni == "" {
-		sni = "www.google.com"
+		sni = defaultSNI
 	}
 
 	fingerprint := hub.Fingerprint
 	if fingerprint == "" {
-		fingerprint = "chrome"
+		fingerprint = defaultFingerprint
 	}
 
 	shortID := hub.ShortID
 	if shortID == "" {
-		shortID = "0000000000000000"
+		shortID = defaultShortID
 	}
 
-	line := fmt.Sprintf("%s = vless, %s, %d, uuid=%s, tls=true, sni=%s, fp=%s, pbk=%s, sid=%s, flow=xtls-rprx-vision",
-		remark, s.externalHost, hub.Port, uuid, sni, fingerprint, hub.PublicKey, shortID)
+	line := fmt.Sprintf("%s = vless, %s, %d, uuid=%s, tls=true, sni=%s, fp=%s, pbk=%s, sid=%s, flow=%s",
+		remark, s.externalHost, hub.Port, uuid, sni, fingerprint, hub.PublicKey, shortID, defaultFlow)
 
 	return line, remark
 }
