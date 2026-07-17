@@ -1,0 +1,755 @@
+#!/usr/bin/env bash
+# Version: 1.0.1
+# install-xray.sh — one-click Xray-core installer for VLESS+REALITY+mldsa65.
+# Generates all credentials automatically (UUID, REALITY keys, mldsa65 keys, shortIds).
+# Requires bash. Do not pipe to sh.
+#
+# Usage (run as root):
+#   ./install-xray.sh
+#   ./install-xray.sh --target yandex.ru:443 --sni yandex.ru --port 44333
+#
+# Remote install:
+#   curl -fsSL https://quonaro.github.io/Outless/install-xray.sh | bash
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# User-tunable defaults. Empty values are generated automatically.
+# ---------------------------------------------------------------------------
+PORT=""                                        # random 10000-65535 if empty
+REALITY_TARGET="yandex.ru:443"                 # camouflage destination
+REALITY_SNI="yandex.ru"                        # SNI / serverName
+FINGERPRINT="chrome"
+SPIDERX="/"
+FLOW="xtls-rprx-vision"
+EMAIL=""                                       # generated from UUID if empty
+
+# Leave the following empty to auto-generate.
+UUID=""
+REALITY_PRIVATE_KEY=""
+REALITY_PUBLIC_KEY=""
+MLDSA65_SEED=""
+MLDSA65_VERIFY=""
+SHORT_IDS=()
+
+MAX_TIMEDIFF=0
+XVER=0
+SHOW=false
+MIN_CLIENT_VER=""
+MAX_CLIENT_VER=""
+
+STOP=false
+DISABLE=false
+REMOVE=false
+LIST_LINKS=false
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+# When run as a file, place outputs next to the script. When run via
+# "curl ... | bash", $0 is not a file path, so fall back to $PWD.
+if [[ -f "$0" ]]; then
+  SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
+else
+  SCRIPT_DIR="$PWD"
+fi
+INSTALL_DIR="/usr/local/bin"
+CONFIG_DIR_XRAY="/usr/local/etc/xray"
+CREDS_FILE="$SCRIPT_DIR/vless-credentials.txt"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+log_info()  { printf '\e[32m[INFO]\e[0m  %s\n' "$*"; }
+log_error() { printf '\e[31m[ERROR]\e[0m %s\n' "$*" >&2; }
+
+die() { log_error "$1"; exit 1; }
+
+url_encode() {
+  local input="$1"
+  local output=""
+  local i ch
+
+  for ((i = 0; i < ${#input}; i++)); do
+    ch="${input:$i:1}"
+    if [[ "$ch" =~ [A-Za-z0-9_.~-] ]]; then
+      output+="$ch"
+    else
+      output+=$(printf '%%%02X' "'$ch")
+    fi
+  done
+
+  printf '%s\n' "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Root privileges check
+# ---------------------------------------------------------------------------
+ensure_root() {
+  [[ $EUID -eq 0 ]] && return 0
+
+  if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+    echo "[INFO]  Not root. Restarting with sudo..."
+
+    if [[ -f "$0" ]]; then
+      exec sudo bash "$0" "$@"
+    else
+      # Running via "curl | bash". Re-download to a temp file and re-execute.
+      local tmp_script
+      tmp_script="$(mktemp /tmp/install-xray.XXXXXX.sh)"
+      curl -fsSL "https://raw.githubusercontent.com/quonaro/Outless/main/public/install-xray.sh" > "$tmp_script"
+      chmod +x "$tmp_script"
+      exec sudo bash "$tmp_script" "$@"
+    fi
+  fi
+
+  die "This script must be run as root or with passwordless sudo access."
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: ./install-xray.sh [OPTIONS]
+
+Optional overrides:
+  --port NUM                    Server port (random 10000-65535 if omitted)
+  --target HOST:PORT            REALITY destination (default: yandex.ru:443)
+  --sni SNI                     REALITY SNI / serverName (default: yandex.ru)
+  --fingerprint FP              uTLS fingerprint: chrome, firefox, safari, ...
+  --spiderx PATH                REALITY spiderX path (default: /)
+  --flow FLOW                   VLESS flow (default: xtls-rprx-vision)
+  --email EMAIL                 Client email label (default: <uuid-prefix>@outless)
+
+  The following are normally auto-generated, but you may override them:
+  --uuid UUID
+  --private-key KEY
+  --public-key KEY
+  --mldsa65-seed SEED
+  --mldsa65-verify VERIFY
+  --short-ids a,b,c
+
+Management:
+  --stop                        Stop the Xray service
+  --disable                     Disable Xray from starting on boot
+  --list                        List all VLESS links from Xray config
+  --remove, --uninstall         Stop, disable and remove Xray binary, config
+                                  and generated credential files
+
+  -h, --help                    Show this help
+
+Examples:
+  ./install-xray.sh
+  ./install-xray.sh --port 44333 --fingerprint firefox
+  ./install-xray.sh --remove
+  curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/public/install-xray.sh | bash
+USAGE
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port=*)       PORT="${1#*=}"; shift ;;
+    --port)         PORT="${2:-}"; shift 2 ;;
+    --target=*)     REALITY_TARGET="${1#*=}"; shift ;;
+    --target)       REALITY_TARGET="${2:-}"; shift 2 ;;
+    --sni=*)        REALITY_SNI="${1#*=}"; shift ;;
+    --sni)          REALITY_SNI="${2:-}"; shift 2 ;;
+    --fingerprint=*) FINGERPRINT="${1#*=}"; shift ;;
+    --fingerprint) FINGERPRINT="${2:-}"; shift 2 ;;
+    --spiderx=*)    SPIDERX="${1#*=}"; shift ;;
+    --spiderx)      SPIDERX="${2:-}"; shift 2 ;;
+    --flow=*)       FLOW="${1#*=}"; shift ;;
+    --flow)         FLOW="${2:-}"; shift 2 ;;
+    --email=*)      EMAIL="${1#*=}"; shift ;;
+    --email)        EMAIL="${2:-}"; shift 2 ;;
+    --uuid=*)       UUID="${1#*=}"; shift ;;
+    --uuid)         UUID="${2:-}"; shift 2 ;;
+    --private-key=*) REALITY_PRIVATE_KEY="${1#*=}"; shift ;;
+    --private-key)  REALITY_PRIVATE_KEY="${2:-}"; shift 2 ;;
+    --public-key=*) REALITY_PUBLIC_KEY="${1#*=}"; shift ;;
+    --public-key)   REALITY_PUBLIC_KEY="${2:-}"; shift 2 ;;
+    --mldsa65-seed=*) MLDSA65_SEED="${1#*=}"; shift ;;
+    --mldsa65-seed) MLDSA65_SEED="${2:-}"; shift 2 ;;
+    --mldsa65-verify=*) MLDSA65_VERIFY="${1#*=}"; shift ;;
+    --mldsa65-verify) MLDSA65_VERIFY="${2:-}"; shift 2 ;;
+    --short-ids=*)  IFS=',' read -r -a SHORT_IDS <<<"${1#*=}"; shift ;;
+    --short-ids)    IFS=',' read -r -a SHORT_IDS <<<"${2:-}"; shift 2 ;;
+    --stop)         STOP=true; shift ;;
+    --disable)      DISABLE=true; shift ;;
+    --list)         LIST_LINKS=true; shift ;;
+    --remove|--uninstall) REMOVE=true; shift ;;
+    -h|--help)      usage; exit 0 ;;
+    *)              die "Unknown option: $1 (run with --help)" ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Validation (only static/user-provided values)
+# ---------------------------------------------------------------------------
+[[ -n "$REALITY_TARGET" ]] || die "REALITY target is empty"
+[[ -n "$REALITY_SNI" ]]    || die "REALITY SNI is empty"
+[[ -n "$FINGERPRINT" ]]    || die "uTLS fingerprint is empty"
+[[ -z "$PORT" || "$PORT" =~ ^[0-9]+$ ]] || die "Invalid port: $PORT"
+
+# ---------------------------------------------------------------------------
+# OS / package manager detection
+# ---------------------------------------------------------------------------
+PKG_MGR=""
+OS=""
+INIT_SYSTEM=""
+
+detect_os() {
+  if [[ ! -f /etc/os-release ]]; then
+    die "Cannot detect OS: /etc/os-release not found"
+  fi
+
+  # shellcheck source=/dev/null
+  . /etc/os-release
+  OS="${ID:-unknown}"
+
+  case "$OS" in
+    debian|ubuntu|linuxmint|pop|zorin|elementary)
+      PKG_MGR="apt"
+      ;;
+    fedora|rhel|centos|rocky|almalinux|ol|amzn)
+      if command -v dnf &>/dev/null; then
+        PKG_MGR="dnf"
+      else
+        PKG_MGR="yum"
+      fi
+      ;;
+    arch|manjaro|endeavouros|garuda)
+      PKG_MGR="pacman"
+      ;;
+    alpine)
+      PKG_MGR="apk"
+      ;;
+    *)
+      die "Unsupported OS: $OS"
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Init system detection
+# ---------------------------------------------------------------------------
+detect_init_system() {
+  if command -v systemctl &>/dev/null && [[ -d /etc/systemd/system ]]; then
+    INIT_SYSTEM="systemd"
+  elif command -v rc-update &>/dev/null && [[ -d /etc/init.d ]]; then
+    INIT_SYSTEM="openrc"
+  elif [[ "$OS" == "alpine" ]]; then
+    INIT_SYSTEM="openrc"
+  else
+    die "Cannot detect a supported init system (systemd or openrc)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Architecture detection
+# ---------------------------------------------------------------------------
+XRAY_ARCH=""
+
+detect_arch() {
+  local machine
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64)        XRAY_ARCH="64" ;;
+    aarch64|arm64)       XRAY_ARCH="arm64-v8a" ;;
+    armv7l|armv7)         XRAY_ARCH="armv7a" ;;
+    *)                   die "Unsupported architecture: $machine" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Dependency installation
+# ---------------------------------------------------------------------------
+install_deps() {
+  log_info "Detected OS: $OS / package manager: $PKG_MGR / arch: $XRAY_ARCH"
+  log_info "Installing curl, jq, coreutils..."
+
+  case "$PKG_MGR" in
+    apt)
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -y
+      apt-get install -y curl jq coreutils unzip tar
+      ;;
+    dnf|yum)
+      $PKG_MGR install -y curl jq coreutils unzip tar
+      ;;
+    pacman)
+      pacman -Sy --noconfirm curl jq coreutils unzip tar
+      ;;
+    apk)
+      apk add --no-cache curl jq coreutils unzip tar
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Xray-core installation
+# ---------------------------------------------------------------------------
+install_xray() {
+  log_info "Downloading latest Xray-core..."
+
+  local api_url="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
+  local download_url
+  download_url="$(curl -fsSL "$api_url" \
+    | jq -r --arg arch "$XRAY_ARCH" '
+      .assets[]
+      | select(.name | test("Xray-linux-\($arch)\\.zip$"))
+      | .browser_download_url
+    ' | head -n1)"
+
+  [[ -n "$download_url" ]] || die "Could not find Xray asset for linux-$XRAY_ARCH"
+
+  rm -rf /tmp/xray-install
+  mkdir -p /tmp/xray-install
+  curl -fsSL "$download_url" -o /tmp/xray-install/xray.zip
+  unzip -q -o /tmp/xray-install/xray.zip -d /tmp/xray-install/
+
+  install -Dm 755 /tmp/xray-install/xray "$INSTALL_DIR/xray"
+  install -Dm 644 /tmp/xray-install/geoip.dat "$INSTALL_DIR/geoip.dat" 2>/dev/null || true
+  install -Dm 644 /tmp/xray-install/geosite.dat "$INSTALL_DIR/geosite.dat" 2>/dev/null || true
+
+  rm -rf /tmp/xray-install
+  log_info "Xray-core installed to $INSTALL_DIR/xray"
+}
+
+# ---------------------------------------------------------------------------
+# Credential generation
+# ---------------------------------------------------------------------------
+random_hex() {
+  local bytes="$1"
+  od -An -tx1 -N"$bytes" /dev/urandom | tr -d ' \n'
+}
+
+generate_port() {
+  [[ -n "$PORT" ]] && return 0
+  PORT=$(shuf -i 10000-65535 -n 1)
+  log_info "Generated port: $PORT"
+}
+
+generate_uuid() {
+  [[ -n "$UUID" ]] && return 0
+  UUID="$("$INSTALL_DIR/xray" uuid 2>/dev/null)"
+  [[ -n "$UUID" ]] || die "Could not generate UUID"
+  log_info "Generated UUID: $UUID"
+}
+
+generate_email() {
+  [[ -n "$EMAIL" ]] && return 0
+  EMAIL="$(random_hex 8)"
+}
+
+generate_reality_keys() {
+  [[ -n "$REALITY_PRIVATE_KEY" && -n "$REALITY_PUBLIC_KEY" ]] && return 0
+
+  log_info "Generating REALITY X25519 key pair..."
+
+  local output
+  output="$("$INSTALL_DIR/xray" x25519 2>&1)" || die "xray x25519 failed: $output"
+
+  REALITY_PRIVATE_KEY="$(echo "$output" | awk -F': ' '/^PrivateKey:/ || /^Private key:/ {print $2}')"
+  # Current Xray labels the public key as "Password" (historically "Public key").
+  REALITY_PUBLIC_KEY="$(echo "$output" | awk -F': ' '/^Password/ {print $2}')"
+
+  [[ -n "$REALITY_PRIVATE_KEY" && -n "$REALITY_PUBLIC_KEY" ]] || die "Could not parse x25519 keys from:\n$output"
+
+  log_info "Generated REALITY public key."
+}
+
+generate_mldsa65_keys() {
+  [[ -n "$MLDSA65_SEED" && -n "$MLDSA65_VERIFY" ]] && return 0
+
+  log_info "Generating mldsa65 key pair..."
+
+  local output
+  output="$("$INSTALL_DIR/xray" mldsa65 2>&1)" || die "xray mldsa65 failed: $output"
+
+  MLDSA65_SEED="$(echo "$output" | awk -F': ' '/^Seed:/ {print $2}')"
+  MLDSA65_VERIFY="$(echo "$output" | awk -F': ' '/^Verify:/ {print $2}')"
+
+  [[ -n "$MLDSA65_SEED" && -n "$MLDSA65_VERIFY" ]] || die "Could not parse mldsa65 keys from:\n$output"
+
+  log_info "Generated mldsa65 key pair."
+}
+
+generate_shortids() {
+  [[ ${#SHORT_IDS[@]} -gt 0 ]] && return 0
+
+  log_info "Generating REALITY shortIds..."
+
+  local i bytes
+  for i in {1..8}; do
+    bytes=$((RANDOM % 8 + 1))   # 1..8 bytes -> 2..16 hex chars
+    SHORT_IDS+=("$(random_hex "$bytes")")
+  done
+}
+
+generate_all() {
+  generate_port
+  generate_uuid
+  generate_email
+  generate_reality_keys
+  generate_mldsa65_keys
+  generate_shortids
+}
+
+# ---------------------------------------------------------------------------
+# Xray config generation
+# ---------------------------------------------------------------------------
+generate_xray_config() {
+  log_info "Generating Xray config..."
+
+  local short_ids_json
+  short_ids_json="$(printf '%s\n' "${SHORT_IDS[@]}" | jq -R . | jq -s .)"
+
+  mkdir -p "$CONFIG_DIR_XRAY"
+
+  jq -n \
+    --arg uuid "$UUID" \
+    --arg flow "$FLOW" \
+    --arg email "$EMAIL" \
+    --argjson port "$PORT" \
+    --arg target "$REALITY_TARGET" \
+    --arg sni "$REALITY_SNI" \
+    --arg private_key "$REALITY_PRIVATE_KEY" \
+    --arg public_key "$REALITY_PUBLIC_KEY" \
+    --argjson short_ids "$short_ids_json" \
+    --arg seed "$MLDSA65_SEED" \
+    --arg verify "$MLDSA65_VERIFY" \
+    --arg fingerprint "$FINGERPRINT" \
+    --arg spider_x "$SPIDERX" \
+    --argjson max_timediff "$MAX_TIMEDIFF" \
+    --argjson xver "$XVER" \
+    --argjson show "$SHOW" \
+    --arg min_ver "$MIN_CLIENT_VER" \
+    --arg max_ver "$MAX_CLIENT_VER" \
+    '{
+      log: { loglevel: "warning" },
+      inbounds: [
+        {
+          port: $port,
+          protocol: "vless",
+          settings: {
+            clients: [
+              { id: $uuid, flow: $flow, email: $email }
+            ],
+            decryption: "none"
+          },
+          streamSettings: {
+            network: "tcp",
+            security: "reality",
+            realitySettings: {
+              show: $show,
+              xver: $xver,
+              target: $target,
+              serverNames: [$sni],
+              privateKey: $private_key,
+              publicKey: $public_key,
+              minClientVer: $min_ver,
+              maxClientVer: $max_ver,
+              maxTimediff: $max_timediff,
+              shortIds: $short_ids,
+              mldsa65Seed: $seed,
+              mldsa65Verify: $verify,
+              fingerprint: $fingerprint,
+              spiderX: $spider_x
+            }
+          },
+          sniffing: {
+            enabled: true,
+            destOverride: ["http", "tls", "quic"]
+          }
+        }
+      ],
+      outbounds: [
+        { protocol: "freedom", tag: "direct" }
+      ]
+    }' > "$CONFIG_DIR_XRAY/config.json"
+
+  log_info "Xray config written to $CONFIG_DIR_XRAY/config.json"
+}
+
+# ---------------------------------------------------------------------------
+# Init service
+# ---------------------------------------------------------------------------
+create_service() {
+  case "$INIT_SYSTEM" in
+    systemd)
+      mkdir -p /etc/systemd/system
+      cat > /etc/systemd/system/xray.service <<EOF
+[Unit]
+Description=Xray Service
+Documentation=https://github.com/XTLS/Xray-core
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/xray run -config $CONFIG_DIR_XRAY/config.json
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+      systemctl daemon-reload
+      systemctl enable xray.service
+      ;;
+
+    openrc)
+      mkdir -p /etc/init.d
+      cat > /etc/init.d/xray <<EOF
+#!/sbin/openrc-run
+
+description="Xray Service"
+command="$INSTALL_DIR/xray"
+command_args="run -config $CONFIG_DIR_XRAY/config.json"
+command_background="yes"
+pidfile="/run/\${RC_SVCNAME}.pid"
+
+depend() {
+    need net
+    after firewall
+}
+EOF
+
+      chmod +x /etc/init.d/xray
+      rc-update add xray default
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Start
+# ---------------------------------------------------------------------------
+start_service() {
+  log_info "Starting xray..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl restart xray.service
+      sleep 1
+      systemctl status xray.service --no-pager || true
+      ;;
+    openrc)
+      rc-service xray restart
+      sleep 1
+      rc-service xray status || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Stop
+# ---------------------------------------------------------------------------
+stop_service() {
+  log_info "Stopping xray..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl stop xray.service || true
+      ;;
+    openrc)
+      rc-service xray stop || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Disable autostart
+# ---------------------------------------------------------------------------
+disable_service() {
+  log_info "Disabling xray autostart..."
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      systemctl disable xray.service || true
+      ;;
+    openrc)
+      rc-update del xray default || true
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Remove node
+# ---------------------------------------------------------------------------
+remove_node() {
+  log_info "Removing Xray node..."
+
+  stop_service
+  disable_service
+
+  case "$INIT_SYSTEM" in
+    systemd)
+      rm -f /etc/systemd/system/xray.service
+      systemctl daemon-reload 2>/dev/null || true
+      ;;
+    openrc)
+      rm -f /etc/init.d/xray
+      ;;
+  esac
+
+  rm -f "$INSTALL_DIR/xray" "$INSTALL_DIR/geoip.dat" "$INSTALL_DIR/geosite.dat"
+  rm -rf "$CONFIG_DIR_XRAY"
+  rm -f "$CREDS_FILE"
+
+  log_info "Xray node removed."
+}
+
+# ---------------------------------------------------------------------------
+# Share link + credentials
+# ---------------------------------------------------------------------------
+build_link_for_client() {
+  local ip="$1"
+  local client_index="${2:-0}"
+  local config_file="$CONFIG_DIR_XRAY/config.json"
+
+  [[ -f "$config_file" ]] || die "Xray config not found: $config_file"
+
+  local uuid email port public_key short_id sni fingerprint spiderx flow verify
+  uuid="$(jq -r ".inbounds[0].settings.clients[$client_index].id" "$config_file")"
+  email="$(jq -r ".inbounds[0].settings.clients[$client_index].email" "$config_file")"
+  port="$(jq -r '.inbounds[0].port' "$config_file")"
+  public_key="$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$config_file")"
+  short_id="$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$config_file")"
+  sni="$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$config_file")"
+  fingerprint="$(jq -r '.inbounds[0].streamSettings.realitySettings.fingerprint' "$config_file")"
+  spiderx="$(jq -r '.inbounds[0].streamSettings.realitySettings.spiderX' "$config_file")"
+  flow="$(jq -r ".inbounds[0].settings.clients[$client_index].flow" "$config_file")"
+  verify="$(jq -r '.inbounds[0].streamSettings.realitySettings.mldsa65Verify' "$config_file")"
+
+  [[ "$uuid" == "null" || -z "$uuid" ]] && die "Could not parse UUID from config"
+  [[ "$port" == "null" || -z "$port" ]] && die "Could not parse port from config"
+  [[ "$public_key" == "null" || -z "$public_key" ]] && die "Could not parse public key from config"
+
+  [[ "$email" == "null" || -z "$email" ]] && email="$(random_hex 8)"
+  [[ "$short_id" == "null" ]] && short_id=""
+  [[ "$sni" == "null" ]] && sni=""
+  [[ "$fingerprint" == "null" || -z "$fingerprint" ]] && fingerprint="chrome"
+  [[ "$spiderx" == "null" || -z "$spiderx" ]] && spiderx="/"
+  [[ "$flow" == "null" || -z "$flow" ]] && flow="xtls-rprx-vision"
+  [[ "$verify" == "null" ]] && verify=""
+
+  local params
+  params="security=reality&encryption=none&fp=${fingerprint}&pbk=${public_key}&sid=${short_id}&spx=$(url_encode "$spiderx")&flow=${flow}&type=tcp&headerType=none&sni=${sni}&pqv=$(url_encode "$verify")"
+
+  echo "vless://${uuid}@${ip}:${port}?${params}#${email}"
+}
+
+save_credentials() {
+  local ip
+  ip="$(curl -4 -fsSL https://icanhazip.com 2>/dev/null || curl -4 -fsSL https://api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")"
+
+  {
+    echo "============================================================"
+    echo " Generated VLESS+REALITY credentials"
+    echo "============================================================"
+    echo "Server IP     : $ip"
+    echo "Port          : $PORT"
+    echo "UUID          : $UUID"
+    echo "Email         : $EMAIL"
+    echo "Flow          : $FLOW"
+    echo "SNI           : $REALITY_SNI"
+    echo "Target        : $REALITY_TARGET"
+    echo "Fingerprint   : $FINGERPRINT"
+    echo "SpiderX       : $SPIDERX"
+    echo "Private key   : $REALITY_PRIVATE_KEY"
+    echo "Public key    : $REALITY_PUBLIC_KEY"
+    echo "mldsa65Seed   : $MLDSA65_SEED"
+    echo "mldsa65Verify : $MLDSA65_VERIFY"
+    echo "ShortIds      : $(IFS=','; echo "${SHORT_IDS[*]}")"
+    echo "============================================================"
+    echo "Share link:"
+    echo "$(build_link_for_client "$ip" 0)"
+    echo "============================================================"
+  } > "$CREDS_FILE"
+}
+
+print_and_save_link() {
+  local ip
+  ip="$(curl -4 -fsSL https://icanhazip.com 2>/dev/null || curl -4 -fsSL https://api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")"
+
+  local link
+  link="$(build_link_for_client "$ip" 0)"
+
+  save_credentials
+
+  printf '%s\n' "$link"
+}
+
+list_links() {
+  command -v jq &>/dev/null || die "jq is required to parse the Xray config"
+
+  local config_file="$CONFIG_DIR_XRAY/config.json"
+  if [[ ! -f "$config_file" ]]; then
+    log_info "No Xray config found at $config_file"
+    return 0
+  fi
+
+  local ip
+  ip="$(curl -4 -fsSL https://icanhazip.com 2>/dev/null || curl -4 -fsSL https://api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")"
+
+  local client_count
+  client_count="$(jq '.inbounds[0].settings.clients | length' "$config_file")"
+
+  if [[ -z "$client_count" || "$client_count" == "null" || "$client_count" -eq 0 ]]; then
+    log_info "No VLESS clients found in config."
+    return 0
+  fi
+
+  log_info "VLESS links from config:"
+  local i
+  for ((i = 0; i < client_count; i++)); do
+    build_link_for_client "$ip" "$i"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+main() {
+  if $LIST_LINKS; then
+    list_links
+    exit 0
+  fi
+
+  ensure_root "$@"
+
+  detect_os
+  detect_init_system
+  detect_arch
+
+  if $REMOVE; then
+    remove_node
+    exit 0
+  fi
+
+  if $STOP; then
+    stop_service
+    exit 0
+  fi
+
+  if $DISABLE; then
+    disable_service
+    exit 0
+  fi
+
+  install_deps
+  install_xray
+  generate_all
+  generate_xray_config
+  create_service
+  start_service
+  print_and_save_link
+
+  log_info "Done. Xray is running on port $PORT."
+}
+
+main "$@"
