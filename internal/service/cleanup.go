@@ -10,9 +10,10 @@ import (
 	"outless/internal/domain"
 )
 
-// CleanupService periodically removes expired tokens and old domain usage from the database.
+// CleanupService periodically removes expired tokens, nodes and old domain usage from the database.
 type CleanupService struct {
 	tokenRepo       domain.TokenRepository
+	nodeRepo        domain.NodeRepository
 	trafficRepo     domain.TrafficRepository
 	logger          *slog.Logger
 	interval        time.Duration
@@ -41,6 +42,12 @@ func (s *CleanupService) WithTrafficRepo(repo domain.TrafficRepository) *Cleanup
 	return s
 }
 
+// WithNodeRepo injects the node repository for expired node cleanup.
+func (s *CleanupService) WithNodeRepo(repo domain.NodeRepository) *CleanupService {
+	s.nodeRepo = repo
+	return s
+}
+
 // WithDomainRetention sets how long domain usage day-records are kept.
 func (s *CleanupService) WithDomainRetention(d time.Duration) *CleanupService {
 	s.domainRetention = d
@@ -62,10 +69,10 @@ func (s *CleanupService) WithRetention(d time.Duration) *CleanupService {
 // Start begins the periodic cleanup goroutine.
 func (s *CleanupService) Start(ctx context.Context) error {
 	if err := s.runCleanup(ctx); err != nil {
-		s.logger.Error("initial token cleanup failed", slog.String("error", err.Error()))
+		s.logger.Error("initial cleanup failed", slog.String("error", err.Error()))
 	}
 	go s.loop(ctx)
-	s.logger.Info("token cleanup service started",
+	s.logger.Info("cleanup service started",
 		slog.Duration("interval", s.interval),
 		slog.Duration("retention", s.retention),
 		slog.Duration("domain_retention", s.domainRetention),
@@ -89,14 +96,14 @@ func (s *CleanupService) loop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("token cleanup service stopping (context done)")
+			s.logger.Info("cleanup service stopping (context done)")
 			return
 		case <-s.stopCh:
-			s.logger.Info("token cleanup service stopped")
+			s.logger.Info("cleanup service stopped")
 			return
 		case <-cleanupTicker.C:
 			if err := s.runCleanup(ctx); err != nil {
-				s.logger.Error("periodic token cleanup failed", slog.String("error", err.Error()))
+				s.logger.Error("periodic cleanup failed", slog.String("error", err.Error()))
 			}
 		case <-memTicker.C:
 			debug.FreeOSMemory()
@@ -115,6 +122,18 @@ func (s *CleanupService) runCleanup(ctx context.Context) error {
 		s.logger.Info("token cleanup completed", slog.Int64("deleted", deleted))
 	} else {
 		s.logger.Debug("token cleanup completed, no expired tokens found")
+	}
+
+	if s.nodeRepo != nil {
+		nodeCutoff := time.Now().UTC()
+		deletedNodes, err := s.nodeRepo.CleanupExpired(ctx, nodeCutoff)
+		if err != nil {
+			s.logger.Error("node cleanup failed", slog.String("error", err.Error()))
+		} else if deletedNodes > 0 {
+			s.logger.Info("node cleanup completed", slog.Int64("deleted", deletedNodes))
+		} else {
+			s.logger.Debug("node cleanup completed, no expired nodes found")
+		}
 	}
 
 	if s.trafficRepo != nil {

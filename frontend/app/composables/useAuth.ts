@@ -25,17 +25,9 @@ function setLocalStorageValue(key: string, value: string | null) {
 }
 
 export function useAuth() {
-  const token = useCookie<string | null>('auth_token', {
-    default: () => null,
-    maxAge: COOKIE_MAX_AGE,
-  })
+  const token = useState<string | null>('auth_token', () => null)
+  const user = useState<{ username: string } | null>('auth_user', () => null)
 
-  const user = useCookie<{ username: string } | null>('auth_user', {
-    default: () => null,
-    maxAge: COOKIE_MAX_AGE,
-  })
-
-  // Sync with localStorage on client init
   if (import.meta.client && !token.value) {
     const lsToken = getLocalStorageValue(TOKEN_LS_KEY)
     if (lsToken) {
@@ -58,6 +50,8 @@ export function useAuth() {
   const setToken = (newToken: string) => {
     token.value = newToken
     setLocalStorageValue(TOKEN_LS_KEY, newToken)
+    const cookie = useCookie<string | null>('auth_token', { maxAge: COOKIE_MAX_AGE })
+    cookie.value = newToken
   }
 
   const clearToken = () => {
@@ -65,11 +59,21 @@ export function useAuth() {
     user.value = null
     setLocalStorageValue(TOKEN_LS_KEY, null)
     setLocalStorageValue(USER_LS_KEY, null)
+    const cookie = useCookie<string | null>('auth_token', { maxAge: COOKIE_MAX_AGE })
+    cookie.value = null
+    const userCookie = useCookie<{ username: string } | null>('auth_user', {
+      maxAge: COOKIE_MAX_AGE,
+    })
+    userCookie.value = null
   }
 
   const setUser = (newUser: { username: string }) => {
     user.value = newUser
     setLocalStorageValue(USER_LS_KEY, JSON.stringify(newUser))
+    const userCookie = useCookie<{ username: string } | null>('auth_user', {
+      maxAge: COOKIE_MAX_AGE,
+    })
+    userCookie.value = newUser
   }
 
   return {

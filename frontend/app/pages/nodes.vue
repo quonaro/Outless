@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { Plus, Server } from 'lucide-vue-next'
+import { Plus, Server, Pencil, Hash, Monitor, Link, Tags } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import NodeCard from '~/components/NodeCard.vue'
 import UiInput from '~/components/ui/input/input.vue'
+import NodeLifetimeInput from '~/components/NodeLifetimeInput.vue'
 import Sheet from '~/components/ui/sheet/Sheet.vue'
 import SheetContent from '~/components/ui/sheet/SheetContent.vue'
 import SheetHeader from '~/components/ui/sheet/SheetHeader.vue'
@@ -73,6 +74,7 @@ const groupRandomLimitInput = ref<string>('')
 const nodeURLInput = ref('')
 const nodeGroupIDsInput = ref<string[]>([])
 const nodeIsSelfInput = ref(false)
+const nodeExpiresAt = ref<string | undefined>(undefined)
 const createNodeErrorMessage = ref('')
 const isCreateGroupSubmitting = ref(false)
 const isCreateNodeSubmitting = ref(false)
@@ -93,14 +95,19 @@ const createGroupMutation = useMutation({
 })
 
 const createNodeMutation = useMutation({
-  mutationFn: (payload: { url: string; group_ids: string[]; is_self: boolean }) =>
-    createNode(payload),
+  mutationFn: (payload: {
+    url: string
+    group_ids: string[]
+    is_self: boolean
+    expires_at?: string
+  }) => createNode(payload),
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['nodes'] })
     queryClient.invalidateQueries({ queryKey: ['groups'] })
     showCreateNodeDialog.value = false
     nodeURLInput.value = ''
     nodeGroupIDsInput.value = []
+    nodeExpiresAt.value = undefined
     createNodeErrorMessage.value = ''
   },
 })
@@ -166,7 +173,12 @@ function submitCreateNode() {
   createNodeErrorMessage.value = ''
   isCreateNodeSubmitting.value = true
   createNodeMutation.mutate(
-    { url: isSelf ? '' : url, group_ids: groupIds, is_self: isSelf },
+    {
+      url: isSelf ? '' : url,
+      group_ids: groupIds,
+      is_self: isSelf,
+      expires_at: nodeExpiresAt.value,
+    },
     {
       onError: (error) => {
         createNodeErrorMessage.value = resolveCreateNodeErrorMessage(error)
@@ -206,6 +218,7 @@ function closeCreateNodeDialog() {
   showCreateNodeDialog.value = false
   nodeIsSelfInput.value = false
   nodeGroupIDsInput.value = []
+  nodeExpiresAt.value = undefined
   createNodeErrorMessage.value = ''
 }
 
@@ -412,7 +425,13 @@ onBeforeUnmount(() => {
           </SheetHeader>
           <div class="space-y-4 py-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium" for="create-group-name">Name</label>
+              <label
+                class="inline-flex items-center gap-2 text-sm font-medium"
+                for="create-group-name"
+              >
+                <Pencil class="h-4 w-4" />
+                Name
+              </label>
               <UiInput
                 id="create-group-name"
                 v-model="groupNameInput"
@@ -433,8 +452,10 @@ onBeforeUnmount(() => {
               >
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium" for="create-group-random-limit"
-                >Limit (optional)</label
+              <label
+                class="inline-flex items-center gap-2 text-sm font-medium"
+                for="create-group-random-limit"
+                ><Hash class="h-4 w-4" /> Limit (optional)</label
               >
               <UiInput
                 id="create-group-random-limit"
@@ -474,12 +495,20 @@ onBeforeUnmount(() => {
                 type="checkbox"
                 class="h-4 w-4 rounded border-input"
               />
-              <label for="create-node-is-self" class="text-sm font-medium"
-                >Use Current Machine</label
+              <label
+                for="create-node-is-self"
+                class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Monitor class="h-4 w-4" /> Use Current Machine</label
               >
             </div>
             <div v-if="!nodeIsSelfInput" class="space-y-2">
-              <label class="text-sm font-medium" for="create-node-url">VLESS URL</label>
+              <label
+                class="inline-flex items-center gap-2 text-sm font-medium"
+                for="create-node-url"
+              >
+                <Link class="h-4 w-4" />
+                VLESS URL
+              </label>
               <UiInput
                 id="create-node-url"
                 v-model="nodeURLInput"
@@ -490,7 +519,10 @@ onBeforeUnmount(() => {
               <VlessUrlPreview :url="nodeURLInput" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Groups</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium">
+                <Tags class="h-4 w-4" />
+                Groups
+              </label>
               <div
                 class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
               >
@@ -509,6 +541,7 @@ onBeforeUnmount(() => {
                 </label>
               </div>
             </div>
+            <NodeLifetimeInput v-model="nodeExpiresAt" />
             <p v-if="createNodeErrorMessage" class="text-sm text-red-600 dark:text-red-400">
               {{ createNodeErrorMessage }}
             </p>

@@ -10,11 +10,13 @@ import { useDeleteNode } from '~/composables/nodes/useDeleteNode'
 import { useGroups } from '~/composables/groups/useGroups'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
+import NodeLifetimeInput from '~/components/NodeLifetimeInput.vue'
 import UiCard from '~/components/ui/card/card.vue'
 import CardHeader from '~/components/ui/card/CardHeader.vue'
 import CardTitle from '~/components/ui/card/CardTitle.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
 import CardFooter from '~/components/ui/card/CardFooter.vue'
+import { Link, Tags } from 'lucide-vue-next'
 
 const queryClient = useQueryClient()
 const { confirm } = useConfirm()
@@ -28,11 +30,23 @@ const selectedNode = ref<Node | null>(null)
 const nodeUrl = ref('')
 const nodeGroupIds = ref<string[]>([])
 const isSelfNode = ref(false)
+const nodeExpiresAt = ref<string | undefined>(undefined)
 const filterGroupId = ref<string>('')
 const isCreateSubmitting = ref(false)
 const isEditSubmitting = ref(false)
 
 const invalidate = () => queryClient.invalidateQueries({ queryKey: ['nodes'] })
+
+function formatExpiresAt(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const diff = d.getTime() - Date.now()
+  if (diff <= 0) return 'Expired'
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  if (days === 0) return 'Expires today'
+  if (days === 1) return 'Expires in 1 day'
+  return `Expires in ${days} days`
+}
 
 const createMutation = useCreateNode({
   onSuccess: () => {
@@ -106,6 +120,7 @@ function resetForm() {
   nodeUrl.value = ''
   nodeGroupIds.value = []
   isSelfNode.value = false
+  nodeExpiresAt.value = undefined
   selectedNode.value = null
   isCreateSubmitting.value = false
   isEditSubmitting.value = false
@@ -129,6 +144,7 @@ function openEditDialog(node: Node) {
   selectedNode.value = node
   nodeUrl.value = node.url
   nodeGroupIds.value = node.group_ids
+  nodeExpiresAt.value = node.expires_at
   showEditDialog.value = true
 }
 
@@ -146,6 +162,7 @@ function handleCreate() {
     group_ids: nodeGroupIds.value,
     is_self: isSelfNode.value,
   }
+  if (nodeExpiresAt.value) payload.expires_at = nodeExpiresAt.value
   isCreateSubmitting.value = true
   createMutation.mutate(payload, {
     onSettled: () => {
@@ -165,6 +182,7 @@ function handleUpdate() {
   const payload: UpdateNode = {
     url: nodeUrl.value.trim(),
     group_ids: nodeGroupIds.value,
+    expires_at: nodeExpiresAt.value ?? '',
   }
   isEditSubmitting.value = true
   updateMutation.mutate(
@@ -221,6 +239,18 @@ async function handleDelete(node: Node) {
               >
                 Self
               </span>
+              <span
+                v-if="node.expires_at && new Date(node.expires_at).getTime() < Date.now()"
+                class="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+              >
+                Expired
+              </span>
+              <span
+                v-else-if="node.expires_at"
+                class="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+              >
+                {{ formatExpiresAt(node.expires_at) }}
+              </span>
             </div>
             <p class="text-xs text-muted-foreground">
               Group:
@@ -272,7 +302,10 @@ async function handleDelete(node: Node) {
             <label for="isSelf" class="text-sm font-medium">Use Current Machine</label>
           </div>
           <div v-if="!isSelfNode" class="space-y-2">
-            <label class="text-sm font-medium">VLESS URL</label>
+            <label class="inline-flex items-center gap-2 text-sm font-medium">
+              <Link class="h-4 w-4" />
+              VLESS URL
+            </label>
             <UiInput
               v-model="nodeUrl"
               placeholder="vless://uuid@host:443?..."
@@ -280,7 +313,10 @@ async function handleDelete(node: Node) {
             />
           </div>
           <div class="space-y-2">
-            <label class="text-sm font-medium">Groups *</label>
+            <label class="inline-flex items-center gap-2 text-sm font-medium">
+              <Tags class="h-4 w-4" />
+              Groups *
+            </label>
             <div
               class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
             >
@@ -299,6 +335,7 @@ async function handleDelete(node: Node) {
               </label>
             </div>
           </div>
+          <NodeLifetimeInput v-model="nodeExpiresAt" />
         </CardContent>
         <CardFooter class="flex justify-end gap-2">
           <UiButton variant="outline" @click="closeCreateDialog"> Cancel </UiButton>
@@ -324,11 +361,17 @@ async function handleDelete(node: Node) {
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-2">
-            <label class="text-sm font-medium">VLESS URL</label>
+            <label class="inline-flex items-center gap-2 text-sm font-medium">
+              <Link class="h-4 w-4" />
+              VLESS URL
+            </label>
             <UiInput v-model="nodeUrl" @keyup.enter="handleUpdate" />
           </div>
           <div class="space-y-2">
-            <label class="text-sm font-medium">Groups *</label>
+            <label class="inline-flex items-center gap-2 text-sm font-medium">
+              <Tags class="h-4 w-4" />
+              Groups *
+            </label>
             <div
               class="max-h-32 overflow-y-auto rounded-md border bg-background px-3 py-2 text-sm space-y-1"
             >
@@ -347,6 +390,7 @@ async function handleDelete(node: Node) {
               </label>
             </div>
           </div>
+          <NodeLifetimeInput v-model="nodeExpiresAt" />
         </CardContent>
         <CardFooter class="flex justify-end gap-2">
           <UiButton variant="outline" @click="closeEditDialog"> Cancel </UiButton>

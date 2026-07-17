@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Plus } from 'lucide-vue-next'
+import {
+  Plus,
+  Pencil,
+  Globe,
+  ArrowLeftRight,
+  Shield,
+  Server,
+  Key,
+  Hash,
+  Fingerprint,
+} from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { Inbound, CreateInbound } from '~/utils/schemas/inbound'
 import {
@@ -260,28 +270,40 @@ async function generatePrivateKey() {
         <div class="space-y-4 py-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium">Name</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Pencil class="h-4 w-4" /> Name</label
+              >
               <UiInput v-model="form.name" placeholder="EU Entry" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Listen Address</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Globe class="h-4 w-4" /> Listen Address</label
+              >
               <UiSelect v-model="addressSelectValue" :options="ADDRESS_OPTIONS" />
               <UiInput v-if="isCustomAddress" v-model="form.address" placeholder="192.168.1.10" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Port</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><ArrowLeftRight class="h-4 w-4" /> Port</label
+              >
               <UiInput v-model="form.port" type="number" placeholder="443" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">SNI</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Shield class="h-4 w-4" /> SNI</label
+              >
               <UiInput v-model="form.sni" placeholder="www.google.com" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Handshake Server</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Server class="h-4 w-4" /> Handshake Server</label
+              >
               <UiInput v-model="form.handshake" placeholder="www.google.com" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Private Key (optional, generates if empty)</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Key class="h-4 w-4" /> Private Key (optional, generates if empty)</label
+              >
               <div class="flex gap-2">
                 <UiInput
                   v-model="form.private_key"
@@ -294,7 +316,9 @@ async function generatePrivateKey() {
               </div>
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Short ID</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Hash class="h-4 w-4" /> Short ID</label
+              >
               <div class="flex gap-2">
                 <UiInput v-model="form.short_id" placeholder="" class="flex-1 h-10" />
                 <UiButton
@@ -308,7 +332,9 @@ async function generatePrivateKey() {
               </div>
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Fingerprint</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Fingerprint class="h-4 w-4" /> Fingerprint</label
+              >
               <UiSelect v-model="form.fingerprint" :options="FINGERPRINT_OPTIONS" />
             </div>
             <div class="md:col-span-2">
@@ -334,28 +360,40 @@ async function generatePrivateKey() {
         <div class="space-y-4 py-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium">Name</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Pencil class="h-4 w-4" /> Name</label
+              >
               <UiInput v-model="form.name" placeholder="EU Entry" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Listen Address</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Globe class="h-4 w-4" /> Listen Address</label
+              >
               <UiSelect v-model="addressSelectValue" :options="ADDRESS_OPTIONS" />
               <UiInput v-if="isCustomAddress" v-model="form.address" placeholder="192.168.1.10" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Port</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><ArrowLeftRight class="h-4 w-4" /> Port</label
+              >
               <UiInput v-model="form.port" type="number" placeholder="443" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">SNI</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Shield class="h-4 w-4" /> SNI</label
+              >
               <UiInput v-model="form.sni" placeholder="www.google.com" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Handshake Server</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Server class="h-4 w-4" /> Handshake Server</label
+              >
               <UiInput v-model="form.handshake" placeholder="www.google.com" />
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Private Key (leave blank to keep current)</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Key class="h-4 w-4" /> Private Key (leave blank to keep current)</label
+              >
               <div class="flex gap-2">
                 <UiInput
                   v-model="form.private_key"
@@ -368,7 +406,9 @@ async function generatePrivateKey() {
               </div>
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Short ID</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Hash class="h-4 w-4" /> Short ID</label
+              >
               <div class="flex gap-2">
                 <UiInput v-model="form.short_id" placeholder="" class="flex-1 h-10" />
                 <UiButton
@@ -382,7 +422,9 @@ async function generatePrivateKey() {
               </div>
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium">Fingerprint</label>
+              <label class="inline-flex items-center gap-2 text-sm font-medium"
+                ><Fingerprint class="h-4 w-4" /> Fingerprint</label
+              >
               <UiSelect v-model="form.fingerprint" :options="FINGERPRINT_OPTIONS" />
             </div>
             <div class="md:col-span-2">

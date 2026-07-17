@@ -14,11 +14,12 @@ import (
 )
 
 type nodeModel struct {
-	ID        string    `gorm:"column:id;primaryKey"`
-	URL       string    `gorm:"column:url"`
-	Country   string    `gorm:"column:country"`
-	IsSelf    bool      `gorm:"column:is_self;index"`
-	CreatedAt time.Time `gorm:"column:created_at"`
+	ID        string     `gorm:"column:id;primaryKey"`
+	URL       string     `gorm:"column:url"`
+	Country   string     `gorm:"column:country"`
+	IsSelf    bool       `gorm:"column:is_self;index"`
+	CreatedAt time.Time  `gorm:"column:created_at"`
+	ExpiresAt *time.Time `gorm:"column:expires_at;index"`
 }
 
 func (nodeModel) TableName() string { return "nodes" }
@@ -42,7 +43,7 @@ func NewNodeRepository(db *gorm.DB, logger *slog.Logger) *NodeRepository {
 }
 
 func (r *NodeRepository) toDomain(m nodeModel) domain.Node {
-	return domain.Node{ID: m.ID, URL: m.URL, Country: m.Country, IsSelf: m.IsSelf}
+	return domain.Node{ID: m.ID, URL: m.URL, Country: m.Country, IsSelf: m.IsSelf, ExpiresAt: m.ExpiresAt}
 }
 
 func (r *NodeRepository) fillGroupIDs(ctx context.Context, nodes []domain.Node) error {
@@ -99,7 +100,7 @@ func (r *NodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.Node
 	return func(yield func(domain.Node, error) bool) {
 		models := make([]nodeModel, 0, 256)
 		if err := r.db.WithContext(ctx).
-			Select("id", "url", "country", "is_self").
+			Select("id", "url", "country", "is_self", "expires_at").
 			Find(&models).Error; err != nil {
 			yield(domain.Node{}, fmt.Errorf("querying nodes: %w", err))
 			return
@@ -126,10 +127,12 @@ func (r *NodeRepository) ListVLESSURLs(ctx context.Context, groupID string, rand
 		URL string `gorm:"column:url"`
 	}
 
+	now := time.Now().UTC()
 	query := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Select("nodes.url").
-		Where("nodes.url LIKE ?", "vless://%")
+		Where("nodes.url LIKE ?", "vless://%").
+		Where("nodes.expires_at IS NULL OR nodes.expires_at > ?", now)
 
 	if groupID != "" {
 		query = query.Joins("JOIN node_groups ON node_groups.node_id = nodes.id").
@@ -167,6 +170,7 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 		Country:   node.Country,
 		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
+		ExpiresAt: node.ExpiresAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if isUniqueViolation(err) {
@@ -189,6 +193,7 @@ func (r *NodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (
 		Country:   node.Country,
 		IsSelf:    node.IsSelf,
 		CreatedAt: time.Now().UTC(),
+		ExpiresAt: node.ExpiresAt,
 	}
 	tx := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).
@@ -242,6 +247,7 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 			Country:   n.Country,
 			IsSelf:    n.IsSelf,
 			CreatedAt: now,
+			ExpiresAt: n.ExpiresAt,
 		})
 		inserted = append(inserted, n.ID)
 	}
@@ -387,7 +393,7 @@ func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	result := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Where("id = ?", node.ID).
-		Updates(map[string]any{"url": node.URL, "is_self": node.IsSelf})
+		Updates(map[string]any{"url": node.URL, "is_self": node.IsSelf, "expires_at": node.ExpiresAt})
 	if result.Error != nil {
 		return fmt.Errorf("updating node: %w", result.Error)
 	}
@@ -399,6 +405,38 @@ func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
 	}
 	r.logger.Debug("node updated", slog.String("node_id", node.ID))
 	return nil
+}
+
+// CleanupExpired deletes nodes whose expiration time has passed.
+func (r *NodeRepository) CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error) {
+	tx := r.db.WithContext(ctx).Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := tx.Error; err != nil {
+		return 0, fmt.Errorf("starting cleanup transaction: %w", err)
+	}
+
+	if err := tx.Where(
+		"node_id IN (SELECT id FROM nodes WHERE expires_at IS NOT NULL AND expires_at <= ?)",
+		cutoff,
+	).Delete(&nodeGroupModel{}).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("deleting expired node group links: %w", err)
+	}
+
+	result := tx.Where("expires_at IS NOT NULL AND expires_at <= ?", cutoff).Delete(&nodeModel{})
+	if result.Error != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("deleting expired nodes: %w", result.Error)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return 0, fmt.Errorf("committing expired node cleanup: %w", err)
+	}
+	return result.RowsAffected, nil
 }
 
 // HasSelfNode reports whether a self-node already exists.

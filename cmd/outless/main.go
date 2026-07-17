@@ -139,7 +139,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 
 	trafficRepo := repository.NewTrafficRepository(db)
 	trafficCollector := service.NewTrafficCollector(runtime, trafficRepo, tokenRepo, logger)
-	cleanupService := service.NewCleanupService(tokenRepo, logger).WithTrafficRepo(trafficRepo)
+	cleanupService := service.NewCleanupService(tokenRepo, logger).WithTrafficRepo(trafficRepo).WithNodeRepo(nodeRepo)
 
 	// HTTP handlers
 	systemHandler := httpadapter.NewSystemMetricsHandler(runtime, logger)
