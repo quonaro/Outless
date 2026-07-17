@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# install-simple.sh — one-click Xray-core installer for VLESS+REALITY+mldsa65.
+# install-xray.sh — one-click Xray-core installer for VLESS+REALITY+mldsa65.
 # Generates all credentials automatically (UUID, REALITY keys, mldsa65 keys, shortIds).
+# Requires bash. Do not pipe to sh.
 #
 # Usage (run as root):
-#   ./install-simple.sh
-#   ./install-simple.sh --target yandex.ru:443 --sni yandex.ru --port 44333
+#   ./install-xray.sh
+#   ./install-xray.sh --target yandex.ru:443 --sni yandex.ru --port 44333
+#
+# Remote install:
+#   curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh | bash
 
 set -euo pipefail
 
@@ -84,7 +88,7 @@ ensure_root() {
 
 usage() {
   cat <<'USAGE'
-Usage: ./install-simple.sh [OPTIONS]
+Usage: ./install-xray.sh [OPTIONS]
 
 Optional overrides:
   --port NUM                    Server port (random 10000-65535 if omitted)
@@ -106,8 +110,9 @@ Optional overrides:
   -h, --help                    Show this help
 
 Examples:
-  ./install-simple.sh
-  ./install-simple.sh --port 44333 --fingerprint firefox
+  ./install-xray.sh
+  ./install-xray.sh --port 44333 --fingerprint firefox
+  curl -fsSL https://raw.githubusercontent.com/quonaro/Outless/main/scripts/public/install-xray.sh | bash
 USAGE
 }
 
@@ -300,7 +305,7 @@ generate_reality_keys() {
 
   REALITY_PRIVATE_KEY="$(echo "$output" | awk -F': ' '/^PrivateKey:/ || /^Private key:/ {print $2}')"
   # Current Xray labels the public key as "Password" (historically "Public key").
-  REALITY_PUBLIC_KEY="$(echo "$output" | awk -F': ' '/^Password:/ {print $2}')"
+  REALITY_PUBLIC_KEY="$(echo "$output" | awk -F': ' '/^Password/ {print $2}')"
 
   [[ -n "$REALITY_PRIVATE_KEY" && -n "$REALITY_PUBLIC_KEY" ]] || die "Could not parse x25519 keys from:\n$output"
 
