@@ -41,6 +41,7 @@ MAX_CLIENT_VER=""
 STOP=false
 DISABLE=false
 REMOVE=false
+SHOW_LINKS=false
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -55,7 +56,6 @@ fi
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR_XRAY="/usr/local/etc/xray"
 CREDS_FILE="$SCRIPT_DIR/vless-credentials.txt"
-LINK_FILE="$SCRIPT_DIR/vless-link.txt"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -130,6 +130,7 @@ Optional overrides:
 Management:
   --stop                        Stop the Xray service
   --disable                     Disable Xray from starting on boot
+  --show-links                  Show all VLESS links from Xray config
   --remove, --uninstall         Stop, disable and remove Xray binary, config
                                   and generated credential files
 
@@ -176,6 +177,7 @@ while [[ $# -gt 0 ]]; do
     --short-ids)    IFS=',' read -r -a SHORT_IDS <<<"${2:-}"; shift 2 ;;
     --stop)         STOP=true; shift ;;
     --disable)      DISABLE=true; shift ;;
+    --show-links)   SHOW_LINKS=true; shift ;;
     --remove|--uninstall) REMOVE=true; shift ;;
     -h|--help)      usage; exit 0 ;;
     *)              die "Unknown option: $1 (run with --help)" ;;
@@ -596,7 +598,7 @@ remove_node() {
 
   rm -f "$INSTALL_DIR/xray" "$INSTALL_DIR/geoip.dat" "$INSTALL_DIR/geosite.dat"
   rm -rf "$CONFIG_DIR_XRAY"
-  rm -f "$CREDS_FILE" "$LINK_FILE"
+  rm -f "$CREDS_FILE"
 
   log_info "Xray node removed."
 }
@@ -604,14 +606,41 @@ remove_node() {
 # ---------------------------------------------------------------------------
 # Share link + credentials
 # ---------------------------------------------------------------------------
-build_link() {
+build_link_for_client() {
   local ip="$1"
-  local sid="${SHORT_IDS[0]}"
+  local client_index="${2:-0}"
+  local config_file="$CONFIG_DIR_XRAY/config.json"
+
+  [[ -f "$config_file" ]] || die "Xray config not found: $config_file"
+
+  local uuid email port public_key short_id sni fingerprint spiderx flow verify
+  uuid="$(jq -r ".inbounds[0].settings.clients[$client_index].id" "$config_file")"
+  email="$(jq -r ".inbounds[0].settings.clients[$client_index].email" "$config_file")"
+  port="$(jq -r '.inbounds[0].port' "$config_file")"
+  public_key="$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$config_file")"
+  short_id="$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$config_file")"
+  sni="$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$config_file")"
+  fingerprint="$(jq -r '.inbounds[0].streamSettings.realitySettings.fingerprint' "$config_file")"
+  spiderx="$(jq -r '.inbounds[0].streamSettings.realitySettings.spiderX' "$config_file")"
+  flow="$(jq -r ".inbounds[0].settings.clients[$client_index].flow" "$config_file")"
+  verify="$(jq -r '.inbounds[0].streamSettings.realitySettings.mldsa65Verify' "$config_file")"
+
+  [[ "$uuid" == "null" || -z "$uuid" ]] && die "Could not parse UUID from config"
+  [[ "$port" == "null" || -z "$port" ]] && die "Could not parse port from config"
+  [[ "$public_key" == "null" || -z "$public_key" ]] && die "Could not parse public key from config"
+
+  [[ "$email" == "null" || -z "$email" ]] && email="${uuid%%-*}@outless"
+  [[ "$short_id" == "null" ]] && short_id=""
+  [[ "$sni" == "null" ]] && sni=""
+  [[ "$fingerprint" == "null" || -z "$fingerprint" ]] && fingerprint="chrome"
+  [[ "$spiderx" == "null" || -z "$spiderx" ]] && spiderx="/"
+  [[ "$flow" == "null" || -z "$flow" ]] && flow="xtls-rprx-vision"
+  [[ "$verify" == "null" ]] && verify=""
+
   local params
+  params="security=reality&encryption=none&fp=${fingerprint}&pbk=${public_key}&sid=${short_id}&spx=$(url_encode "$spiderx")&flow=${flow}&type=tcp&headerType=none&sni=${sni}&pqv=$(url_encode "$verify")"
 
-  params="security=reality&encryption=none&fp=${FINGERPRINT}&pbk=${REALITY_PUBLIC_KEY}&sid=${sid}&spx=$(url_encode "$SPIDERX")&flow=${FLOW}&type=tcp&headerType=none&sni=${REALITY_SNI}&pqv=$(url_encode "$MLDSA65_VERIFY")"
-
-  echo "vless://${UUID}@${ip}:${PORT}?${params}#${EMAIL}"
+  echo "vless://${uuid}@${ip}:${port}?${params}#${email}"
 }
 
 save_credentials() {
@@ -638,7 +667,7 @@ save_credentials() {
     echo "ShortIds      : $(IFS=','; echo "${SHORT_IDS[*]}")"
     echo "============================================================"
     echo "Share link:"
-    echo "$(build_link "$ip")"
+    echo "$(build_link_for_client "$ip" 0)"
     echo "============================================================"
   } > "$CREDS_FILE"
 }
@@ -648,18 +677,49 @@ print_and_save_link() {
   ip="$(curl -4 -fsSL https://icanhazip.com 2>/dev/null || curl -4 -fsSL https://api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")"
 
   local link
-  link="$(build_link "$ip")"
+  link="$(build_link_for_client "$ip" 0)"
 
-  printf '%s\n' "$link" > "$LINK_FILE"
   save_credentials
 
   printf '%s\n' "$link"
+}
+
+show_links() {
+  command -v jq &>/dev/null || die "jq is required to parse the Xray config"
+
+  local config_file="$CONFIG_DIR_XRAY/config.json"
+  if [[ ! -f "$config_file" ]]; then
+    log_info "No Xray config found at $config_file"
+    return 0
+  fi
+
+  local ip
+  ip="$(curl -4 -fsSL https://icanhazip.com 2>/dev/null || curl -4 -fsSL https://api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")"
+
+  local client_count
+  client_count="$(jq '.inbounds[0].settings.clients | length' "$config_file")"
+
+  if [[ -z "$client_count" || "$client_count" == "null" || "$client_count" -eq 0 ]]; then
+    log_info "No VLESS clients found in config."
+    return 0
+  fi
+
+  log_info "VLESS links from config:"
+  local i
+  for ((i = 0; i < client_count; i++)); do
+    build_link_for_client "$ip" "$i"
+  done
 }
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 main() {
+  if $SHOW_LINKS; then
+    show_links
+    exit 0
+  fi
+
   ensure_root "$@"
 
   detect_os
