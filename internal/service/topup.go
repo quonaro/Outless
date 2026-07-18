@@ -15,6 +15,7 @@ type TopUpRunResult struct {
 	TopUpID string
 	GroupID string
 	Total   int
+	Checked int
 	Passed  int
 	Added   int
 	Failed  bool
@@ -29,6 +30,7 @@ type TopUpScheduler struct {
 	checker   *checker.Checker
 	logger    *slog.Logger
 	interval  time.Duration
+	progress  *progressBroadcaster
 
 	stop chan struct{}
 	wg   sync.WaitGroup
@@ -50,6 +52,7 @@ func NewTopUpScheduler(
 		checker:   check,
 		logger:    logger,
 		interval:  time.Minute,
+		progress:  newProgressBroadcaster(),
 		stop:      make(chan struct{}),
 	}
 }
@@ -195,78 +198,6 @@ func (s *TopUpScheduler) updateNextRunBeforeJob(ctx context.Context, topUp *doma
 		return err
 	}
 	return nil
-}
-
-func (s *TopUpScheduler) runTopUp(ctx context.Context, topUp domain.GroupTopUp) (TopUpRunResult, error) {
-	result := TopUpRunResult{TopUpID: topUp.ID, GroupID: topUp.GroupID}
-	logger := s.logger.With(slog.String("top_up_id", topUp.ID), slog.String("group_id", topUp.GroupID))
-	logger.Info("starting top-up run")
-	logger.Debug("top-up configuration",
-		slog.Bool("check_enabled", topUp.CheckEnabled),
-		slog.Int("url_count", len(topUp.URLs)),
-		slog.String("parser_type", topUp.ParserType),
-	)
-
-	rawURLs, err := s.fetchAndParseURLs(ctx, topUp)
-	if err != nil {
-		logger.Error("failed to fetch or parse urls", slog.String("error", err.Error()))
-		s.finishRun(ctx, topUp, false)
-		result.Failed = true
-		result.Error = err.Error()
-		return result, err
-	}
-	result.Total = len(rawURLs)
-	logger.Debug("urls fetched and parsed", slog.Int("total", result.Total))
-
-	var urls []string
-	if topUp.CheckEnabled {
-		logger.Info("running checker", slog.Int("urls", len(rawURLs)))
-		logger.Debug("checker configuration",
-			slog.Int("workers", topUp.CheckConfig.Workers),
-			slog.String("timeout", topUp.CheckConfig.Timeout.String()),
-			slog.Any("stages", topUp.CheckConfig.Stages),
-		)
-		results, err := s.checker.Run(ctx, rawURLs, topUp.CheckConfig)
-		if err != nil {
-			logger.Error("failed to run checker", slog.String("error", err.Error()))
-			s.finishRun(ctx, topUp, false)
-			result.Failed = true
-			result.Error = err.Error()
-			return result, err
-		}
-		for _, r := range results {
-			if r.Passed() {
-				urls = append(urls, r.URL)
-			}
-		}
-		result.Passed = len(urls)
-		logger.Info("checker completed", slog.Int("total", len(results)), slog.Int("passed", result.Passed))
-		logger.Debug("checker results", slog.Int("passed", result.Passed), slog.Int("failed", len(results)-result.Passed))
-	} else {
-		urls = rawURLs
-		result.Passed = result.Total
-		logger.Debug("checker disabled, using all urls", slog.Int("urls", result.Total))
-	}
-
-	logger.Debug("replacing group nodes", slog.String("group_id", topUp.GroupID), slog.Int("urls", len(urls)))
-	added, err := s.replaceGroupNodes(ctx, topUp.GroupID, urls)
-	result.Added = added
-	if err != nil {
-		logger.Error("failed to replace group nodes", slog.String("error", err.Error()))
-		s.finishRun(ctx, topUp, false)
-		result.Failed = true
-		result.Error = err.Error()
-		return result, err
-	}
-
-	logger.Info("top-up run completed",
-		slog.Int("total", result.Total),
-		slog.Int("passed", result.Passed),
-		slog.Int("added", result.Added),
-	)
-	logger.Debug("top-up run finished", slog.Bool("failed", result.Failed))
-	s.finishRun(ctx, topUp, true)
-	return result, nil
 }
 
 // RunAll runs every enabled top-up and returns a result for each.

@@ -123,7 +123,7 @@ func buildProxyOptions(p vless.Parsed, port int) (option.Options, error) {
 	}
 
 	return option.Options{
-		Log:       &option.LogOptions{Level: "warn", Timestamp: false},
+		Log:       &option.LogOptions{Disabled: true},
 		Inbounds:  []option.Inbound{inbound},
 		Outbounds: []option.Outbound{out, block},
 		Route:     route,

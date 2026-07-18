@@ -187,6 +187,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		StreamSystemMetrics: httpadapter.NewStreamSystemMetricsHandler(systemHandler, logger),
 		ImportExport:        httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, topUpRepo, publicSourceRepo, inboundRepo, logger),
 		LogStream:           httpadapter.NewLogStreamHandler(broadcaster),
+		TopUpStream:         httpadapter.NewTopUpStreamHandler(topUpScheduler, logger),
 	}
 
 	v := version

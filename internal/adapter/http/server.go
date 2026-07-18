@@ -51,6 +51,7 @@ type Handlers struct {
 	StreamSystemMetrics http.Handler
 	ImportExport        *ImportExportHandler
 	LogStream           http.Handler
+	TopUpStream         http.Handler
 }
 
 func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers) {
@@ -76,16 +77,19 @@ func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers
 		handlers.Connections.Register(apiMux)
 	}
 	if handlers.StreamConnections != nil {
-		apiMux.HandleFunc("/v1/connections/stream", handlers.StreamConnections.ServeHTTP)
+		apiMux.HandleFunc("GET /v1/connections/stream", handlers.StreamConnections.ServeHTTP)
 	}
 	if handlers.StreamSystemMetrics != nil {
-		apiMux.HandleFunc("/v1/stats/system/stream", handlers.StreamSystemMetrics.ServeHTTP)
+		apiMux.HandleFunc("GET /v1/stats/system/stream", handlers.StreamSystemMetrics.ServeHTTP)
 	}
 	if handlers.ImportExport != nil {
 		handlers.ImportExport.Register(humaAPI)
 	}
 	if handlers.LogStream != nil {
-		apiMux.HandleFunc("/v1/events/logs", handlers.LogStream.ServeHTTP)
+		apiMux.HandleFunc("GET /v1/events/logs", handlers.LogStream.ServeHTTP)
+	}
+	if handlers.TopUpStream != nil {
+		apiMux.HandleFunc("GET /v1/group-top-ups/stream", handlers.TopUpStream.ServeHTTP)
 	}
 }
 

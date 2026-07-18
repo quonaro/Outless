@@ -13,6 +13,15 @@ import (
 	"outless/shared/vless"
 )
 
+// Progress reports the current state of a checker run.
+type Progress struct {
+	Total   int
+	Checked int
+	Passed  int
+	Current string
+	Stage   string
+}
+
 // Checker validates VLESS URLs through configurable stages.
 type Checker struct {
 	logger          *slog.Logger
@@ -25,12 +34,16 @@ func New(logger *slog.Logger, resolver *country.Resolver) *Checker {
 }
 
 // Run validates the given URLs concurrently using the provided configuration.
-func (c *Checker) Run(ctx context.Context, urls []string, cfg domain.TopUpCheckConfig) ([]Result, error) {
+// The optional onProgress callback is invoked after each URL is checked.
+func (c *Checker) Run(ctx context.Context, urls []string, cfg domain.TopUpCheckConfig, onProgress func(Progress)) ([]Result, error) {
 	cfg = withDefaults(cfg)
 
 	results := make([]Result, len(urls))
 	sem := make(chan struct{}, cfg.Workers)
 	var wg sync.WaitGroup
+	var progressMu sync.Mutex
+	checked := 0
+	passed := 0
 
 	for i, u := range urls {
 		wg.Add(1)
@@ -38,7 +51,25 @@ func (c *Checker) Run(ctx context.Context, urls []string, cfg domain.TopUpCheckC
 		go func(idx int, url string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			results[idx] = c.check(ctx, url, cfg)
+
+			result := c.check(ctx, url, cfg)
+			if onProgress != nil {
+				progressMu.Lock()
+				checked++
+				if result.Err == nil {
+					passed++
+				}
+				p := Progress{
+					Total:   len(urls),
+					Checked: checked,
+					Passed:  passed,
+					Current: result.URL,
+					Stage:   result.Stage,
+				}
+				progressMu.Unlock()
+				onProgress(p)
+			}
+			results[idx] = result
 		}(i, u)
 	}
 	wg.Wait()

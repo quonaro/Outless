@@ -77,7 +77,8 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 				r.URL.Path == "/v1/ws" ||
 				r.URL.Path == "/v1/events/logs" ||
 				r.URL.Path == "/v1/connections/stream" ||
-				r.URL.Path == "/v1/stats/system/stream" {
+				r.URL.Path == "/v1/stats/system/stream" ||
+				r.URL.Path == "/v1/group-top-ups/stream" {
 				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
 			}
 			if token == "" {
