@@ -11,6 +11,8 @@ export const InboundSchema = z.object({
   short_id: z.string().default(''),
   fingerprint: z.string().default('random'),
   name_template: z.string().default(''),
+  status: z.string().default('active'),
+  status_reason: z.string().default(''),
   created_at: z.string(),
   updated_at: z.string(),
 })

@@ -23,6 +23,8 @@ const TOKEN_PREVIEW: Record<string, string> = {
   'vless.country': 'Netherlands',
   'vless.country_short': 'NL',
   'vless.flag': '🇳🇱',
+  'vless.lifetime': '30d 12h',
+  'vless.deletion_date': '2026-08-18 14:30:00',
 }
 
 const TOKENS = [
@@ -38,6 +40,8 @@ const TOKENS = [
   { label: 'Country', value: '{{vless.country}}', key: 'vless.country' },
   { label: 'Country Code', value: '{{vless.country_short}}', key: 'vless.country_short' },
   { label: 'Flag', value: '{{vless.flag}}', key: 'vless.flag' },
+  { label: 'Lifetime', value: '{{vless.lifetime}}', key: 'vless.lifetime' },
+  { label: 'Deletion Date', value: '{{vless.deletion_date}}', key: 'vless.deletion_date' },
 ]
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)

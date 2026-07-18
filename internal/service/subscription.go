@@ -239,6 +239,8 @@ func (s *SubscriptionService) buildNodeRemark(
 				normalizeCountry(node.Country),
 				groupLabel,
 				token.Owner,
+				token.CreatedAt,
+				token.ExpiresAt,
 			)
 			return template.RenderTemplate(hub.NameTemplate, templateData), true
 		}
@@ -272,6 +274,8 @@ func (s *SubscriptionService) buildNodeRemark(
 			normalizeCountry(node.Country),
 			groupLabel,
 			token.Owner,
+			token.CreatedAt,
+			token.ExpiresAt,
 		)
 		return template.RenderTemplate(hub.NameTemplate, templateData), true
 	}

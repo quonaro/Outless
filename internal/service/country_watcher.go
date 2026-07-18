@@ -37,16 +37,18 @@ func DefaultWatcherConfig() WatcherConfig {
 
 // CountryWatcher periodically resolves missing country information for nodes.
 type CountryWatcher struct {
-	nodeRepo domain.NodeRepository
-	resolver *country.Resolver
-	logger   *slog.Logger
-	cfg      WatcherConfig
+	nodeRepo     domain.NodeRepository
+	resolver     *country.Resolver
+	externalHost string
+	logger       *slog.Logger
+	cfg          WatcherConfig
 }
 
 // NewCountryWatcher creates a new background country lookup watcher.
 func NewCountryWatcher(
 	nodeRepo domain.NodeRepository,
 	resolver *country.Resolver,
+	externalHost string,
 	logger *slog.Logger,
 	cfg WatcherConfig,
 ) *CountryWatcher {
@@ -63,10 +65,11 @@ func NewCountryWatcher(
 		resolver = country.NewResolver(&http.Client{Timeout: 10 * time.Second})
 	}
 	return &CountryWatcher{
-		nodeRepo: nodeRepo,
-		resolver: resolver,
-		logger:   logger,
-		cfg:      cfg,
+		nodeRepo:     nodeRepo,
+		resolver:     resolver,
+		externalHost: externalHost,
+		logger:       logger,
+		cfg:          cfg,
 	}
 }
 
@@ -152,7 +155,18 @@ func nextAttempts(info *domain.CountryInfo) int {
 
 func (w *CountryWatcher) nodeHost(ctx context.Context, node domain.Node) (string, error) {
 	if node.IsSelf {
-		return "", nil
+		if w.externalHost == "" {
+			return "", nil
+		}
+		host := w.externalHost
+		if net.ParseIP(host) != nil {
+			return host, nil
+		}
+		ip, err := w.resolver.ResolveHost(ctx, host)
+		if err != nil {
+			return "", fmt.Errorf("resolving external host %q: %w", host, err)
+		}
+		return ip, nil
 	}
 
 	if node.URL == "" {

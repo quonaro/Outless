@@ -115,7 +115,10 @@ func (h *NodeManagementHandler) validateAndBuildCreateNode(ctx context.Context, 
 }
 
 func (h *NodeManagementHandler) resolveAndStoreCountryForNode(ctx context.Context, node domain.Node) *domain.CountryInfo {
-	if h.countryResolver == nil || node.IsSelf || node.URL == "" {
+	if h.countryResolver == nil {
+		return nil
+	}
+	if !node.IsSelf && node.URL == "" {
 		return nil
 	}
 
@@ -137,6 +140,9 @@ func (h *NodeManagementHandler) resolveAndStoreCountryForNode(ctx context.Contex
 
 func (h *NodeManagementHandler) resolveNodeCountry(ctx context.Context, node domain.Node) *domain.CountryInfo {
 	host := vless.ExtractIPFromVLESS(node.URL)
+	if host == "" && node.IsSelf {
+		host = h.externalHost
+	}
 	if host == "" {
 		h.logger.Warn("failed to extract host from vless url", slog.String("node_id", node.ID))
 		return nil
@@ -146,7 +152,7 @@ func (h *NodeManagementHandler) resolveNodeCountry(ctx context.Context, node dom
 	defer cancel()
 
 	ip := host
-	if net.ParseIP(host) == nil {
+	if host != "" && net.ParseIP(host) == nil {
 		resolved, err := h.countryResolver.ResolveHost(resolveCtx, host)
 		if err != nil {
 			h.logger.Warn("failed to resolve node host",

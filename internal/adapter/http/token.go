@@ -18,6 +18,9 @@ type RuntimeController interface {
 	RemoveUser(email string) error
 	RemoveRulesForUser(email string) error
 	ForceSync() error
+	// InboundStatus returns the runtime status ("active"/"disabled") and an
+	// optional reason (e.g. bind error message) for the given inbound ID.
+	InboundStatus(id string) (string, string)
 }
 
 type TokenManagementHandler struct {

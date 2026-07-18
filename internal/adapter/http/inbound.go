@@ -38,6 +38,8 @@ type InboundItem struct {
 	ShortID      string    `json:"short_id"`
 	Fingerprint  string    `json:"fingerprint"`
 	NameTemplate string    `json:"name_template"`
+	Status       string    `json:"status"`
+	StatusReason string    `json:"status_reason"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -83,6 +85,10 @@ type DeleteInboundInput struct {
 	ID string `path:"id" required:"true"`
 }
 
+type EnableInboundInput struct {
+	ID string `path:"id" required:"true"`
+}
+
 type GenerateKeypairOutput struct {
 	Body struct {
 		PrivateKey string `json:"private_key"`
@@ -96,6 +102,7 @@ func (h *InboundManagementHandler) Register(api huma.API) {
 	huma.Get(api, "/v1/inbounds/keypair", h.GenerateKeypair)
 	huma.Put(api, "/v1/inbounds/{id}", h.UpdateInbound)
 	huma.Delete(api, "/v1/inbounds/{id}", h.DeleteInbound)
+	huma.Post(api, "/v1/inbounds/{id}/enable", h.EnableInbound)
 }
 
 func (h *InboundManagementHandler) GenerateKeypair(ctx context.Context, _ *struct{}) (*GenerateKeypairOutput, error) {
@@ -182,7 +189,8 @@ func (h *InboundManagementHandler) CreateInbound(ctx context.Context, input *Cre
 	}
 
 	out := &CreateInboundOutput{}
-	out.Body = toInboundItem(inbound)
+	status, reason := h.runtime.InboundStatus(inbound.ID)
+	out.Body = toInboundItem(inbound, status, reason)
 	return out, nil
 }
 
@@ -195,7 +203,8 @@ func (h *InboundManagementHandler) ListInbounds(ctx context.Context, _ *struct{}
 
 	items := make([]InboundItem, 0, len(inbounds))
 	for _, inbound := range inbounds {
-		items = append(items, toInboundItem(inbound))
+		status, reason := h.runtime.InboundStatus(inbound.ID)
+		items = append(items, toInboundItem(inbound, status, reason))
 	}
 
 	out := &ListInboundsOutput{}
@@ -266,6 +275,23 @@ func (h *InboundManagementHandler) UpdateInbound(ctx context.Context, input *Upd
 	return nil, nil
 }
 
+func (h *InboundManagementHandler) EnableInbound(ctx context.Context, input *EnableInboundInput) (*struct{}, error) {
+	if _, err := h.inboundRepo.FindByID(ctx, input.ID); err != nil {
+		if errors.Is(err, domain.ErrInboundNotFound) {
+			return nil, huma.Error404NotFound("inbound not found")
+		}
+		h.logger.Error("failed to find inbound", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to enable inbound")
+	}
+
+	if err := h.runtime.ForceSync(); err != nil {
+		h.logger.Error("failed to enable inbound", slog.String("id", input.ID), slog.String("error", err.Error()))
+		return nil, huma.Error500InternalServerError("failed to enable inbound")
+	}
+
+	return nil, nil
+}
+
 func (h *InboundManagementHandler) DeleteInbound(ctx context.Context, input *DeleteInboundInput) (*struct{}, error) {
 	if err := h.inboundRepo.Delete(ctx, input.ID); err != nil {
 		if errors.Is(err, domain.ErrInboundNotFound) {
@@ -282,7 +308,7 @@ func (h *InboundManagementHandler) DeleteInbound(ctx context.Context, input *Del
 	return nil, nil
 }
 
-func toInboundItem(inbound domain.Inbound) InboundItem {
+func toInboundItem(inbound domain.Inbound, status, reason string) InboundItem {
 	return InboundItem{
 		ID:           inbound.ID,
 		Name:         inbound.Name,
@@ -294,6 +320,8 @@ func toInboundItem(inbound domain.Inbound) InboundItem {
 		ShortID:      inbound.ShortID,
 		Fingerprint:  inbound.Fingerprint,
 		NameTemplate: inbound.NameTemplate,
+		Status:       status,
+		StatusReason: reason,
 		CreatedAt:    inbound.CreatedAt,
 		UpdatedAt:    inbound.UpdatedAt,
 	}

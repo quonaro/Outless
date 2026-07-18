@@ -144,6 +144,9 @@ type RuntimeController interface {
 	RemoveRulesForUser(email string) error
 	ForceSync() error
 	TrafficSnapshot() *TrafficSnapshot
+	// InboundStatus returns the runtime status ("active"/"disabled") and an
+	// optional reason (e.g. bind error message) for the given inbound ID.
+	InboundStatus(id string) (string, string)
 }
 
 // NodeUsage aggregates per-node traffic for a specific period.

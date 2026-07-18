@@ -65,7 +65,7 @@ function countryLabel(node: Node): string {
 }
 
 function flagEmoji(node: Node): string {
-  return node.country_flag || countryFlagEmoji(node.country_code || node.country)
+  return node.country_flag || countryFlagEmoji(node.country_code || node.country) || '🏴‍☠️'
 }
 
 function buildRow(node: Node): Row {
@@ -84,8 +84,8 @@ function buildRow(node: Node): Row {
       node,
       title: 'Current Machine',
       host: ib?.address || '—',
-      flag: '',
-      country: '—',
+      flag: flagEmoji(node),
+      country: countryLabel(node),
       port: ib ? String(ib.port || 443) : '—',
       security: 'reality',
       network: 'tcp',

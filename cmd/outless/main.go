@@ -148,6 +148,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	countryWatcher := service.NewCountryWatcher(
 		nodeRepo,
 		countryResolver,
+		cfg.App.ExternalHost,
 		logger,
 		service.WatcherConfig{
 			Interval:   cfg.App.CountryLookup.Interval,
@@ -172,7 +173,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		Subscription:        httpadapter.NewSubscriptionHandler(subscriptionService, tokenRepo, logger),
 		Auth:                httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
 		Token:               httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
-		Node:                httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, runtime, countryResolver, logger),
+		Node:                httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, runtime, countryResolver, cfg.App.ExternalHost, logger),
 		Group:               httpadapter.NewGroupManagementHandler(groupRepo, topUpRepo, nodeRepo, subscriptionService, topUpScheduler, logger),
 		GroupTopUp:          httpadapter.NewGroupTopUpManagementHandler(topUpRepo, groupRepo, topUpScheduler, logger),
 		PublicSource:        httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),

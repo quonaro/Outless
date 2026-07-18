@@ -4,6 +4,7 @@ import {
   createInbound,
   updateInbound,
   deleteInbound,
+  enableInbound,
 } from '~/utils/services/inbound'
 import type { Inbound, CreateInbound, UpdateInbound } from '~/utils/schemas/inbound'
 
@@ -42,6 +43,17 @@ export function useDeleteInbound() {
 
   return useMutation({
     mutationFn: (id: string) => deleteInbound(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbounds'] })
+    },
+  })
+}
+
+export function useEnableInbound() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => enableInbound(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inbounds'] })
     },

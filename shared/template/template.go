@@ -1,10 +1,12 @@
 package template
 
 import (
+	"fmt"
 	"outless/internal/country"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // VLESSData holds parsed VLESS URL data and node metadata.
@@ -22,6 +24,8 @@ type VLESSData struct {
 	CountryFlag  string
 	Group        string
 	User         string
+	Lifetime     string
+	DeletionDate string
 }
 
 // TemplateData holds all available variables for template rendering.
@@ -30,12 +34,22 @@ type TemplateData struct {
 }
 
 // BuildTemplateData creates TemplateData from VLESS data, Node, and Token.
-func BuildTemplateData(vless VLESSData, nodeCountry, nodeCountryShort, nodeGroupID string, tokenOwner string) TemplateData {
+func BuildTemplateData(
+	vless VLESSData,
+	nodeCountry,
+	nodeCountryShort,
+	nodeGroupID,
+	tokenOwner string,
+	tokenCreatedAt,
+	tokenExpiresAt time.Time,
+) TemplateData {
 	vless.Country = nodeCountry
 	vless.CountryShort = strings.ToUpper(nodeCountryShort)
 	vless.CountryFlag = country.FlagEmoji(nodeCountryShort)
 	vless.Group = nodeGroupID
 	vless.User = tokenOwner
+	vless.DeletionDate = formatDeletionDate(tokenExpiresAt)
+	vless.Lifetime = formatLifetime(tokenCreatedAt, tokenExpiresAt)
 	return TemplateData{VLESS: vless}
 }
 
@@ -66,6 +80,25 @@ func RenderTemplate(tmpl string, data TemplateData) string {
 		}
 		return match
 	})
+}
+
+func formatDeletionDate(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02 15:04:05")
+}
+
+func formatLifetime(createdAt, expiresAt time.Time) string {
+	if createdAt.IsZero() || expiresAt.IsZero() {
+		return ""
+	}
+	total := expiresAt.Sub(createdAt)
+	if total <= 0 {
+		return "0d 0h"
+	}
+	totalHours := int(total.Hours())
+	return fmt.Sprintf("%dd %dh", totalHours/24, totalHours%24)
 }
 
 func getFieldValue(key string, data TemplateData) string {
@@ -105,6 +138,10 @@ func getFieldValue(key string, data TemplateData) string {
 			return data.VLESS.Group
 		case "user":
 			return data.VLESS.User
+		case "lifetime":
+			return data.VLESS.Lifetime
+		case "deletion_date":
+			return data.VLESS.DeletionDate
 		}
 	}
 	return ""

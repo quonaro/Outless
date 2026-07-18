@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, unref } from 'vue'
 import {
   Plus,
   Pencil,
@@ -10,6 +10,7 @@ import {
   Key,
   Hash,
   Fingerprint,
+  AlertCircle,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { Inbound, CreateInbound } from '~/utils/schemas/inbound'
@@ -18,6 +19,7 @@ import {
   useCreateInbound,
   useUpdateInbound,
   useDeleteInbound,
+  useEnableInbound,
 } from '~/composables/inbounds/useInbounds'
 import { generateKeypair } from '~/utils/services/inbound'
 import UiButton from '~/components/ui/button/button.vue'
@@ -38,6 +40,9 @@ const { confirm } = useConfirm()
 const createMutation = useCreateInbound()
 const updateMutation = useUpdateInbound()
 const deleteMutation = useDeleteInbound()
+const enableMutation = useEnableInbound()
+const isDeleting = computed(() => unref(deleteMutation.isPending) ?? false)
+const isEnablingId = ref<string | null>(null)
 
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
@@ -204,6 +209,17 @@ async function handleDelete(inbound: Inbound) {
   })
 }
 
+function handleEnable(inbound: Inbound) {
+  if (isEnablingId.value) return
+  isEnablingId.value = inbound.id
+  enableMutation.mutate(inbound.id, {
+    onSuccess: () => toast.success('Inbound enabled'),
+    onSettled: () => {
+      isEnablingId.value = null
+    },
+  })
+}
+
 async function generatePrivateKey() {
   try {
     const res = await generateKeypair()
@@ -236,7 +252,16 @@ async function generatePrivateKey() {
       <CardContent class="p-0">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="space-y-1">
-            <h3 class="font-semibold text-lg">{{ inbound.name }}</h3>
+            <div class="flex items-center gap-2">
+              <h3 class="font-semibold text-lg">{{ inbound.name }}</h3>
+              <span
+                v-if="inbound.status === 'disabled'"
+                class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+              >
+                <AlertCircle class="h-3 w-3" />
+                Disabled
+              </span>
+            </div>
             <p class="text-muted-foreground text-sm">
               {{ inbound.address }}:{{ inbound.port }} · SNI:
               {{ inbound.sni || '-' }}
@@ -245,13 +270,27 @@ async function generatePrivateKey() {
             <p class="text-muted-foreground text-sm">
               Public Key: {{ inbound.public_key.slice(0, 16) }}...{{ inbound.public_key.slice(-8) }}
             </p>
+            <p
+              v-if="inbound.status === 'disabled' && inbound.status_reason"
+              class="text-sm text-destructive break-all"
+            >
+              {{ inbound.status_reason }}
+            </p>
           </div>
           <div class="flex flex-wrap gap-2">
+            <UiButton
+              v-if="inbound.status === 'disabled'"
+              size="sm"
+              :disabled="isEnablingId === inbound.id"
+              @click="handleEnable(inbound)"
+            >
+              {{ isEnablingId === inbound.id ? 'Enabling...' : 'Enable' }}
+            </UiButton>
             <UiButton variant="outline" size="sm" @click="openEditDialog(inbound)"> Edit </UiButton>
             <UiButton
               variant="destructive"
               size="sm"
-              :disabled="deleteMutation.isPending"
+              :disabled="isDeleting"
               @click="handleDelete(inbound)"
             >
               Delete

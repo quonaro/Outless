@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type RuntimeController struct {
 	baseCtx        context.Context
 	timer          *time.Timer
 	started        bool
+	inboundErrors  map[string]string
 }
 
 // NewRuntimeController creates an embedded sing-box runtime controller.
@@ -59,6 +61,7 @@ func NewRuntimeController(
 		singboxLogLevel: singboxLogLevel,
 		debounce:        debounce,
 		logOutput:       logOutput,
+		inboundErrors:   make(map[string]string),
 	}
 }
 
@@ -179,36 +182,105 @@ func (r *RuntimeController) Stop() {
 // rebuildLocked regenerates options from the database and replaces the running
 // instance. Caller must hold r.mu.
 func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
+	tokens, nodes, inbounds, err := r.loadRuntimeData(ctx)
+	if err != nil {
+		return err
+	}
+
+	activeInbounds := make([]domain.Inbound, len(inbounds))
+	copy(activeInbounds, inbounds)
+	r.inboundErrors = make(map[string]string)
+
+	for {
+		instance, retry, err := r.buildAndStart(ctx, tokens, nodes, activeInbounds)
+		if err != nil {
+			return err
+		}
+		if retry != nil {
+			failed := activeInbounds[retry.idx]
+			r.inboundErrors[failed.ID] = retry.err.Error()
+			if r.logger != nil {
+				r.logger.Warn("skipping inbound due to bind error",
+					slog.String("tag", retry.tag),
+					slog.String("id", failed.ID),
+					slog.String("address", failed.Address),
+					slog.Int("port", failed.Port),
+					slog.String("error", retry.err.Error()))
+			}
+			activeInbounds = append(activeInbounds[:retry.idx], activeInbounds[retry.idx+1:]...)
+			continue
+		}
+
+		if clashSrv, ok := instance.Router().ClashServer().(*clashapi.Server); ok && clashSrv != nil {
+			r.trafficManager = clashSrv.TrafficManager()
+		}
+
+		r.instance = instance
+		if len(activeInbounds) < len(inbounds) && r.logger != nil {
+			r.logger.Warn("sing-box started with skipped inbounds",
+				slog.Int("total", len(inbounds)),
+				slog.Int("active", len(activeInbounds)),
+				slog.Int("skipped", len(inbounds)-len(activeInbounds)))
+		}
+		return nil
+	}
+}
+
+// bindRetry instructs rebuildLocked to remove one failing inbound and retry.
+type bindRetry struct {
+	idx int
+	tag string
+	err error
+}
+
+func (r *RuntimeController) loadRuntimeData(ctx context.Context) (
+	tokens []domain.Token,
+	nodes []domain.Node,
+	inbounds []domain.Inbound,
+	err error,
+) {
 	now := time.Now().UTC()
 
-	tokens, err := r.tokenRepo.ListActive(ctx, now)
+	tokens, err = r.tokenRepo.ListActive(ctx, now)
 	if err != nil {
-		return fmt.Errorf("listing active tokens: %w", err)
+		return nil, nil, nil, fmt.Errorf("listing active tokens: %w", err)
 	}
-	nodes, err := r.nodeRepo.List(ctx)
+	nodes, err = r.nodeRepo.List(ctx)
 	if err != nil {
-		return fmt.Errorf("listing nodes: %w", err)
+		return nil, nil, nil, fmt.Errorf("listing nodes: %w", err)
 	}
-	inbounds, err := r.inboundRepo.List(ctx)
+	inbounds, err = r.inboundRepo.List(ctx)
 	if err != nil {
-		return fmt.Errorf("listing inbounds: %w", err)
+		return nil, nil, nil, fmt.Errorf("listing inbounds: %w", err)
 	}
+	return tokens, nodes, inbounds, nil
+}
 
-	hubInbounds := make([]HubInboundConfig, 0, len(inbounds))
-	for _, inbound := range inbounds {
-		hubInbounds = append(hubInbounds, HubInboundConfig{
-			Listen:     inbound.Address,
-			Port:       inbound.Port,
-			SNI:        inbound.SNI,
-			Handshake:  inbound.Handshake,
-			PrivateKey: inbound.PrivateKey,
-			ShortID:    inbound.ShortID,
-		})
+func toHubInboundConfig(inbound domain.Inbound) HubInboundConfig {
+	return HubInboundConfig{
+		Listen:     inbound.Address,
+		Port:       inbound.Port,
+		SNI:        inbound.SNI,
+		Handshake:  inbound.Handshake,
+		PrivateKey: inbound.PrivateKey,
+		ShortID:    inbound.ShortID,
+	}
+}
+
+func (r *RuntimeController) buildAndStart(
+	ctx context.Context,
+	tokens []domain.Token,
+	nodes []domain.Node,
+	activeInbounds []domain.Inbound,
+) (*box.Box, *bindRetry, error) {
+	hubInbounds := make([]HubInboundConfig, 0, len(activeInbounds))
+	for _, inbound := range activeInbounds {
+		hubInbounds = append(hubInbounds, toHubInboundConfig(inbound))
 	}
 
 	opts, err := GenerateOptions(tokens, nodes, hubInbounds, r.singboxLogLevel, r.logger)
 	if err != nil {
-		return fmt.Errorf("generating sing-box options: %w", err)
+		return nil, nil, fmt.Errorf("generating sing-box options: %w", err)
 	}
 
 	r.closeLocked()
@@ -224,19 +296,73 @@ func (r *RuntimeController) rebuildLocked(ctx context.Context) error {
 		PlatformLogWriter: newSingBoxLogWriter(r.logOutput),
 	})
 	if err != nil {
-		return fmt.Errorf("creating sing-box instance: %w", err)
+		return nil, nil, fmt.Errorf("creating sing-box instance: %w", err)
 	}
 	if err := instance.Start(); err != nil {
 		_ = instance.Close()
-		return fmt.Errorf("starting sing-box instance: %w", err)
+		retry, retryErr := r.newBindRetry(err, len(activeInbounds))
+		return nil, retry, retryErr
 	}
 
-	if clashSrv, ok := instance.Router().ClashServer().(*clashapi.Server); ok && clashSrv != nil {
-		r.trafficManager = clashSrv.TrafficManager()
-	}
+	return instance, nil, nil
+}
 
-	r.instance = instance
-	return nil
+func (r *RuntimeController) newBindRetry(err error, activeCount int) (*bindRetry, error) {
+	if !isBindError(err) {
+		return nil, fmt.Errorf("starting sing-box instance: %w", err)
+	}
+	tag := failedInboundTag(err.Error())
+	idx := inboundIndexFromTag(tag)
+	if idx < 0 || idx >= activeCount {
+		return nil, fmt.Errorf("starting sing-box instance: %w", err)
+	}
+	return &bindRetry{idx: idx, tag: tag, err: err}, nil
+}
+
+// isBindError reports whether an error is a TCP bind failure such as permission
+// denied or address already in use.
+func isBindError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "bind:") && (strings.Contains(msg, "permission denied") || strings.Contains(msg, "address already in use"))
+}
+
+// failedInboundTag extracts the vless-in-N tag from a sing-box start error.
+func failedInboundTag(errMsg string) string {
+	const prefix = "initialize inbound/vless["
+	idx := strings.Index(errMsg, prefix)
+	if idx == -1 {
+		return ""
+	}
+	rest := errMsg[idx+len(prefix):]
+	end := strings.Index(rest, "]")
+	if end == -1 {
+		return ""
+	}
+	return rest[:end]
+}
+
+// inboundIndexFromTag parses the numeric suffix of a vless-in-N tag.
+func inboundIndexFromTag(tag string) int {
+	parts := strings.Split(tag, "-")
+	if len(parts) == 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// InboundStatus returns the runtime status for an inbound: "disabled" with a
+// reason if it was skipped during the last rebuild, otherwise "active".
+func (r *RuntimeController) InboundStatus(id string) (string, string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if reason, ok := r.inboundErrors[id]; ok {
+		return "disabled", reason
+	}
+	return "active", ""
 }
 
 func (r *RuntimeController) closeLocked() {

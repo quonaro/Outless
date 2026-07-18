@@ -45,6 +45,13 @@ export async function deleteInbound(id: string): Promise<void> {
   })
 }
 
+export async function enableInbound(id: string): Promise<void> {
+  const { $api } = useNuxtApp()
+  await $api(`/v1/inbounds/${id}/enable`, {
+    method: 'POST',
+  })
+}
+
 export async function generateKeypair(): Promise<{ private_key: string; public_key: string }> {
   const { $api } = useNuxtApp()
   return await $api<{ private_key: string; public_key: string }>('/v1/inbounds/keypair')

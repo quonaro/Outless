@@ -113,7 +113,11 @@ package:
       OUTLESS_ROOT="$PWD"
       # Convert SDK_DIR to absolute path
       REAL_SDK_DIR="$(cd "$OUTLESS_ROOT" && realpath "$SDK_DIR")"
-      echo "Building .ipk..."
+
+      COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+      sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${COMMIT_SHA}/" "$REAL_SDK_DIR/package/outless/Makefile"
+      echo "Building .ipk (version ${COMMIT_SHA})..."
+
       cd "$REAL_SDK_DIR"
       make defconfig
       make package/outless/compile V=s -j$(nproc) || true

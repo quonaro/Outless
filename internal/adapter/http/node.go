@@ -21,6 +21,7 @@ type NodeManagementHandler struct {
 	groupRepo       domain.GroupRepository
 	runtime         RuntimeController
 	countryResolver *country.Resolver
+	externalHost    string
 	logger          *slog.Logger
 }
 
@@ -29,6 +30,7 @@ func NewNodeManagementHandler(
 	groupRepo domain.GroupRepository,
 	runtime RuntimeController,
 	countryResolver *country.Resolver,
+	externalHost string,
 	logger *slog.Logger,
 ) *NodeManagementHandler {
 	return &NodeManagementHandler{
@@ -36,6 +38,7 @@ func NewNodeManagementHandler(
 		groupRepo:       groupRepo,
 		runtime:         runtime,
 		countryResolver: countryResolver,
+		externalHost:    externalHost,
 		logger:          logger,
 	}
 }

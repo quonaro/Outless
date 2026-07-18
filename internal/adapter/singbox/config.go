@@ -22,7 +22,6 @@ type HubInboundConfig struct {
 	Handshake  string
 	PrivateKey string
 	ShortID    string
-	LogLevel   string
 }
 
 const (
