@@ -29,12 +29,7 @@ function connect() {
   if (eventSource) return
 
   const base = typeof window !== 'undefined' ? window.location.origin : ''
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
-  const url = token
-    ? `${base}/api/v1/connections/stream?access_token=${encodeURIComponent(token)}`
-    : `${base}/api/v1/connections/stream`
-
-  eventSource = new EventSource(url)
+  eventSource = new EventSource(`${base}/api/v1/connections/stream`)
   eventSource.onopen = () => {
     isConnected.value = true
   }

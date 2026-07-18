@@ -66,6 +66,23 @@ func (s *TopUpScheduler) Stop() {
 	s.wg.Wait()
 }
 
+// runContext returns a context that is canceled when the scheduler is stopped
+// or when the parent context is canceled. Callers must call the returned cancel.
+func (s *TopUpScheduler) runContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	go func() {
+		select {
+		case <-s.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
 func (s *TopUpScheduler) loop() {
 	defer s.wg.Done()
 	ticker := time.NewTicker(s.interval)
@@ -76,7 +93,9 @@ func (s *TopUpScheduler) loop() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			s.runTick(context.Background())
+			ctx, cancel := s.runContext(context.Background())
+			s.runTick(ctx)
+			cancel()
 		}
 	}
 }
@@ -110,9 +129,36 @@ func (s *TopUpScheduler) runTick(ctx context.Context) {
 		go func() {
 			defer s.wg.Done()
 			defer mu.Unlock()
-			_, _ = s.runTopUp(context.Background(), topUp)
+			runCtx, cancel := s.runContext(context.Background())
+			defer cancel()
+			_, _ = s.runTopUp(runCtx, topUp)
 		}()
 	}
+}
+
+// RunAsync triggers a top-up run in the background and ties it to the scheduler lifecycle.
+func (s *TopUpScheduler) RunAsync(id string) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ctx, cancel := s.runContext(context.Background())
+		defer cancel()
+		if _, err := s.RunNow(ctx, id); err != nil {
+			s.logger.Error("failed to run top-up", slog.String("id", id), slog.String("error", err.Error()))
+		}
+	}()
+}
+
+// RunAllAsync triggers all enabled top-up runs in the background and ties them to the scheduler lifecycle.
+func (s *TopUpScheduler) RunAllAsync() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ctx, cancel := s.runContext(context.Background())
+		defer cancel()
+		runResults := s.RunAll(ctx)
+		s.logger.Debug("background run all top-ups completed", slog.Int("count", len(runResults)))
+	}()
 }
 
 func (s *TopUpScheduler) getOrCreateLock(id string) *sync.Mutex {

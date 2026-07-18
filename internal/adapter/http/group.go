@@ -269,11 +269,7 @@ func (h *GroupManagementHandler) runTopUpNow(ctx context.Context, id string) {
 	if h.topUpScheduler == nil {
 		return
 	}
-	go func() {
-		if _, err := h.topUpScheduler.RunNow(context.Background(), id); err != nil {
-			h.logger.Error("failed to trigger immediate top-up run", slog.String("top_up_id", id), slog.String("error", err.Error()))
-		}
-	}()
+	h.topUpScheduler.RunAsync(id)
 }
 
 func (h *GroupManagementHandler) DeleteGroup(ctx context.Context, input *DeleteGroupInput) (*struct{}, error) {

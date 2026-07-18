@@ -391,7 +391,15 @@ func (r *TokenRepository) Update(
 
 	now := time.Now().UTC()
 	txErr := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&tokenModel{}).
+		var existing tokenModel
+		if err := tx.Where("id = ?", id).First(&existing).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+			}
+			return fmt.Errorf("updating token: %w", err)
+		}
+
+		if err := tx.Model(&tokenModel{}).
 			Where("id = ?", id).
 			Updates(map[string]any{
 				"owner":        owner,
@@ -399,12 +407,8 @@ func (r *TokenRepository) Update(
 				"expires_at":   expiresAt.UTC(),
 				"quota_bytes":  quotaBytes,
 				"quota_period": quotaPeriod,
-			})
-		if result.Error != nil {
-			return fmt.Errorf("updating token: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+			}).Error; err != nil {
+			return fmt.Errorf("updating token: %w", err)
 		}
 		if err := tx.Where("token_id = ?", id).Delete(&tokenGroupModel{}).Error; err != nil {
 			return fmt.Errorf("deleting old group links: %w", err)
@@ -440,17 +444,21 @@ func (r *TokenRepository) SetQuota(
 	quotaBytes *int64,
 	quotaPeriod string,
 ) error {
-	result := r.db.WithContext(ctx).Model(&tokenModel{}).
+	var existing tokenModel
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+		}
+		return fmt.Errorf("setting token quota: %w", err)
+	}
+
+	if err := r.db.WithContext(ctx).Model(&tokenModel{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"quota_bytes":  quotaBytes,
 			"quota_period": quotaPeriod,
-		})
-	if result.Error != nil {
-		return fmt.Errorf("setting token quota: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+		}).Error; err != nil {
+		return fmt.Errorf("setting token quota: %w", err)
 	}
 	r.logger.Info("token quota updated", slog.String("id", id))
 	return nil
@@ -478,14 +486,18 @@ func (r *TokenRepository) RecordTokenConnection(
 
 // ResetTraffic clears the used_bytes counter for a token.
 func (r *TokenRepository) ResetTraffic(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Model(&tokenModel{}).
-		Where("id = ?", id).
-		Update("used_bytes", 0)
-	if result.Error != nil {
-		return fmt.Errorf("resetting token traffic: %w", result.Error)
+	var existing tokenModel
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+		}
+		return fmt.Errorf("resetting token traffic: %w", err)
 	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("token not found: %w", domain.ErrTokenNotFound)
+
+	if err := r.db.WithContext(ctx).Model(&tokenModel{}).
+		Where("id = ?", id).
+		Update("used_bytes", 0).Error; err != nil {
+		return fmt.Errorf("resetting token traffic: %w", err)
 	}
 	r.logger.Info("token traffic reset", slog.String("id", id))
 	return nil

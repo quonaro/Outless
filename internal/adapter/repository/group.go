@@ -107,6 +107,14 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 }
 
 func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error {
+	var existing groupModel
+	if err := r.db.WithContext(ctx).Where("id = ?", group.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("group not found: %w", domain.ErrGroupNotFound)
+		}
+		return fmt.Errorf("updating group: %w", err)
+	}
+
 	updates := map[string]any{
 		"name":           group.Name,
 		"random_enabled": group.RandomEnabled,
@@ -116,12 +124,8 @@ func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error 
 	if !group.RandomEnabled && group.RandomLimit != nil {
 		updates["random_enabled"] = true
 	}
-	result := r.db.WithContext(ctx).Model(&groupModel{}).Where("id = ?", group.ID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("updating group: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("group not found: %w", domain.ErrGroupNotFound)
+	if err := r.db.WithContext(ctx).Model(&groupModel{}).Where("id = ?", group.ID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating group: %w", err)
 	}
 	r.logger.Info("group updated", slog.String("id", group.ID))
 	return nil

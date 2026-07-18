@@ -22,6 +22,7 @@ type NodeRepository interface {
 	Update(ctx context.Context, node Node) error
 	Delete(ctx context.Context, id string) error
 	DeleteByGroupID(ctx context.Context, groupID string) error
+	ReplaceByGroupID(ctx context.Context, groupID string, nodes []Node) (int, error)
 	HasSelfNode(ctx context.Context) (bool, error)
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 

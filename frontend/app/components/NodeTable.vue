@@ -70,11 +70,11 @@ function flagEmoji(node: Node): string {
 
 function buildRow(node: Node): Row {
   const expiresAt = node.expires_at ? new Date(node.expires_at) : null
-  const expired = !!expiresAt && expiresAt.getTime() < Date.now()
+  const expired = !!expiresAt && expiresAt.getTime() <= Date.now()
   const daysLeft = expiresAt
-    ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    ? Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null
-  const expiringSoon = !!daysLeft && daysLeft > 0 && daysLeft <= 3
+  const expiringSoon = daysLeft !== null && daysLeft <= 3 && !expired
 
   const groups = node.group_ids.map((id) => props.groupNameByID[id] ?? id).join(', ')
 

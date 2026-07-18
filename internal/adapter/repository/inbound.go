@@ -94,6 +94,14 @@ func (r *InboundRepository) List(ctx context.Context) ([]domain.Inbound, error) 
 }
 
 func (r *InboundRepository) Update(ctx context.Context, inbound domain.Inbound) error {
+	var existing inboundModel
+	if err := r.db.WithContext(ctx).Where("id = ?", inbound.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("inbound not found: %w", domain.ErrInboundNotFound)
+		}
+		return fmt.Errorf("updating inbound: %w", err)
+	}
+
 	updates := map[string]any{
 		"name":          inbound.Name,
 		"address":       inbound.Address,
@@ -107,12 +115,8 @@ func (r *InboundRepository) Update(ctx context.Context, inbound domain.Inbound) 
 		"name_template": inbound.NameTemplate,
 		"updated_at":    time.Now().UTC(),
 	}
-	result := r.db.WithContext(ctx).Model(&inboundModel{}).Where("id = ?", inbound.ID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("updating inbound: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("inbound not found: %w", domain.ErrInboundNotFound)
+	if err := r.db.WithContext(ctx).Model(&inboundModel{}).Where("id = ?", inbound.ID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating inbound: %w", err)
 	}
 	r.logger.Info("inbound updated", slog.String("id", inbound.ID))
 	return nil

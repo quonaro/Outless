@@ -82,7 +82,7 @@ func (h *GroupTopUpManagementHandler) RunTopUp(ctx context.Context, input *RunTo
 	if h.scheduler == nil {
 		return nil, huma.Error500InternalServerError("scheduler not available")
 	}
-	topUp, err := h.topUpRepo.FindByID(ctx, input.ID)
+	_, err := h.topUpRepo.FindByID(ctx, input.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrGroupTopUpNotFound) {
 			return nil, huma.Error404NotFound("top-up not found")
@@ -90,14 +90,8 @@ func (h *GroupTopUpManagementHandler) RunTopUp(ctx context.Context, input *RunTo
 		h.logger.Error("failed to find top-up for run", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to find top-up")
 	}
-	h.logger.Debug("top-up found, starting background run", slog.String("id", input.ID), slog.String("group_id", topUp.GroupID))
-
-	go func() {
-		h.logger.Debug("background top-up run started", slog.String("id", input.ID))
-		if _, err := h.scheduler.RunNow(context.Background(), topUp.ID); err != nil {
-			h.logger.Error("failed to run top-up", slog.String("id", input.ID), slog.String("error", err.Error()))
-		}
-	}()
+	h.logger.Debug("top-up found, starting background run", slog.String("id", input.ID))
+	h.scheduler.RunAsync(input.ID)
 
 	return nil, nil
 }
@@ -108,11 +102,7 @@ func (h *GroupTopUpManagementHandler) RunAllTopUps(ctx context.Context, _ *RunAl
 		return nil, huma.Error500InternalServerError("scheduler not available")
 	}
 
-	go func() {
-		h.logger.Debug("background run all top-ups started")
-		runResults := h.scheduler.RunAll(context.Background())
-		h.logger.Debug("background run all top-ups completed", slog.Int("count", len(runResults)))
-	}()
+	h.scheduler.RunAllAsync()
 
 	return &RunAllTopUpsOutput{Body: []TopUpRunResultOutput{}}, nil
 }

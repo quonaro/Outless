@@ -8,18 +8,20 @@ import (
 	"sync"
 	"time"
 
+	"outless/internal/country"
 	"outless/internal/domain"
 	"outless/shared/vless"
 )
 
 // Checker validates VLESS URLs through configurable stages.
 type Checker struct {
-	logger *slog.Logger
+	logger          *slog.Logger
+	countryResolver *country.Resolver
 }
 
-// New creates a new Checker with the provided logger.
-func New(logger *slog.Logger) *Checker {
-	return &Checker{logger: logger}
+// New creates a new Checker with the provided logger and an optional country resolver.
+func New(logger *slog.Logger, resolver *country.Resolver) *Checker {
+	return &Checker{logger: logger, countryResolver: resolver}
 }
 
 // Run validates the given URLs concurrently using the provided configuration.
@@ -70,25 +72,40 @@ func (c *Checker) check(ctx context.Context, raw string, cfg domain.TopUpCheckCo
 				return r
 			}
 		case "proxy":
-			pr, err := checkProxy(ctx, parsed, cfg.Timeout)
-			if err != nil {
-				r.Err = fmt.Errorf("proxy: %w", err)
-				return r
-			}
-			r.Latency = pr.Latency
-			if cfg.MaxLatency > 0 && r.Latency > cfg.MaxLatency {
-				r.Err = fmt.Errorf("latency %s exceeds max %s", r.Latency, cfg.MaxLatency)
-				return r
-			}
-
-			if isExcluded(r.Country, cfg.ExcludeCountries) {
-				r.Err = fmt.Errorf("country %s excluded", r.Country)
+			if err := c.checkProxyStage(ctx, &r, parsed, cfg); err != nil {
+				r.Err = err
 				return r
 			}
 		}
 	}
 
 	return r
+}
+
+func (c *Checker) checkProxyStage(ctx context.Context, r *Result, parsed vless.Parsed, cfg domain.TopUpCheckConfig) error {
+	pr, err := checkProxy(ctx, parsed, cfg.Timeout)
+	if err != nil {
+		return fmt.Errorf("proxy: %w", err)
+	}
+	r.Latency = pr.Latency
+	r.RealIP = pr.RealIP
+	if c.countryResolver != nil && r.RealIP != "" {
+		resolveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		info, err := c.countryResolver.Lookup(resolveCtx, r.RealIP)
+		cancel()
+		if err == nil {
+			r.Country = info.CountryCode
+		} else {
+			c.logger.Warn("failed to resolve country for proxy result", slog.String("ip", r.RealIP), slog.String("error", err.Error()))
+		}
+	}
+	if cfg.MaxLatency > 0 && r.Latency > cfg.MaxLatency {
+		return fmt.Errorf("latency %s exceeds max %s", r.Latency, cfg.MaxLatency)
+	}
+	if isExcluded(r.Country, cfg.ExcludeCountries) {
+		return fmt.Errorf("country %s excluded", r.Country)
+	}
+	return nil
 }
 
 func withDefaults(cfg domain.TopUpCheckConfig) domain.TopUpCheckConfig {

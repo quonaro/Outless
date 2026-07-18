@@ -81,6 +81,11 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
 			}
 			if token == "" {
+				if cookie, err := r.Cookie("auth_token"); err == nil {
+					token = strings.TrimSpace(cookie.Value)
+				}
+			}
+			if token == "" {
 				writeJSONError(w, http.StatusUnauthorized, "missing authorization header")
 				return
 			}

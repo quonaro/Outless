@@ -135,14 +135,16 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
 	totpService := service.NewTOTPService()
-	topUpChecker := checker.New(logger)
-	topUpScheduler := service.NewTopUpScheduler(topUpRepo, groupRepo, nodeRepo, topUpChecker, logger)
 
-	// Country lookup watcher
 	countryResolver := country.NewResolver(nil)
 	if cfg.App.CountryLookup.Timeout > 0 {
 		countryResolver = country.NewResolver(&http.Client{Timeout: cfg.App.CountryLookup.Timeout})
 	}
+
+	topUpChecker := checker.New(logger, countryResolver)
+	topUpScheduler := service.NewTopUpScheduler(topUpRepo, groupRepo, nodeRepo, topUpChecker, logger)
+
+	// Country lookup watcher
 	countryWatcher := service.NewCountryWatcher(
 		nodeRepo,
 		countryResolver,

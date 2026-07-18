@@ -10,7 +10,7 @@ CONF_DIR=/etc/outless
 CONF_FILE=$CONF_DIR/config.yaml
 
 generate_config() {
-	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs pprof_enabled pprof_bind
+	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs pprof_enabled pprof_bind shutdown_gracetime country_check_interval country_batch_size country_retry_delay country_provider_timeout
 
 	config_load outless
 
@@ -22,8 +22,15 @@ generate_config() {
 	config_get pprof_enabled app pprof_enabled "0"
 	config_get pprof_bind app pprof_bind "127.0.0.1:6060"
 
+	config_get shutdown_gracetime app shutdown_gracetime "10s"
+
+	config_get country_check_interval country_lookup check_interval "30s"
+	config_get country_batch_size country_lookup batch_size "50"
+	config_get country_retry_delay country_lookup retry_delay "10m"
+	config_get country_provider_timeout country_lookup provider_timeout "10s"
+
 	config_get jwt_secret jwt secret ""
-	config_get jwt_expiry jwt expiry "24h"
+	config_get jwt_expiry jwt expiry "24h0m0s"
 
 	config_get database database path "/etc/outless/outless.db"
 
@@ -31,7 +38,7 @@ generate_config() {
 
 	cat > "$CONF_FILE" <<EOF
 app:
-  shutdown_gracetime: 10s
+  shutdown_gracetime: $shutdown_gracetime
   http_port: $http_port
   external_host: $external_host
   singbox_log_level: $singbox_log_level
@@ -39,9 +46,14 @@ app:
   disable_docs: $([ "$disable_docs" = "1" ] && echo "true" || echo "false")
   pprof_enabled: $([ "$pprof_enabled" = "1" ] && echo "true" || echo "false")
   pprof_bind: "$pprof_bind"
+  country_lookup:
+    check_interval: $country_check_interval
+    batch_size: $country_batch_size
+    retry_delay: $country_retry_delay
+    provider_timeout: $country_provider_timeout
 jwt:
   secret: "$jwt_secret"
-  expiry: ${jwt_expiry}0m0s
+  expiry: $jwt_expiry
 database: $database
 EOF
 }

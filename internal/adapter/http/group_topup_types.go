@@ -175,25 +175,9 @@ func parseTopUpInput(input TopUpInput, groupID string) (domain.GroupTopUp, error
 	}
 
 	now := time.Now().UTC()
-	nextRun := now
-	if input.NextRunAt != nil {
-		t, err := time.Parse(time.RFC3339, *input.NextRunAt)
-		if err != nil {
-			return domain.GroupTopUp{}, fmt.Errorf("parsing next_run_at: %w", err)
-		}
-		nextRun = t.UTC()
-	} else if input.ScheduleType == "interval" && input.ScheduleExpr != "" {
-		d, err := time.ParseDuration(input.ScheduleExpr)
-		if err != nil {
-			return domain.GroupTopUp{}, fmt.Errorf("parsing schedule expression: %w", err)
-		}
-		nextRun = now.Add(d)
-	} else if input.ScheduleType == "fixed" && input.ScheduleExpr != "" {
-		t, err := time.Parse(time.RFC3339, input.ScheduleExpr)
-		if err != nil {
-			return domain.GroupTopUp{}, fmt.Errorf("parsing fixed schedule: %w", err)
-		}
-		nextRun = t.UTC()
+	nextRun, err := computeTopUpNextRunAt(input, now, "", "", time.Time{})
+	if err != nil {
+		return domain.GroupTopUp{}, err
 	}
 
 	return domain.GroupTopUp{
@@ -227,15 +211,52 @@ func mergeTopUpInput(existing domain.GroupTopUp, input TopUpInput) (domain.Group
 	existing.ScheduleExpr = input.ScheduleExpr
 	existing.Enabled = input.Enabled
 
+	nextRun, err := computeTopUpNextRunAt(input, time.Now().UTC(), existing.ScheduleType, existing.ScheduleExpr, existing.NextRunAt)
+	if err != nil {
+		return existing, err
+	}
+	existing.NextRunAt = nextRun
+
+	return existing, nil
+}
+
+func computeTopUpNextRunAt(
+	input TopUpInput,
+	now time.Time,
+	existingScheduleType string,
+	existingScheduleExpr string,
+	existingNextRun time.Time,
+) (time.Time, error) {
 	if input.NextRunAt != nil {
 		t, err := time.Parse(time.RFC3339, *input.NextRunAt)
 		if err != nil {
-			return existing, fmt.Errorf("parsing next_run_at: %w", err)
+			return time.Time{}, fmt.Errorf("parsing next_run_at: %w", err)
 		}
-		existing.NextRunAt = t.UTC()
+		return t.UTC(), nil
 	}
 
-	return existing, nil
+	scheduleChanged := input.ScheduleType != existingScheduleType || input.ScheduleExpr != existingScheduleExpr
+	if !scheduleChanged && !existingNextRun.IsZero() {
+		return existingNextRun, nil
+	}
+
+	if input.ScheduleType == "interval" && input.ScheduleExpr != "" {
+		d, err := time.ParseDuration(input.ScheduleExpr)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parsing schedule expression: %w", err)
+		}
+		return now.Add(d), nil
+	}
+
+	if input.ScheduleType == "fixed" && input.ScheduleExpr != "" {
+		t, err := time.Parse(time.RFC3339, input.ScheduleExpr)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parsing fixed schedule: %w", err)
+		}
+		return t.UTC(), nil
+	}
+
+	return now, nil
 }
 
 func topUpPtr(t domain.GroupTopUp) *TopUpOutput {

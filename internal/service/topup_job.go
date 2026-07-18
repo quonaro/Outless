@@ -23,10 +23,18 @@ func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.Gro
 		slog.String("parser", topUp.ParserType),
 	)
 
+	timeout := topUp.CheckConfig.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	for _, u := range topUp.URLs {
 		s.logger.Info("fetching top-up source URL", slog.String("url", u))
 		s.logger.Debug("fetching top-up source URL request", slog.String("url", u))
-		content, err := s.fetchURL(ctx, client, u)
+
+		urlCtx, cancel := context.WithTimeout(ctx, timeout)
+		content, err := s.fetchURL(urlCtx, client, u)
+		cancel()
 		if err != nil {
 			s.logger.Warn("failed to fetch top-up url",
 				slog.String("url", u),
@@ -54,8 +62,12 @@ func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.Gro
 	return allURLs, nil
 }
 
-func (s *TopUpScheduler) httpClient(_ domain.GroupTopUp) *http.Client {
-	return http.DefaultClient
+func (s *TopUpScheduler) httpClient(topUp domain.GroupTopUp) *http.Client {
+	timeout := topUp.CheckConfig.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	return &http.Client{Timeout: timeout}
 }
 
 func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u string) (string, error) {
@@ -86,32 +98,24 @@ func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u st
 }
 
 func (s *TopUpScheduler) replaceGroupNodes(ctx context.Context, groupID string, urls []string) (int, error) {
-	s.logger.Debug("deleting existing group nodes", slog.String("group_id", groupID))
-	if err := s.nodeRepo.DeleteByGroupID(ctx, groupID); err != nil {
-		return 0, err
-	}
-
 	s.logger.Info("replacing group nodes", slog.String("group_id", groupID), slog.Int("urls", len(urls)))
-	added := 0
+
+	nodes := make([]domain.Node, 0, len(urls))
 	for _, u := range urls {
 		if err := ctx.Err(); err != nil {
-			return added, err
+			return 0, err
 		}
-		node := domain.Node{
+		nodes = append(nodes, domain.Node{
 			ID:       generateTopUpNodeID(u, groupID),
 			URL:      u,
 			GroupIDs: []string{groupID},
-		}
-		s.logger.Debug("creating top-up node", slog.String("node_id", node.ID), slog.String("url", u))
-		if err := s.nodeRepo.Create(ctx, node); err != nil {
-			s.logger.Warn("failed to create node from top-up",
-				slog.String("node_id", node.ID),
-				slog.String("error", err.Error()),
-			)
-			continue
-		}
-		s.logger.Debug("top-up node created", slog.String("node_id", node.ID))
-		added++
+		})
+	}
+
+	added, err := s.nodeRepo.ReplaceByGroupID(ctx, groupID, nodes)
+	if err != nil {
+		s.logger.Error("failed to replace group nodes", slog.String("group_id", groupID), slog.String("error", err.Error()))
+		return 0, err
 	}
 
 	s.logger.Info("group nodes replaced", slog.String("group_id", groupID), slog.Int("added", added))

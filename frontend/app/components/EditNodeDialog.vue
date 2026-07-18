@@ -33,9 +33,21 @@ const localExpiresAt = ref<string | undefined>(undefined)
 const originalUrl = ref('')
 const originalExpiresAt = ref<string | undefined>(undefined)
 const rawUrl = ref('')
+const rawName = ref('')
 const isRaw = ref(false)
 const unlocked = ref(false)
 const confirmingUnlock = ref(false)
+
+const nameInput = computed({
+  get: () => (isRaw.value ? rawName.value : (localParsed.value?.name ?? '')),
+  set: (value) => {
+    if (isRaw.value) {
+      rawName.value = value
+    } else if (localParsed.value) {
+      localParsed.value.name = value
+    }
+  },
+})
 
 const portInput = computed({
   get: () => String(localParsed.value?.port ?? 443),
@@ -55,6 +67,7 @@ watch(
       localParsed.value = parsed
       isRaw.value = parsed === null
       rawUrl.value = props.node.url
+      rawName.value = parsed?.name ?? extractNameFromUrl(props.node.url)
       originalUrl.value = props.node.url
       localGroupIds.value = [...props.node.group_ids]
       localExpiresAt.value = props.node.expires_at
@@ -90,13 +103,22 @@ function cancelUnlock() {
   confirmingUnlock.value = false
 }
 
+function extractNameFromUrl(raw: string): string {
+  try {
+    const u = new URL(raw)
+    return decodeURIComponent(u.hash.replace(/^#/, '')).trim()
+  } catch {
+    return ''
+  }
+}
+
 function submit() {
   const payload: { url?: string; groupIds: string[]; expiresAt?: string } = {
     groupIds: localGroupIds.value,
   }
 
   if (isRaw.value) {
-    const newUrl = updateVlessName(rawUrl.value, localParsed.value?.name ?? '')
+    const newUrl = updateVlessName(rawUrl.value, rawName.value.trim())
     if (!newUrl) {
       alert('Invalid VLESS URL')
       return
@@ -126,13 +148,11 @@ function submit() {
         <div class="space-y-2">
           <label class="text-sm font-medium" for="edit-node-name">Name</label>
           <UiInput
-            v-if="localParsed"
             id="edit-node-name"
-            v-model="localParsed.name"
+            v-model="nameInput"
             placeholder="Node name"
             @keyup.enter="submit"
           />
-          <UiInput v-else id="edit-node-name" :model-value="''" disabled placeholder="Node name" />
         </div>
         <template v-if="localParsed && !isRaw">
           <div class="grid grid-cols-2 gap-4">

@@ -20,8 +20,8 @@ type UpdateNodeInput struct {
 }
 
 func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNodeInput) (*struct{}, error) {
-	if input.Body.URL == "" && len(input.Body.GroupIDs) == 0 {
-		return nil, huma.Error400BadRequest("at least one field (url or group_ids) is required")
+	if input.Body.URL == "" && len(input.Body.GroupIDs) == 0 && input.Body.ExpiresAt == nil {
+		return nil, huma.Error400BadRequest("at least one field (url, group_ids or expires_at) is required")
 	}
 
 	existingNode, err := h.nodeRepo.FindByID(ctx, input.ID)

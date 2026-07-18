@@ -202,7 +202,15 @@ func (r *GroupTopUpRepository) Update(ctx context.Context, topUp domain.GroupTop
 	}
 	model.UpdatedAt = time.Now().UTC()
 
-	result := r.db.WithContext(ctx).Model(&groupTopUpModel{}).Where("id = ?", model.ID).Updates(map[string]any{
+	var existing groupTopUpModel
+	if err := r.db.WithContext(ctx).Where("id = ?", model.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("group top-up not found: %w", domain.ErrGroupTopUpNotFound)
+		}
+		return fmt.Errorf("updating group top-up: %w", err)
+	}
+
+	if err := r.db.WithContext(ctx).Model(&groupTopUpModel{}).Where("id = ?", model.ID).Updates(map[string]any{
 		groupIDColumn:   model.GroupID,
 		"urls":          model.URLs,
 		"parser_type":   model.ParserType,
@@ -215,12 +223,8 @@ func (r *GroupTopUpRepository) Update(ctx context.Context, topUp domain.GroupTop
 		"last_run_at":   model.LastRunAt,
 		"enabled":       model.Enabled,
 		"updated_at":    model.UpdatedAt,
-	})
-	if result.Error != nil {
-		return fmt.Errorf("updating group top-up: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("group top-up not found: %w", domain.ErrGroupTopUpNotFound)
+	}).Error; err != nil {
+		return fmt.Errorf("updating group top-up: %w", err)
 	}
 	r.logger.Info("group top-up updated", slog.String("id", model.ID))
 	return nil

@@ -3,6 +3,7 @@ package checker
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"outless/shared/vless"
@@ -25,38 +27,57 @@ type proxyResult struct {
 	RealIP  string
 }
 
+const proxyStartRetries = 3
+
 // checkProxy runs an in-process sing-box instance with the parsed node as outbound
 // and tests connectivity through a local mixed inbound.
 func checkProxy(ctx context.Context, p vless.Parsed, timeout time.Duration) (proxyResult, error) {
-	port, err := freePort(ctx)
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("allocating local port: %w", err)
-	}
+	var lastErr error
+	for attempt := 0; attempt < proxyStartRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return proxyResult{}, err
+		}
 
-	opts, err := buildProxyOptions(p, port)
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("building sing-box options: %w", err)
-	}
+		port, err := freePort(ctx)
+		if err != nil {
+			return proxyResult{}, fmt.Errorf("allocating local port: %w", err)
+		}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout+10*time.Second)
-	defer cancel()
+		opts, err := buildProxyOptions(p, port)
+		if err != nil {
+			return proxyResult{}, fmt.Errorf("building sing-box options: %w", err)
+		}
 
-	instance, err := box.New(box.Options{Context: ctx, Options: opts})
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("creating sing-box: %w", err)
-	}
+		ctx, cancel := context.WithTimeout(ctx, timeout+10*time.Second)
+		defer cancel()
 
-	if err := instance.Start(); err != nil {
+		instance, err := box.New(box.Options{Context: ctx, Options: opts})
+		if err != nil {
+			return proxyResult{}, fmt.Errorf("creating sing-box: %w", err)
+		}
+
+		if err := instance.Start(); err != nil {
+			_ = instance.Close()
+			if attempt < proxyStartRetries-1 && errors.Is(err, syscall.EADDRINUSE) {
+				lastErr = err
+				continue
+			}
+			return proxyResult{}, fmt.Errorf("starting sing-box: %w", err)
+		}
+
+		if err := waitForPort(ctx, port, timeout); err != nil {
+			_ = instance.Close()
+			return proxyResult{}, err
+		}
+
+		result, err := testHTTP(ctx, port, timeout)
 		_ = instance.Close()
-		return proxyResult{}, fmt.Errorf("starting sing-box: %w", err)
+		if err != nil {
+			return proxyResult{}, err
+		}
+		return result, nil
 	}
-	defer func() { _ = instance.Close() }()
-
-	if err := waitForPort(ctx, port, timeout); err != nil {
-		return proxyResult{}, err
-	}
-
-	return testHTTP(ctx, port, timeout)
+	return proxyResult{}, fmt.Errorf("starting sing-box after retries: %w", lastErr)
 }
 
 func buildProxyOptions(p vless.Parsed, port int) (option.Options, error) {
@@ -199,6 +220,12 @@ func waitForPort(ctx context.Context, port int, timeout time.Duration) error {
 	return fmt.Errorf("timeout waiting for sing-box on %s", addr)
 }
 
+var probeURLs = []string{
+	"https://ifconfig.me/ip",
+	"https://icanhazip.com",
+	"https://api.ipify.org",
+}
+
 func testHTTP(ctx context.Context, port int, timeout time.Duration) (proxyResult, error) {
 	proxyURL := &url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(port))}
 
@@ -211,25 +238,38 @@ func testHTTP(ctx context.Context, port int, timeout time.Duration) (proxyResult
 	}
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ifconfig.me/ip", nil)
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("creating request: %w", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("proxy test: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+	var lastErr error
+	for _, probe := range probeURLs {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, probe, nil)
+		if err != nil {
+			return proxyResult{}, fmt.Errorf("creating request: %w", err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			lastErr = fmt.Errorf("unexpected status %d from %s", resp.StatusCode, probe)
+			continue
+		}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if err != nil {
-		return proxyResult{}, fmt.Errorf("reading response: %w", err)
+		ip := strings.TrimSpace(string(body))
+		if net.ParseIP(ip) == nil {
+			lastErr = fmt.Errorf("invalid real ip response from %s: %q", probe, ip)
+			continue
+		}
+		return proxyResult{Latency: time.Since(start), RealIP: ip}, nil
 	}
-	latency := time.Since(start)
 
-	ip := strings.TrimSpace(string(body))
-	if ip == "" {
-		return proxyResult{}, fmt.Errorf("empty real ip response")
+	if lastErr != nil {
+		return proxyResult{}, fmt.Errorf("proxy test: %w", lastErr)
 	}
-	return proxyResult{Latency: latency, RealIP: ip}, nil
+	return proxyResult{}, fmt.Errorf("proxy test: all probe URLs failed")
 }

@@ -105,6 +105,14 @@ func (r *AdminRepository) List(ctx context.Context) ([]domain.Admin, error) {
 
 // Update updates an admin's fields. Only non-empty / explicitly set fields apply.
 func (r *AdminRepository) Update(ctx context.Context, admin domain.Admin) error {
+	var existing adminModel
+	if err := r.db.WithContext(ctx).Where("id = ?", admin.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("admin not found: %w", domain.ErrAdminNotFound)
+		}
+		return fmt.Errorf("updating admin: %w", err)
+	}
+
 	updates := make(map[string]any, 0)
 	if admin.PasswordHash != "" {
 		updates["password_hash"] = admin.PasswordHash
@@ -119,12 +127,8 @@ func (r *AdminRepository) Update(ctx context.Context, admin domain.Admin) error 
 	if len(updates) == 0 {
 		return nil
 	}
-	result := r.db.WithContext(ctx).Model(&adminModel{}).Where("id = ?", admin.ID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("updating admin: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("admin not found: %w", domain.ErrAdminNotFound)
+	if err := r.db.WithContext(ctx).Model(&adminModel{}).Where("id = ?", admin.ID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating admin: %w", err)
 	}
 	r.logger.Debug("admin updated", slog.String("id", admin.ID))
 	return nil

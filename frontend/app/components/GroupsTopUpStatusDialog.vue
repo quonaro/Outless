@@ -63,6 +63,7 @@ async function runAll() {
     results.value = map
 
     await runAllTopUps()
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
     info('Top-up runs started', 'All top-up groups are being refilled in the background.')
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -78,6 +79,7 @@ async function handleStartTopUp(group: Group) {
   try {
     await runTopUp(group.top_up_id)
     results.value[group.id] = { status: 'pending', total: 0, passed: 0, added: 0 }
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
     info('Top-up run started', `Group "${group.name}" will be refilled in the background.`)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

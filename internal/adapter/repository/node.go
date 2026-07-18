@@ -533,15 +533,19 @@ func (r *NodeRepository) ListByGroup(ctx context.Context, groupID string) ([]dom
 
 // Update updates a node's URL or group associations.
 func (r *NodeRepository) Update(ctx context.Context, node domain.Node) error {
-	result := r.db.WithContext(ctx).
+	var existing nodeModel
+	if err := r.db.WithContext(ctx).Where("id = ?", node.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("node not found: %w", domain.ErrNodeNotFound)
+		}
+		return fmt.Errorf("updating node: %w", err)
+	}
+
+	if err := r.db.WithContext(ctx).
 		Model(&nodeModel{}).
 		Where("id = ?", node.ID).
-		Updates(map[string]any{urlColumn: node.URL, "is_self": node.IsSelf, "expires_at": node.ExpiresAt})
-	if result.Error != nil {
-		return fmt.Errorf("updating node: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("node not found: %w", domain.ErrNodeNotFound)
+		Updates(map[string]any{urlColumn: node.URL, "is_self": node.IsSelf, "expires_at": node.ExpiresAt}).Error; err != nil {
+		return fmt.Errorf("updating node: %w", err)
 	}
 	if err := r.replaceGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
 		return err
@@ -659,4 +663,78 @@ func (r *NodeRepository) DeleteByGroupID(ctx context.Context, groupID string) er
 	}
 	r.logger.Debug("nodes deleted by group", slog.String(groupIDColumn, groupID), slog.Int("count", len(nodeIDs)))
 	return nil
+}
+
+// ReplaceByGroupID atomically deletes all nodes for a group and inserts the supplied nodes.
+func (r *NodeRepository) ReplaceByGroupID(ctx context.Context, groupID string, nodes []domain.Node) (int, error) {
+	tx := r.db.WithContext(ctx).Begin()
+	defer func() {
+		if rec := recover(); rec != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := tx.Error; err != nil {
+		return 0, fmt.Errorf("starting replace by group transaction: %w", err)
+	}
+
+	var nodeIDs []string
+	if err := tx.Model(&nodeGroupModel{}).
+		Where("group_id = ?", groupID).
+		Pluck("node_id", &nodeIDs).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("finding node ids for group: %w", err)
+	}
+
+	if err := tx.Where("group_id = ?", groupID).Delete(&nodeGroupModel{}).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("deleting node group links: %w", err)
+	}
+
+	if len(nodeIDs) > 0 {
+		if err := tx.Where("node_id IN ?", nodeIDs).Delete(&nodeCountryModel{}).Error; err != nil {
+			_ = tx.Rollback()
+			return 0, fmt.Errorf("deleting country info by group: %w", err)
+		}
+		if err := tx.Where("id IN ?", nodeIDs).Delete(&nodeModel{}).Error; err != nil {
+			_ = tx.Rollback()
+			return 0, fmt.Errorf("deleting group nodes: %w", err)
+		}
+	}
+
+	if len(nodes) == 0 {
+		if err := tx.Commit().Error; err != nil {
+			return 0, fmt.Errorf("committing replace by group transaction: %w", err)
+		}
+		return 0, nil
+	}
+
+	models := make([]nodeModel, 0, len(nodes))
+	groupLinks := make([]nodeGroupModel, 0, len(nodes))
+	now := time.Now().UTC()
+	for _, n := range nodes {
+		models = append(models, nodeModel{
+			ID:        n.ID,
+			URL:       n.URL,
+			Country:   n.Country,
+			IsSelf:    n.IsSelf,
+			CreatedAt: now,
+			ExpiresAt: n.ExpiresAt,
+		})
+		groupLinks = append(groupLinks, nodeGroupModel{NodeID: n.ID, GroupID: groupID})
+	}
+
+	if err := tx.CreateInBatches(&models, 200).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("creating group nodes: %w", err)
+	}
+	if err := tx.CreateInBatches(&groupLinks, 200).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("creating node group links: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return 0, fmt.Errorf("committing replace by group transaction: %w", err)
+	}
+	r.logger.Debug("nodes replaced by group", slog.String(groupIDColumn, groupID), slog.Int("count", len(nodes)))
+	return len(nodes), nil
 }

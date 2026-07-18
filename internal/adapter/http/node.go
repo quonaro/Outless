@@ -131,7 +131,7 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 		nodes = nodes[:limit]
 	}
 
-	response, hasMore := h.buildNodeItems(ctx, nodes, limit, offset)
+	response := h.buildNodeItems(ctx, nodes)
 
 	out := &ListNodesOutput{}
 	out.Body.Nodes = response
@@ -144,12 +144,7 @@ func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesI
 	return out, nil
 }
 
-func (h *NodeManagementHandler) buildNodeItems(
-	_ context.Context,
-	nodes []domain.Node,
-	limit int,
-	_ int,
-) ([]NodeItem, bool) {
+func (h *NodeManagementHandler) buildNodeItems(_ context.Context, nodes []domain.Node) []NodeItem {
 	response := make([]NodeItem, 0, len(nodes))
 	for _, n := range nodes {
 		item := NodeItem{
@@ -168,11 +163,7 @@ func (h *NodeManagementHandler) buildNodeItems(
 		response = append(response, item)
 	}
 
-	if len(response) > limit {
-		response = response[:limit]
-		return response, true
-	}
-	return response, false
+	return response
 }
 
 func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput) (*GetNodeOutput, error) {

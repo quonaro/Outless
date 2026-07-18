@@ -87,19 +87,23 @@ func (r *PublicSourceRepository) List(ctx context.Context) ([]domain.PublicSourc
 }
 
 func (r *PublicSourceRepository) Update(ctx context.Context, source domain.PublicSource) error {
-	result := r.db.WithContext(ctx).
+	var existing publicSourceModel
+	if err := r.db.WithContext(ctx).Where("id = ?", source.ID).First(&existing).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("public source not found: %w", domain.ErrPublicSourceNotFound)
+		}
+		return fmt.Errorf("updating public source: %w", err)
+	}
+
+	if err := r.db.WithContext(ctx).
 		Model(&publicSourceModel{}).
 		Where("id = ?", source.ID).
 		Updates(map[string]any{
 			urlColumn:         source.URL,
 			groupIDColumn:     source.GroupID,
 			"last_fetched_at": source.LastFetchedAt,
-		})
-	if result.Error != nil {
-		return fmt.Errorf("updating public source: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("public source not found: %w", domain.ErrPublicSourceNotFound)
+		}).Error; err != nil {
+		return fmt.Errorf("updating public source: %w", err)
 	}
 	r.logger.Info("public source updated", slog.String("id", source.ID))
 	return nil

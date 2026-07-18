@@ -53,12 +53,7 @@ function start() {
   active++
   if (source) return
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
-  const url = token
-    ? `/api/v1/stats/system/stream?access_token=${encodeURIComponent(token)}`
-    : '/api/v1/stats/system/stream'
-
-  source = new EventSource(url)
+  source = new EventSource('/api/v1/stats/system/stream')
   source.onmessage = onMessage
 }
 
