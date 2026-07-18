@@ -9,8 +9,19 @@ PROG=/usr/bin/outless
 CONF_DIR=/etc/outless
 CONF_FILE=$CONF_DIR/config.yaml
 
+_cors_origins=""
+
+append_cors_origin() {
+	local val="$1"
+	if [ -z "$_cors_origins" ]; then
+		_cors_origins="$val"
+	else
+		_cors_origins="$_cors_origins $val"
+	fi
+}
+
 generate_config() {
-	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs pprof_enabled pprof_bind shutdown_gracetime country_check_interval country_batch_size country_retry_delay country_provider_timeout
+	local http_port external_host log_level singbox_log_level jwt_secret jwt_expiry database disable_docs secure_cookies pprof_enabled pprof_bind shutdown_gracetime country_check_interval country_batch_size country_retry_delay country_provider_timeout
 
 	config_load outless
 
@@ -19,6 +30,7 @@ generate_config() {
 	config_get log_level app log_level "info"
 	config_get singbox_log_level app singbox_log_level "warn"
 	config_get disable_docs app disable_docs "0"
+	config_get secure_cookies app secure_cookies "0"
 	config_get pprof_enabled app pprof_enabled "0"
 	config_get pprof_bind app pprof_bind "127.0.0.1:6060"
 
@@ -34,7 +46,19 @@ generate_config() {
 
 	config_get database database path "/etc/outless/outless.db"
 
+	_cors_origins=""
+	config_list_foreach cors allowed_origins append_cors_origin
+
 	mkdir -p "$CONF_DIR"
+
+	local cors_yaml="    allowed_origins: []"
+	if [ -n "$_cors_origins" ]; then
+		cors_yaml="    allowed_origins:"
+		for origin in $_cors_origins; do
+			cors_yaml="$cors_yaml
+      - $origin"
+		done
+	fi
 
 	cat > "$CONF_FILE" <<EOF
 app:
@@ -44,8 +68,11 @@ app:
   singbox_log_level: $singbox_log_level
   log_level: $log_level
   disable_docs: $([ "$disable_docs" = "1" ] && echo "true" || echo "false")
+  secure_cookies: $([ "$secure_cookies" = "1" ] && echo "true" || echo "false")
   pprof_enabled: $([ "$pprof_enabled" = "1" ] && echo "true" || echo "false")
   pprof_bind: "$pprof_bind"
+  cors:
+$cors_yaml
   country_lookup:
     check_interval: $country_check_interval
     batch_size: $country_batch_size

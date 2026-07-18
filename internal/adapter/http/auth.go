@@ -49,10 +49,8 @@ type loginInput struct {
 }
 
 type loginOutput struct {
-	Headers struct {
-		SetCookie string `header:"Set-Cookie"`
-	}
-	Body struct {
+	SetCookie http.Cookie `header:"Set-Cookie"`
+	Body      struct {
 		Username     string `json:"username,omitempty"`
 		TOTPRequired bool   `json:"totp_required"`
 	}
@@ -116,7 +114,7 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 
 	h.logger.Info("admin logged in", slog.String("username", username))
 	out := &loginOutput{}
-	out.Headers.SetCookie = (&http.Cookie{
+	out.SetCookie = http.Cookie{
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
@@ -124,7 +122,7 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 		HttpOnly: true,
 		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
-	}).String()
+	}
 	out.Body.Username = admin.Username
 	out.Body.TOTPRequired = false
 
@@ -132,14 +130,12 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 }
 
 type logoutOutput struct {
-	Headers struct {
-		SetCookie string `header:"Set-Cookie"`
-	}
+	SetCookie http.Cookie `header:"Set-Cookie"`
 }
 
 func (h *AuthHandler) logout(_ context.Context, _ *struct{}) (*logoutOutput, error) {
 	out := &logoutOutput{}
-	out.Headers.SetCookie = (&http.Cookie{
+	out.SetCookie = http.Cookie{
 		Name:     "auth_token",
 		Value:    "",
 		Path:     "/",
@@ -147,7 +143,7 @@ func (h *AuthHandler) logout(_ context.Context, _ *struct{}) (*logoutOutput, err
 		HttpOnly: true,
 		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
-	}).String()
+	}
 	return out, nil
 }
 
