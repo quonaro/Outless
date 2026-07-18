@@ -145,7 +145,7 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 			h.logger.Error("failed to create top-up", slog.String("error", err.Error()))
 			return nil, huma.Error500InternalServerError("failed to create top-up")
 		}
-		h.runTopUpNow(ctx, topUp.ID)
+		h.runTopUpNow(topUp.ID)
 		out.Body.TopUp = topUpPtr(topUp)
 	}
 
@@ -254,7 +254,7 @@ func (h *GroupManagementHandler) upsertTopUp(ctx context.Context, groupID string
 		if err := h.topUpRepo.Create(ctx, topUp); err != nil {
 			return err
 		}
-		h.runTopUpNow(ctx, topUp.ID)
+		h.runTopUpNow(topUp.ID)
 		return nil
 	}
 
@@ -265,7 +265,7 @@ func (h *GroupManagementHandler) upsertTopUp(ctx context.Context, groupID string
 	return h.topUpRepo.Update(ctx, merged)
 }
 
-func (h *GroupManagementHandler) runTopUpNow(ctx context.Context, id string) {
+func (h *GroupManagementHandler) runTopUpNow(id string) {
 	if h.topUpScheduler == nil {
 		return
 	}
