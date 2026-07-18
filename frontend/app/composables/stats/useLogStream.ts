@@ -7,25 +7,12 @@ let eventSource: EventSource | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let subscriberCount = 0
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return localStorage.getItem('auth_token')
-  } catch {
-    return null
-  }
-}
-
 function connect(maxLines: number) {
   subscriberCount++
   if (eventSource) return
 
   const base = typeof window !== 'undefined' ? window.location.origin : ''
-  const token = getToken()
-  let url = `${base}/api/v1/events/logs`
-  if (token) {
-    url += `?access_token=${encodeURIComponent(token)}`
-  }
+  const url = `${base}/api/v1/events/logs`
   eventSource = new EventSource(url)
   eventSource.onopen = () => {
     isConnected.value = true

@@ -22,13 +22,14 @@ type Server struct {
 
 // Config defines HTTP server settings.
 type Config struct {
-	Address           string
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	ReadHeaderTimeout time.Duration
-	DisableDocs       bool
-	Version           string
+	Address            string
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	IdleTimeout        time.Duration
+	ReadHeaderTimeout  time.Duration
+	DisableDocs        bool
+	Version            string
+	CORSAllowedOrigins []string
 }
 
 // Handlers groups all HTTP handlers the server wires up.
@@ -155,6 +156,9 @@ func NewServer(cfg Config, logger *slog.Logger, jwtService *service.JWTService, 
 	}
 
 	handler := loggingMiddleware.Wrap(rootMux)
+
+	corsMiddleware := NewCORSMiddleware(cfg.CORSAllowedOrigins)
+	handler = corsMiddleware.Wrap(handler)
 
 	srv := &http.Server{
 		Addr:              cfg.Address,

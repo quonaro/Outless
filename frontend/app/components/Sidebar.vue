@@ -70,8 +70,8 @@ const handleNavClick = (path: string) => {
   navigateTo(path)
 }
 
-const handleLogout = () => {
-  auth.clearToken()
+const handleLogout = async () => {
+  await auth.clearToken()
   sidebar.closeMobile()
   navigateTo('/login')
 }

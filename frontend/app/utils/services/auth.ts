@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import {
   AuthResponseSchema,
+  MeResponseSchema,
   TOTPStatusResponseSchema,
   TOTPSetupResponseSchema,
   type LoginCredentialsSchema,
@@ -16,8 +17,25 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
   const data = await $fetch(`${config.public.apiBase}/v1/auth/login`, {
     method: 'POST',
     body: credentials,
+    credentials: 'include',
   })
   return AuthResponseSchema.parse(data)
+}
+
+export async function logout(): Promise<void> {
+  const config = useRuntimeConfig()
+  await $fetch(`${config.public.apiBase}/v1/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+}
+
+export async function fetchMe(): Promise<z.infer<typeof MeResponseSchema>> {
+  const { $api } = useNuxtApp()
+  const data = await $api('/v1/auth/me', {
+    method: 'GET',
+  })
+  return MeResponseSchema.parse(data)
 }
 
 export async function getTOTPStatus(): Promise<z.infer<typeof TOTPStatusResponseSchema>> {

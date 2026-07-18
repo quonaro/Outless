@@ -13,6 +13,7 @@ import (
 
 	"outless/internal/domain"
 	"outless/internal/service"
+	"outless/internal/utils/ssrf"
 )
 
 // GroupTopUpManagementHandler exposes direct top-up management endpoints.
@@ -155,7 +156,14 @@ func (h *GroupTopUpManagementHandler) PingSourceURL(ctx context.Context, input *
 		return nil, huma.Error400BadRequest("url is required")
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	if err := ssrf.ValidateURLWithContext(ctx, input.Body.URL); err != nil {
+		return nil, huma.Error400BadRequest(fmt.Sprintf("url validation failed: %s", err))
+	}
+
+	client := &http.Client{
+		Timeout:       15 * time.Second,
+		CheckRedirect: ssrf.CheckRedirect,
+	}
 
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, input.Body.URL, nil)

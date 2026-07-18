@@ -49,24 +49,11 @@ function onMessage(event: MessageEvent) {
   }
 }
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return localStorage.getItem('auth_token')
-  } catch {
-    return null
-  }
-}
-
 function start() {
   active++
   if (source) return
 
-  const token = getToken()
-  let url = '/api/v1/stats/system/stream'
-  if (token) {
-    url += `?access_token=${encodeURIComponent(token)}`
-  }
+  const url = '/api/v1/stats/system/stream'
   source = new EventSource(url)
   source.onmessage = onMessage
 }

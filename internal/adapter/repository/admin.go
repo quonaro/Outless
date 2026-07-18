@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"outless/internal/domain"
+	"outless/shared/crypto"
 
 	"gorm.io/gorm"
 )
@@ -24,13 +25,19 @@ func (adminModel) TableName() string { return "admins" }
 
 // AdminRepository persists admin users using GORM over SQLite.
 type AdminRepository struct {
-	db     *gorm.DB
-	logger *slog.Logger
+	db        *gorm.DB
+	logger    *slog.Logger
+	cryptoKey [32]byte
 }
 
 // NewAdminRepository constructs a GORM-backed admin repository.
-func NewAdminRepository(db *gorm.DB, logger *slog.Logger) *AdminRepository {
-	return &AdminRepository{db: db, logger: logger}
+// The cryptoKey is used to encrypt TOTP secrets at rest.
+func NewAdminRepository(db *gorm.DB, logger *slog.Logger, jwtSecret string) *AdminRepository {
+	return &AdminRepository{
+		db:        db,
+		logger:    logger,
+		cryptoKey: crypto.DeriveKey(jwtSecret),
+	}
 }
 
 // FindByUsername retrieves an admin by username.
@@ -43,11 +50,20 @@ func (r *AdminRepository) FindByUsername(ctx context.Context, username string) (
 		}
 		return domain.Admin{}, fmt.Errorf("querying admin by username: %w", err)
 	}
+	secret := model.TOTPSecret
+	if secret != "" && crypto.IsEncrypted(secret) {
+		decrypted, err := crypto.Decrypt(r.cryptoKey, secret)
+		if err != nil {
+			r.logger.Warn("failed to decrypt totp secret", slog.String("admin_id", model.ID), slog.String("error", err.Error()))
+		} else {
+			secret = decrypted
+		}
+	}
 	return domain.Admin{
 		ID:           model.ID,
 		Username:     model.Username,
 		PasswordHash: model.PasswordHash,
-		TOTPSecret:   model.TOTPSecret,
+		TOTPSecret:   secret,
 		TOTPEnabled:  model.TOTPEnabled,
 	}, nil
 }
@@ -92,11 +108,20 @@ func (r *AdminRepository) List(ctx context.Context) ([]domain.Admin, error) {
 	}
 	admins := make([]domain.Admin, 0, len(models))
 	for _, model := range models {
+		secret := model.TOTPSecret
+		if secret != "" && crypto.IsEncrypted(secret) {
+			decrypted, err := crypto.Decrypt(r.cryptoKey, secret)
+			if err != nil {
+				r.logger.Warn("failed to decrypt totp secret", slog.String("admin_id", model.ID), slog.String("error", err.Error()))
+			} else {
+				secret = decrypted
+			}
+		}
 		admins = append(admins, domain.Admin{
 			ID:           model.ID,
 			Username:     model.Username,
 			PasswordHash: model.PasswordHash,
-			TOTPSecret:   model.TOTPSecret,
+			TOTPSecret:   secret,
 			TOTPEnabled:  model.TOTPEnabled,
 		})
 	}
@@ -121,7 +146,11 @@ func (r *AdminRepository) Update(ctx context.Context, admin domain.Admin) error 
 		updates["username"] = admin.Username
 	}
 	if admin.TOTPSecret != "" {
-		updates["totp_secret"] = admin.TOTPSecret
+		encrypted, err := crypto.Encrypt(r.cryptoKey, admin.TOTPSecret)
+		if err != nil {
+			return fmt.Errorf("encrypting totp secret: %w", err)
+		}
+		updates["totp_secret"] = encrypted
 	}
 	updates["totp_enabled"] = admin.TOTPEnabled
 	if len(updates) == 0 {

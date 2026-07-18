@@ -53,7 +53,7 @@ func withClientIP(next http.Handler) http.Handler {
 
 // isPublicPath reports whether the request path is allowed without JWT auth.
 func isPublicPath(path string) bool {
-	if path == "/v1/auth/login" {
+	if path == "/v1/auth/login" || path == "/v1/auth/logout" {
 		return true
 	}
 	if strings.HasPrefix(path, "/v1/sub/") {
@@ -73,18 +73,8 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		token := ""
 		if authHeader == "" {
-			if strings.HasSuffix(r.URL.Path, "/sync/stream") ||
-				r.URL.Path == "/v1/ws" ||
-				r.URL.Path == "/v1/events/logs" ||
-				r.URL.Path == "/v1/connections/stream" ||
-				r.URL.Path == "/v1/stats/system/stream" ||
-				r.URL.Path == "/v1/group-top-ups/stream" {
-				token = strings.TrimSpace(r.URL.Query().Get("access_token"))
-			}
-			if token == "" {
-				if cookie, err := r.Cookie("auth_token"); err == nil {
-					token = strings.TrimSpace(cookie.Value)
-				}
+			if cookie, err := r.Cookie("auth_token"); err == nil {
+				token = strings.TrimSpace(cookie.Value)
 			}
 			if token == "" {
 				writeJSONError(w, http.StatusUnauthorized, "missing authorization header")
@@ -198,6 +188,42 @@ type RateLimitMiddleware struct {
 	limiter *rateLimiter
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
+}
+
+// CORSMiddleware handles CORS headers based on configured allowed origins.
+type CORSMiddleware struct {
+	allowedOrigins map[string]bool
+}
+
+// NewCORSMiddleware constructs a CORS middleware. Empty origins disables CORS.
+func NewCORSMiddleware(allowedOrigins []string) *CORSMiddleware {
+	m := &CORSMiddleware{allowedOrigins: make(map[string]bool, len(allowedOrigins))}
+	for _, o := range allowedOrigins {
+		m.allowedOrigins[strings.TrimSpace(o)] = true
+	}
+	return m
+}
+
+// Wrap returns an http.Handler that applies CORS headers.
+func (m *CORSMiddleware) Wrap(next http.Handler) http.Handler {
+	if len(m.allowedOrigins) == 0 {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && m.allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Vary", "Origin")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // rateLimiter tracks request counts per IP using sliding window.

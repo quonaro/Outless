@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"outless/internal/domain"
+	"outless/internal/utils/ssrf"
 	"outless/shared/vless"
 )
 
@@ -62,8 +63,11 @@ func NewPublicService(
 		nodeRepo:   nodeRepo,
 		sourceRepo: sourceRepo,
 		groupRepo:  groupRepo,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		logger:     logger,
+		httpClient: &http.Client{
+			Timeout:       30 * time.Second,
+			CheckRedirect: ssrf.CheckRedirect,
+		},
+		logger: logger,
 	}
 }
 
@@ -161,6 +165,9 @@ func (s *PublicService) EnsurePublicGroup(ctx context.Context) (string, error) {
 }
 
 func (s *PublicService) fetchSource(ctx context.Context, url string) (string, error) {
+	if err := ssrf.ValidateURLWithContext(ctx, url); err != nil {
+		return "", fmt.Errorf("validating URL: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)

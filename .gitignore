@@ -31,6 +31,9 @@ tmp/
 .env.local
 .env.*
 
+# Runtime config (contains secrets, use config.yaml.example as template)
+config.yaml
+
 # IDE
 .idea/
 

@@ -12,6 +12,7 @@ import (
 
 	"outless/internal/domain"
 	"outless/internal/topup/parser"
+	"outless/internal/utils/ssrf"
 )
 
 func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.GroupTopUp) ([]string, error) {
@@ -67,10 +68,16 @@ func (s *TopUpScheduler) httpClient(topUp domain.GroupTopUp) *http.Client {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: ssrf.CheckRedirect,
+	}
 }
 
 func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u string) (string, error) {
+	if err := ssrf.ValidateURLWithContext(ctx, u); err != nil {
+		return "", fmt.Errorf("validating URL: %w", err)
+	}
 	s.logger.Debug("creating HTTP request", slog.String("url", u))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {

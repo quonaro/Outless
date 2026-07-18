@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -182,6 +183,13 @@ func (h *ImportExportHandler) Export(ctx context.Context, _ *struct{}) (*ExportO
 
 // Import loads a full configuration into the database.
 func (h *ImportExportHandler) Import(ctx context.Context, input *ImportInput) (*struct{}, error) {
+	const maxItems = 10000
+	if len(input.Body.Nodes) > maxItems || len(input.Body.Groups) > maxItems ||
+		len(input.Body.TopUps) > maxItems || len(input.Body.Inbounds) > maxItems ||
+		len(input.Body.PublicSources) > maxItems || len(input.Body.Tokens) > maxItems {
+		return nil, huma.Error400BadRequest(fmt.Sprintf("too many items: max %d per category", maxItems))
+	}
+
 	h.importGroups(ctx, input.Body.Groups)
 	h.importTopUps(ctx, input.Body.TopUps)
 	h.importNodes(ctx, input.Body.Nodes)

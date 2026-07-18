@@ -29,7 +29,13 @@ type AppConfig struct {
 	DisableDocs     bool                `yaml:"disable_docs"`
 	PprofEnabled    bool                `yaml:"pprof_enabled"` // enable Go pprof endpoint
 	PprofBind       string              `yaml:"pprof_bind"`    // pprof bind address, default 127.0.0.1:6060
+	CORS            CORSConfig          `yaml:"cors"`
 	CountryLookup   CountryLookupConfig `yaml:"country_lookup"`
+}
+
+// CORSConfig holds CORS settings.
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // CountryLookupConfig holds optional settings for the IP geolocation watcher.

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -92,19 +92,6 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 
 	logger = logging.NewFromConfig("outless", cfg.App.LogLevel, "")
 
-	if cfg.App.PprofEnabled {
-		addr := cfg.App.PprofBind
-		if addr == "" {
-			addr = "127.0.0.1:6060"
-		}
-		go func() {
-			logger.Info("starting pprof server", slog.String("addr", addr))
-			if err := http.ListenAndServe(addr, nil); err != nil {
-				logger.Error("pprof server stopped", slog.String("error", err.Error()))
-			}
-		}()
-	}
-
 	broadcaster := httpadapter.NewLogBroadcaster()
 	logger = slog.New(httpadapter.NewBroadcastHandler(logger.Handler(), broadcaster))
 
@@ -119,7 +106,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	groupRepo := repository.NewGroupRepository(db, logger)
 	topUpRepo := repository.NewGroupTopUpRepository(db, logger)
 	publicSourceRepo := repository.NewPublicSourceRepository(db, logger)
-	adminRepo := repository.NewAdminRepository(db, logger)
+	adminRepo := repository.NewAdminRepository(db, logger, cfg.JWT.Secret)
 	inboundRepo := repository.NewInboundRepository(db, logger)
 
 	// Ensure default admin exists if no admins are registered.
@@ -131,6 +118,26 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	jwtService, err := service.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry)
 	if err != nil {
 		return fmt.Errorf("creating jwt service: %w", err)
+	}
+
+	if cfg.App.PprofEnabled {
+		addr := cfg.App.PprofBind
+		if addr == "" {
+			addr = "127.0.0.1:6060"
+		}
+		go func() {
+			logger.Info("starting pprof server", slog.String("addr", addr))
+			pprofMux := http.NewServeMux()
+			pprofMux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+			pprofMux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			pprofMux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			pprofMux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			pprofMux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			jwtMiddleware := httpadapter.NewJWTMiddleware(jwtService, logger)
+			if err := http.ListenAndServe(addr, jwtMiddleware.Wrap(pprofMux)); err != nil {
+				logger.Error("pprof server stopped", slog.String("error", err.Error()))
+			}
+		}()
 	}
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
@@ -204,13 +211,14 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	}
 
 	httpConfig := httpadapter.Config{
-		Address:           fmt.Sprintf("0.0.0.0:%d", cfg.App.HTTPPort),
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
-		DisableDocs:       cfg.App.DisableDocs,
-		Version:           v,
+		Address:            fmt.Sprintf("0.0.0.0:%d", cfg.App.HTTPPort),
+		ReadTimeout:        10 * time.Second,
+		WriteTimeout:       30 * time.Second,
+		IdleTimeout:        120 * time.Second,
+		ReadHeaderTimeout:  5 * time.Second,
+		DisableDocs:        cfg.App.DisableDocs,
+		Version:            v,
+		CORSAllowedOrigins: cfg.App.CORS.AllowedOrigins,
 	}
 	server := httpadapter.NewServer(httpConfig, logger, jwtService, handlers)
 
@@ -319,7 +327,7 @@ func resetAdminPassword(ctx context.Context, nctx engine.NativeContext) error {
 		return fmt.Errorf("opening database: %w", err)
 	}
 
-	adminRepo := repository.NewAdminRepository(db, logger)
+	adminRepo := repository.NewAdminRepository(db, logger, cfg.JWT.Secret)
 
 	username := nctx.Args["username"]
 	password := nctx.Args["password"]

@@ -11,6 +11,14 @@ import (
 
 func (h *ImportExportHandler) importGroups(ctx context.Context, groups []exportGroup) {
 	for _, g := range groups {
+		if g.ID == "" || g.Name == "" {
+			h.logger.Warn("import group skipped: missing id or name", slog.String("id", g.ID))
+			continue
+		}
+		if len(g.Name) > 256 {
+			h.logger.Warn("import group skipped: name too long", slog.String("id", g.ID))
+			continue
+		}
 		if err := h.groupRepo.Create(ctx, domain.Group{
 			ID:            g.ID,
 			Name:          g.Name,
@@ -28,6 +36,18 @@ func (h *ImportExportHandler) importNodes(ctx context.Context, nodes []exportNod
 	topUpGroupIDs := h.topUpGroupIDs(ctx)
 
 	for _, n := range nodes {
+		if n.ID == "" || n.URL == "" {
+			h.logger.Warn("import node skipped: missing id or url")
+			continue
+		}
+		if len(n.URL) > 4096 {
+			h.logger.Warn("import node skipped: url too long", slog.String("id", n.ID))
+			continue
+		}
+		if len(n.GroupIDs) > 100 {
+			h.logger.Warn("import node skipped: too many group_ids", slog.String("id", n.ID))
+			continue
+		}
 		if hasTopUpGroup(n.GroupIDs, topUpGroupIDs) {
 			h.logger.Warn("import node skipped: targets a top-up group", slog.String("id", n.ID))
 			continue
@@ -73,6 +93,20 @@ func (h *ImportExportHandler) importNodes(ctx context.Context, nodes []exportNod
 
 func (h *ImportExportHandler) importTopUps(ctx context.Context, topUps []exportTopUp) {
 	for _, t := range topUps {
+		if t.GroupID == "" {
+			h.logger.Warn("import top-up skipped: missing group_id")
+			continue
+		}
+		if len(t.URLs) > 100 {
+			h.logger.Warn("import top-up skipped: too many urls", slog.String("group_id", t.GroupID))
+			continue
+		}
+		for _, u := range t.URLs {
+			if len(u) > 4096 {
+				h.logger.Warn("import top-up skipped: url too long", slog.String("group_id", t.GroupID))
+				continue
+			}
+		}
 		id, err := domain.GenerateGroupTopUpID()
 		if err != nil {
 			h.logger.Warn("import top-up skipped", slog.String("group_id", t.GroupID), slog.String("error", err.Error()))
@@ -124,6 +158,14 @@ func (h *ImportExportHandler) importTopUps(ctx context.Context, topUps []exportT
 
 func (h *ImportExportHandler) importInbounds(ctx context.Context, inbounds []exportInbound) {
 	for _, i := range inbounds {
+		if i.ID == "" || i.Name == "" {
+			h.logger.Warn("import inbound skipped: missing id or name")
+			continue
+		}
+		if i.Port < 1 || i.Port > 65535 {
+			h.logger.Warn("import inbound skipped: invalid port", slog.String("id", i.ID))
+			continue
+		}
 		if err := h.inboundRepo.Create(ctx, domain.Inbound{
 			ID:           i.ID,
 			Name:         i.Name,
@@ -146,6 +188,14 @@ func (h *ImportExportHandler) importInbounds(ctx context.Context, inbounds []exp
 
 func (h *ImportExportHandler) importPublicSources(ctx context.Context, sources []exportPublicSource) {
 	for _, ps := range sources {
+		if ps.ID == "" || ps.URL == "" {
+			h.logger.Warn("import public source skipped: missing id or url")
+			continue
+		}
+		if len(ps.URL) > 4096 {
+			h.logger.Warn("import public source skipped: url too long", slog.String("id", ps.ID))
+			continue
+		}
 		if err := h.publicSourceRepo.Create(ctx, domain.PublicSource{
 			ID:        ps.ID,
 			URL:       ps.URL,
@@ -159,6 +209,14 @@ func (h *ImportExportHandler) importPublicSources(ctx context.Context, sources [
 
 func (h *ImportExportHandler) importTokens(ctx context.Context, tokens []exportToken) {
 	for _, t := range tokens {
+		if t.Owner == "" {
+			h.logger.Warn("import token skipped: missing owner")
+			continue
+		}
+		if len(t.Owner) > 256 {
+			h.logger.Warn("import token skipped: owner too long")
+			continue
+		}
 		expiresAt, _ := time.Parse(time.RFC3339, t.ExpiresAt)
 		if expiresAt.IsZero() {
 			expiresAt = time.Now().UTC().Add(30 * 24 * time.Hour)

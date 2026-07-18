@@ -23,6 +23,12 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(async () => {
+  if (import.meta.client) {
+    await auth.fetchUser()
+  }
+})
 </script>
 
 <template>

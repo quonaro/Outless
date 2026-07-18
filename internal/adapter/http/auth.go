@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -45,8 +46,10 @@ type loginInput struct {
 }
 
 type loginOutput struct {
+	Headers struct {
+		SetCookie string `header:"Set-Cookie"`
+	}
 	Body struct {
-		Token        string `json:"token,omitempty"`
 		Username     string `json:"username,omitempty"`
 		TOTPRequired bool   `json:"totp_required"`
 	}
@@ -55,6 +58,8 @@ type loginOutput struct {
 // Register wires auth endpoints into Huma API.
 func (h *AuthHandler) Register(api huma.API) {
 	huma.Post(api, "/v1/auth/login", h.login)
+	huma.Post(api, "/v1/auth/logout", h.logout)
+	huma.Get(api, "/v1/auth/me", h.me)
 	huma.Get(api, "/v1/auth/totp/status", h.totpStatus)
 	huma.Post(api, "/v1/auth/totp/setup", h.totpSetup)
 	huma.Post(api, "/v1/auth/totp/verify", h.totpVerifySetup)
@@ -108,10 +113,54 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 
 	h.logger.Info("admin logged in", slog.String("username", username))
 	out := &loginOutput{}
-	out.Body.Token = token
+	out.Headers.SetCookie = (&http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}).String()
 	out.Body.Username = admin.Username
 	out.Body.TOTPRequired = false
 
+	return out, nil
+}
+
+type logoutOutput struct {
+	Headers struct {
+		SetCookie string `header:"Set-Cookie"`
+	}
+}
+
+func (h *AuthHandler) logout(_ context.Context, _ *struct{}) (*logoutOutput, error) {
+	out := &logoutOutput{}
+	out.Headers.SetCookie = (&http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   0,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}).String()
+	return out, nil
+}
+
+type meOutput struct {
+	Body struct {
+		Username string `json:"username"`
+	}
+}
+
+func (h *AuthHandler) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
+	claims := GetClaims(ctx)
+	if claims == nil {
+		return nil, huma.Error401Unauthorized("unauthorized")
+	}
+	out := &meOutput{}
+	out.Body.Username = claims.Username
 	return out, nil
 }
 

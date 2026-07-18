@@ -7,9 +7,12 @@ export const LoginCredentialsSchema = z.object({
 })
 
 export const AuthResponseSchema = z.object({
-  token: z.string().optional(),
   username: z.string().optional(),
   totp_required: z.boolean().default(false),
+})
+
+export const MeResponseSchema = z.object({
+  username: z.string(),
 })
 
 export const TOTPStatusResponseSchema = z.object({
@@ -33,6 +36,7 @@ export const TOTPDisableSchema = z.object({
 
 export type LoginCredentials = z.infer<typeof LoginCredentialsSchema>
 export type AuthResponse = z.infer<typeof AuthResponseSchema>
+export type MeResponse = z.infer<typeof MeResponseSchema>
 export type TOTPStatusResponse = z.infer<typeof TOTPStatusResponseSchema>
 export type TOTPSetupResponse = z.infer<typeof TOTPSetupResponseSchema>
 export type TOTPVerifyInput = z.infer<typeof TOTPVerifySchema>

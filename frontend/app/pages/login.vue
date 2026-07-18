@@ -55,8 +55,7 @@ const onSubmit = handleSubmit(async (values) => {
       return
     }
 
-    if (response.token) {
-      auth.setToken(response.token)
+    if (!response.totp_required) {
       auth.setUser({ username: response.username || '' })
       await nextTick()
       await navigateTo('/dashboard')
