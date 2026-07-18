@@ -28,13 +28,15 @@ type Parsed struct {
 	Name       string
 }
 
+const scheme = "vless"
+
 // ParseURL parses a vless://uuid@host:port?params#remark URL into its parts.
 func ParseURL(raw string) (Parsed, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return Parsed{}, fmt.Errorf("parsing vless url: %w", err)
 	}
-	if u.Scheme != "vless" {
+	if u.Scheme != scheme {
 		return Parsed{}, fmt.Errorf("unsupported scheme: %s", u.Scheme)
 	}
 	if u.User == nil {

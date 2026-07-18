@@ -10,6 +10,7 @@ import (
 )
 
 const urlColumn = "url"
+const groupIDColumn = "group_id"
 
 // NewDB opens a pure-Go SQLite connection (no CGO) and runs schema migrations.
 func NewDB(path string) (*gorm.DB, error) {
@@ -41,6 +42,7 @@ func NewDB(path string) (*gorm.DB, error) {
 		&tokenIPRestrictionModel{},
 		&groupModel{},
 		&publicSourceModel{},
+		&groupTopUpModel{},
 		&adminModel{},
 		&inboundModel{},
 		&tokenUsageModel{},

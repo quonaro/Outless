@@ -118,13 +118,17 @@ func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNod
 	}
 
 	for _, groupID := range input.Body.GroupIDs {
-		if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+		group, err := h.groupRepo.FindByID(ctx, groupID)
+		if err != nil {
 			if errors.Is(err, domain.ErrGroupNotFound) {
 				h.logger.Warn("group not found", slog.String("group_id", groupID))
 				return nil, huma.Error400BadRequest("group not found")
 			}
 			h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
 			return nil, huma.Error500InternalServerError("failed to validate group")
+		}
+		if group.IsTopUp {
+			return nil, huma.Error400BadRequest("cannot add nodes to a top-up group")
 		}
 	}
 
@@ -296,13 +300,17 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 
 	if len(input.Body.GroupIDs) > 0 {
 		for _, groupID := range input.Body.GroupIDs {
-			if _, err := h.groupRepo.FindByID(ctx, groupID); err != nil {
+			group, err := h.groupRepo.FindByID(ctx, groupID)
+			if err != nil {
 				if errors.Is(err, domain.ErrGroupNotFound) {
 					h.logger.Warn("group not found", slog.String("group_id", groupID))
 					return nil, huma.Error400BadRequest("group not found")
 				}
 				h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
 				return nil, huma.Error500InternalServerError("failed to validate group")
+			}
+			if group.IsTopUp {
+				return nil, huma.Error400BadRequest("cannot add nodes to a top-up group")
 			}
 		}
 		updates.GroupIDs = input.Body.GroupIDs

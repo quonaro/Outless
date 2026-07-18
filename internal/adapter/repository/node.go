@@ -463,3 +463,42 @@ func (r *NodeRepository) Delete(ctx context.Context, id string) error {
 	r.logger.Debug("node deleted", slog.String("node_id", id))
 	return nil
 }
+
+// DeleteByGroupID removes all nodes and their group links for a given group.
+func (r *NodeRepository) DeleteByGroupID(ctx context.Context, groupID string) error {
+	tx := r.db.WithContext(ctx).Begin()
+	defer func() {
+		if rec := recover(); rec != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := tx.Error; err != nil {
+		return fmt.Errorf("starting delete by group transaction: %w", err)
+	}
+
+	var nodeIDs []string
+	if err := tx.Model(&nodeGroupModel{}).
+		Where("group_id = ?", groupID).
+		Pluck("node_id", &nodeIDs).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("finding node ids for group: %w", err)
+	}
+
+	if err := tx.Where("group_id = ?", groupID).Delete(&nodeGroupModel{}).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("deleting node group links: %w", err)
+	}
+
+	if len(nodeIDs) > 0 {
+		if err := tx.Where("id IN ?", nodeIDs).Delete(&nodeModel{}).Error; err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("deleting group nodes: %w", err)
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("committing delete by group transaction: %w", err)
+	}
+	r.logger.Debug("nodes deleted by group", slog.String(groupIDColumn, groupID), slog.Int("count", len(nodeIDs)))
+	return nil
+}

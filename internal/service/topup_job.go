@@ -1,0 +1,144 @@
+package service
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"outless/internal/domain"
+	"outless/internal/topup/parser"
+)
+
+func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.GroupTopUp) ([]string, error) {
+	client := s.httpClient(topUp)
+	var allURLs []string
+
+	for _, u := range topUp.URLs {
+		s.logger.Info("fetching top-up source URL", slog.String("url", u))
+		content, err := s.fetchURL(ctx, client, u)
+		if err != nil {
+			s.logger.Warn("failed to fetch top-up url",
+				slog.String("url", u),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		urls, err := parser.Parse(ctx, content, topUp.ParserType, topUp.ParserParams)
+		if err != nil {
+			s.logger.Warn("failed to parse top-up content",
+				slog.String("url", u),
+				slog.String("parser", topUp.ParserType),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		s.logger.Info("parsed top-up source URL", slog.String("url", u), slog.Int("nodes", len(urls)))
+		allURLs = append(allURLs, urls...)
+	}
+
+	s.logger.Info("top-up source URLs fetched", slog.Int("sources", len(topUp.URLs)), slog.Int("total_urls", len(allURLs)))
+	return allURLs, nil
+}
+
+func (s *TopUpScheduler) httpClient(_ domain.GroupTopUp) *http.Client {
+	return http.DefaultClient
+}
+
+func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func (s *TopUpScheduler) replaceGroupNodes(ctx context.Context, groupID string, urls []string) (int, error) {
+	if err := s.nodeRepo.DeleteByGroupID(ctx, groupID); err != nil {
+		return 0, err
+	}
+
+	s.logger.Info("replacing group nodes", slog.String("group_id", groupID), slog.Int("urls", len(urls)))
+	added := 0
+	for _, u := range urls {
+		if err := ctx.Err(); err != nil {
+			return added, err
+		}
+		node := domain.Node{
+			ID:       generateTopUpNodeID(u, groupID),
+			URL:      u,
+			GroupIDs: []string{groupID},
+		}
+		if err := s.nodeRepo.Create(ctx, node); err != nil {
+			s.logger.Warn("failed to create node from top-up",
+				slog.String("node_id", node.ID),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		added++
+	}
+
+	s.logger.Info("group nodes replaced", slog.String("group_id", groupID), slog.Int("added", added))
+	return added, nil
+}
+
+func (s *TopUpScheduler) finishRun(ctx context.Context, topUp domain.GroupTopUp, ok bool) {
+	now := time.Now().UTC()
+	topUp.LastRunAt = &now
+
+	next, keepEnabled, err := computeNextRun(topUp, now)
+	if err != nil {
+		s.logger.Error("failed to compute next run", slog.String("id", topUp.ID), slog.String("error", err.Error()))
+		return
+	}
+	topUp.NextRunAt = next
+	topUp.Enabled = keepEnabled
+
+	if err := s.topUpRepo.Update(ctx, topUp); err != nil {
+		s.logger.Error("failed to update top-up after run", slog.String("id", topUp.ID), slog.String("error", err.Error()))
+		return
+	}
+
+	if ok {
+		s.logger.Info("top-up finished", slog.String("id", topUp.ID), slog.Time("next_run_at", next))
+	}
+}
+
+func computeNextRun(topUp domain.GroupTopUp, base time.Time) (time.Time, bool, error) {
+	if topUp.ScheduleType == "fixed" {
+		return time.Time{}, false, nil
+	}
+
+	d, err := time.ParseDuration(topUp.ScheduleExpr)
+	if err != nil {
+		return time.Time{}, topUp.Enabled, fmt.Errorf("parsing schedule expression %q: %w", topUp.ScheduleExpr, err)
+	}
+
+	return base.Add(d), topUp.Enabled, nil
+}
+
+func generateTopUpNodeID(raw, groupID string) string {
+	hash := sha256.Sum256([]byte(raw + "|" + groupID))
+	return "node_" + hex.EncodeToString(hash[:8])
+}

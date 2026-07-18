@@ -395,7 +395,7 @@ func (r *TokenRepository) Update(
 			Where("id = ?", id).
 			Updates(map[string]any{
 				"owner":        owner,
-				"group_id":     nullableString(legacyGroupID),
+				groupIDColumn:  nullableString(legacyGroupID),
 				"expires_at":   expiresAt.UTC(),
 				"quota_bytes":  quotaBytes,
 				"quota_period": quotaPeriod,

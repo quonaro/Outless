@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { Plus, Server, Pencil, Hash, Monitor, Link, Tags } from 'lucide-vue-next'
+import { Pencil, Hash, Monitor, Link, Tags } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import UiPageLayout from '~/components/ui/page-layout/page-layout.vue'
 import UiButton from '~/components/ui/button/button.vue'
@@ -17,14 +17,19 @@ import SheetDescription from '~/components/ui/sheet/SheetDescription.vue'
 import { useInfiniteNodes } from '~/composables/nodes/useInfiniteNodes'
 import { useGroups } from '~/composables/groups/useGroups'
 import type { Node } from '~/utils/schemas/node'
+import type { TopUpInput } from '~/utils/schemas/group'
 import { createNode, deleteNode, updateNode, batchDeleteNodes } from '~/utils/services/node'
-import { createGroup } from '~/utils/services/group'
+import { createGroup, defaultTopUpForm, buildTopUpInput } from '~/utils/services/group'
+import type { TopUpFormValues } from '~/utils/services/group'
 import { resolveCreateNodeErrorMessage } from '~/utils/node'
+import TopUpFields from '~/components/TopUpFields.vue'
 import { useInbounds } from '~/composables/inbounds/useInbounds'
 import VlessUrlPreview from '~/components/VlessUrlPreview.vue'
 import UiSelect from '~/components/ui/select/select.vue'
 import EditNodeDialog from '~/components/EditNodeDialog.vue'
 import ImportNodesMenu from '~/components/ImportNodesMenu.vue'
+import GroupsTopUpStatusDialog from '~/components/GroupsTopUpStatusDialog.vue'
+import CreateNodesMenu from '~/components/CreateNodesMenu.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -80,6 +85,8 @@ const nodeExpiresAt = ref<string | undefined>(undefined)
 const createNodeErrorMessage = ref('')
 const isCreateGroupSubmitting = ref(false)
 const isCreateNodeSubmitting = ref(false)
+const showTopUp = ref(false)
+const topUpForm = ref<TopUpFormValues>(defaultTopUpForm())
 const deletingNodeIDs = ref<Set<string>>(new Set())
 const selectedNodeIDs = ref<Set<string>>(new Set())
 
@@ -87,14 +94,20 @@ const showEditNodeDialog = ref(false)
 const editNodeTarget = ref<Node | null>(null)
 
 const createGroupMutation = useMutation({
-  mutationFn: (payload: { name: string; random_enabled: boolean; random_limit: number | null }) =>
-    createGroup(payload),
+  mutationFn: (payload: {
+    name: string
+    random_enabled: boolean
+    random_limit: number | null
+    top_up?: TopUpInput
+  }) => createGroup(payload),
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ['groups'] })
     showCreateGroupDialog.value = false
     groupNameInput.value = ''
     groupRandomEnabledInput.value = false
     groupRandomLimitInput.value = ''
+    showTopUp.value = false
+    topUpForm.value = defaultTopUpForm()
   },
 })
 
@@ -157,6 +170,7 @@ function submitCreateGroup() {
         const n = parseInt(groupRandomLimitInput.value)
         return Number.isNaN(n) || n <= 0 ? null : n
       })(),
+      top_up: showTopUp.value ? buildTopUpInput(topUpForm.value) : undefined,
     },
     {
       onSettled: () => {
@@ -336,19 +350,12 @@ onBeforeUnmount(() => {
             </UiButton>
           </div>
           <div v-else class="flex flex-wrap items-center gap-2">
-            <UiButton class="w-36 whitespace-nowrap" @click="showCreateGroupDialog = true">
-              <Plus class="h-4 w-4 mr-2" />
-              Create Group
-            </UiButton>
-            <UiButton
-              class="w-36 whitespace-nowrap"
-              :disabled="!groups?.length"
-              :title="groups?.length ? '' : 'Create a group first'"
-              @click="showCreateNodeDialog = true"
-            >
-              <Server class="h-4 w-4 mr-2" />
-              Create Node
-            </UiButton>
+            <CreateNodesMenu
+              :groups="groups"
+              @create-group="showCreateGroupDialog = true"
+              @create-node="showCreateNodeDialog = true"
+            />
+            <GroupsTopUpStatusDialog :groups="groups" />
             <ImportNodesMenu @imported="handleImportFinished" />
           </div>
           <UiInput
@@ -395,7 +402,7 @@ onBeforeUnmount(() => {
             <SheetTitle>Create Group</SheetTitle>
             <SheetDescription>Create a new group for organizing nodes.</SheetDescription>
           </SheetHeader>
-          <div class="space-y-4 py-4">
+          <div class="grow min-h-0 space-y-4 overflow-y-auto py-4">
             <div class="space-y-2">
               <label
                 class="inline-flex items-center gap-2 text-sm font-medium"
@@ -440,6 +447,17 @@ onBeforeUnmount(() => {
                 Maximum number of nodes to return in subscriptions
               </p>
             </div>
+            <div class="flex items-center gap-2">
+              <input
+                id="node-create-top-up"
+                v-model="showTopUp"
+                type="checkbox"
+                class="h-4 w-4 rounded border-input"
+              />
+              <label for="node-create-top-up" class="text-sm">Self-refilling (top-up) group</label>
+            </div>
+
+            <TopUpFields v-if="showTopUp" v-model="topUpForm" />
           </div>
           <SheetFooter>
             <UiButton variant="outline" @click="showCreateGroupDialog = false">Cancel</UiButton>
@@ -459,7 +477,7 @@ onBeforeUnmount(() => {
             <SheetTitle>Create Node</SheetTitle>
             <SheetDescription>Add a new VLESS node to a group.</SheetDescription>
           </SheetHeader>
-          <div class="space-y-4 py-4">
+          <div class="grow min-h-0 space-y-4 overflow-y-auto py-4">
             <div v-if="!hasSelfNode" class="flex items-center gap-2">
               <input
                 id="create-node-is-self"

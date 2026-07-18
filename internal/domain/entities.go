@@ -60,7 +60,35 @@ type Group struct {
 	TotalNodes    int
 	RandomEnabled bool
 	RandomLimit   *int
+	IsTopUp       bool
 	CreatedAt     time.Time
+}
+
+// GroupTopUp holds the auto-refill configuration for a group.
+type GroupTopUp struct {
+	ID           string
+	GroupID      string
+	URLs         []string
+	ParserType   string
+	ParserParams map[string]any
+	CheckEnabled bool
+	CheckConfig  TopUpCheckConfig
+	ScheduleType string
+	ScheduleExpr string
+	NextRunAt    time.Time
+	LastRunAt    *time.Time
+	Enabled      bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// TopUpCheckConfig mirrors Checker Options used for validating fetched nodes.
+type TopUpCheckConfig struct {
+	Workers          int
+	Timeout          time.Duration
+	ExcludeCountries []string
+	MaxLatency       time.Duration
+	Stages           []string
 }
 
 // PublicSource represents an external source of VLESS nodes.
@@ -106,6 +134,15 @@ func GenerateGroupID() (string, error) {
 		return "", fmt.Errorf("generating group id: %w", err)
 	}
 	return fmt.Sprintf("grp_%d_%x", time.Now().UTC().Unix(), buf), nil
+}
+
+// GenerateGroupTopUpID creates a unique group top-up ID.
+func GenerateGroupTopUpID() (string, error) {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generating group top-up id: %w", err)
+	}
+	return fmt.Sprintf("topup_%d_%x", time.Now().UTC().Unix(), buf), nil
 }
 
 // GeneratePublicSourceID creates a unique public source ID.

@@ -74,6 +74,14 @@ func (s *PublicService) ImportNodes(ctx context.Context, sourceID string) error 
 		return fmt.Errorf("finding source: %w", err)
 	}
 
+	group, err := s.groupRepo.FindByID(ctx, source.GroupID)
+	if err != nil {
+		return fmt.Errorf("finding target group: %w", err)
+	}
+	if group.IsTopUp {
+		return fmt.Errorf("cannot import into top-up group %s", source.GroupID)
+	}
+
 	content, err := s.fetchSource(ctx, source.URL)
 	if err != nil {
 		return fmt.Errorf("fetching source %s: %w", source.URL, err)

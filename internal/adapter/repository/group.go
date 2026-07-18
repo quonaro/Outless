@@ -17,6 +17,7 @@ type groupModel struct {
 	TotalNodes    int64     `gorm:"column:total_nodes"`
 	RandomEnabled bool      `gorm:"column:random_enabled"`
 	RandomLimit   *int64    `gorm:"column:random_limit"`
+	IsTopUp       bool      `gorm:"column:is_topup"`
 	CreatedAt     time.Time `gorm:"column:created_at"`
 }
 
@@ -39,6 +40,7 @@ func (r *GroupRepository) Create(ctx context.Context, group domain.Group) error 
 		Name:          group.Name,
 		RandomEnabled: group.RandomEnabled,
 		RandomLimit:   nullableGroupInt(group.RandomLimit),
+		IsTopUp:       group.IsTopUp,
 		CreatedAt:     group.CreatedAt,
 	}
 	if !model.RandomEnabled && model.RandomLimit != nil {
@@ -68,6 +70,7 @@ func (r *GroupRepository) FindByID(ctx context.Context, id string) (domain.Group
 		Name:          model.Name,
 		RandomEnabled: model.RandomEnabled,
 		RandomLimit:   derefGroupInt(model.RandomLimit),
+		IsTopUp:       model.IsTopUp,
 		CreatedAt:     model.CreatedAt,
 	}, nil
 }
@@ -78,7 +81,7 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 		Model(&groupModel{}).
 		Select(
 			"groups.id", "groups.name", "groups.random_enabled",
-			"groups.random_limit", "groups.created_at",
+			"groups.random_limit", "groups.is_topup", "groups.created_at",
 			"COUNT(node_groups.node_id) AS total_nodes",
 		).
 		Joins("LEFT JOIN node_groups ON node_groups.group_id = groups.id").
@@ -96,6 +99,7 @@ func (r *GroupRepository) List(ctx context.Context) ([]domain.Group, error) {
 			TotalNodes:    int(model.TotalNodes),
 			RandomEnabled: model.RandomEnabled,
 			RandomLimit:   derefGroupInt(model.RandomLimit),
+			IsTopUp:       model.IsTopUp,
 			CreatedAt:     model.CreatedAt,
 		})
 	}
@@ -107,6 +111,7 @@ func (r *GroupRepository) Update(ctx context.Context, group domain.Group) error 
 		"name":           group.Name,
 		"random_enabled": group.RandomEnabled,
 		"random_limit":   nullableGroupInt(group.RandomLimit),
+		"is_topup":       group.IsTopUp,
 	}
 	if !group.RandomEnabled && group.RandomLimit != nil {
 		updates["random_enabled"] = true

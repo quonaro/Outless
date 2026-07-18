@@ -38,6 +38,7 @@ type Handlers struct {
 	Token               *TokenManagementHandler
 	Node                *NodeManagementHandler
 	Group               *GroupManagementHandler
+	GroupTopUp          *GroupTopUpManagementHandler
 	PublicSource        *PublicSourceManagementHandler
 	Inbound             *InboundManagementHandler
 	Settings            *SettingsHandler
@@ -58,6 +59,9 @@ func registerHandlers(apiMux *http.ServeMux, humaAPI huma.API, handlers Handlers
 	handlers.Token.Register(humaAPI)
 	handlers.Node.Register(humaAPI)
 	handlers.Group.Register(humaAPI)
+	if handlers.GroupTopUp != nil {
+		handlers.GroupTopUp.Register(humaAPI)
+	}
 	handlers.PublicSource.Register(humaAPI)
 	handlers.Inbound.Register(humaAPI)
 	handlers.Settings.Register(humaAPI)

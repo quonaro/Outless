@@ -19,6 +19,7 @@ import (
 	"outless/internal/adapter/singbox"
 	"outless/internal/domain"
 	"outless/internal/service"
+	"outless/internal/topup/checker"
 	"outless/internal/utils"
 	"outless/shared/config"
 	"outless/shared/logging"
@@ -115,6 +116,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	nodeRepo := repository.NewNodeRepository(db, logger)
 	tokenRepo := repository.NewTokenRepository(db, logger)
 	groupRepo := repository.NewGroupRepository(db, logger)
+	topUpRepo := repository.NewGroupTopUpRepository(db, logger)
 	publicSourceRepo := repository.NewPublicSourceRepository(db, logger)
 	adminRepo := repository.NewAdminRepository(db, logger)
 	inboundRepo := repository.NewInboundRepository(db, logger)
@@ -132,6 +134,8 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
 	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
 	totpService := service.NewTOTPService()
+	topUpChecker := checker.New(logger)
+	topUpScheduler := service.NewTopUpScheduler(topUpRepo, groupRepo, nodeRepo, topUpChecker, logger)
 
 	// Runtime controller (embedded sing-box)
 	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0, broadcaster.Broadcast)
@@ -150,7 +154,8 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		Auth:                httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
 		Token:               httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
 		Node:                httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, runtime, logger),
-		Group:               httpadapter.NewGroupManagementHandler(groupRepo, nodeRepo, subscriptionService, logger),
+		Group:               httpadapter.NewGroupManagementHandler(groupRepo, topUpRepo, nodeRepo, subscriptionService, topUpScheduler, logger),
+		GroupTopUp:          httpadapter.NewGroupTopUpManagementHandler(topUpRepo, groupRepo, topUpScheduler, logger),
 		PublicSource:        httpadapter.NewPublicSourceManagementHandler(publicSourceRepo, groupRepo, publicService, logger),
 		Inbound:             httpadapter.NewInboundManagementHandler(inboundRepo, runtime, logger),
 		Settings:            httpadapter.NewSettingsHandler(cfgPath, logger),
@@ -161,7 +166,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		Connections:         httpadapter.NewConnectionsHandler(runtime, logger),
 		StreamConnections:   httpadapter.NewStreamConnectionsHandler(runtime, logger),
 		StreamSystemMetrics: httpadapter.NewStreamSystemMetricsHandler(systemHandler, logger),
-		ImportExport:        httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, publicSourceRepo, inboundRepo, logger),
+		ImportExport:        httpadapter.NewImportExportHandler(nodeRepo, tokenRepo, groupRepo, topUpRepo, publicSourceRepo, inboundRepo, logger),
 		LogStream:           httpadapter.NewLogStreamHandler(broadcaster),
 	}
 
@@ -196,6 +201,11 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	}
 	defer func() {
 		_ = cleanupService.Stop()
+	}()
+
+	topUpScheduler.Start()
+	defer func() {
+		topUpScheduler.Stop()
 	}()
 
 	if err := trafficCollector.Start(ctx); err != nil {

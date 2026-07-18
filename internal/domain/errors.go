@@ -23,6 +23,9 @@ var ErrTokenNotFound = errors.New("token not found")
 // ErrPublicSourceNotFound is returned when a public source is not found in storage.
 var ErrPublicSourceNotFound = errors.New("public source not found")
 
+// ErrGroupTopUpNotFound is returned when a group top-up is not found in storage.
+var ErrGroupTopUpNotFound = errors.New("group top-up not found")
+
 // ErrInboundNotFound is returned when an inbound is not found in storage.
 var ErrInboundNotFound = errors.New("inbound not found")
 

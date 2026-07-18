@@ -21,6 +21,7 @@ type NodeRepository interface {
 	ListByGroup(ctx context.Context, groupID string) ([]Node, error)
 	Update(ctx context.Context, node Node) error
 	Delete(ctx context.Context, id string) error
+	DeleteByGroupID(ctx context.Context, groupID string) error
 	HasSelfNode(ctx context.Context) (bool, error)
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
 }
@@ -74,6 +75,17 @@ type GroupRepository interface {
 	FindByID(ctx context.Context, id string) (Group, error)
 	List(ctx context.Context) ([]Group, error)
 	Update(ctx context.Context, group Group) error
+	Delete(ctx context.Context, id string) error
+}
+
+// GroupTopUpRepository provides persistence operations for group top-up settings.
+type GroupTopUpRepository interface {
+	Create(ctx context.Context, topUp GroupTopUp) error
+	FindByID(ctx context.Context, id string) (GroupTopUp, error)
+	FindByGroupID(ctx context.Context, groupID string) (GroupTopUp, error)
+	List(ctx context.Context) ([]GroupTopUp, error)
+	ListDue(ctx context.Context, at time.Time) ([]GroupTopUp, error)
+	Update(ctx context.Context, topUp GroupTopUp) error
 	Delete(ctx context.Context, id string) error
 }
 

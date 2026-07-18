@@ -92,7 +92,7 @@ func (r *PublicSourceRepository) Update(ctx context.Context, source domain.Publi
 		Where("id = ?", source.ID).
 		Updates(map[string]any{
 			urlColumn:         source.URL,
-			"group_id":        source.GroupID,
+			groupIDColumn:     source.GroupID,
 			"last_fetched_at": source.LastFetchedAt,
 		})
 	if result.Error != nil {
