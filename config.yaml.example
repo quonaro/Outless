@@ -5,6 +5,7 @@ app:
   singbox_log_level: warn
   log_level: info
   disable_docs: false
+  secure_cookies: false  # set true behind HTTPS reverse proxy
   pprof_enabled: false
   pprof_bind: 127.0.0.1:6060
   cors:

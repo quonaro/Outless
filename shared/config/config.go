@@ -27,8 +27,9 @@ type AppConfig struct {
 	SingboxLogLevel string              `yaml:"singbox_log_level"`
 	LogLevel        string              `yaml:"log_level"` // process log level: debug/info/warn/error
 	DisableDocs     bool                `yaml:"disable_docs"`
-	PprofEnabled    bool                `yaml:"pprof_enabled"` // enable Go pprof endpoint
-	PprofBind       string              `yaml:"pprof_bind"`    // pprof bind address, default 127.0.0.1:6060
+	PprofEnabled    bool                `yaml:"pprof_enabled"`  // enable Go pprof endpoint
+	PprofBind       string              `yaml:"pprof_bind"`     // pprof bind address, default 127.0.0.1:6060
+	SecureCookies   bool                `yaml:"secure_cookies"` // set Secure flag on auth cookies (enable behind HTTPS)
 	CORS            CORSConfig          `yaml:"cors"`
 	CountryLookup   CountryLookupConfig `yaml:"country_lookup"`
 }

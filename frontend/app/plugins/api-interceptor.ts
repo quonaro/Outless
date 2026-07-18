@@ -11,12 +11,14 @@ export default defineNuxtPlugin(() => {
     baseURL: apiBase,
     credentials: 'include',
     onResponseError({ response }) {
-      // Handle 401 unauthorized - clear user and redirect to login
-      if (response.status === 401) {
-        auth.clearToken()
-        if (import.meta.client) {
-          navigateTo('/login')
-        }
+      if (response.status !== 401) return
+      // Skip if this is already a logout/auth request to avoid loops
+      const url = response.url ?? ''
+      if (url.includes('/auth/logout') || url.includes('/auth/me')) return
+      // Clear user locally without calling logout API (avoid loop)
+      auth.clearUser()
+      if (import.meta.client) {
+        navigateTo('/login')
       }
     },
   })

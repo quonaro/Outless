@@ -46,6 +46,7 @@ export function useAuth() {
     user: readonly(user),
     isAuthenticated,
     setUser,
+    clearUser,
     clearToken,
     fetchUser,
   }

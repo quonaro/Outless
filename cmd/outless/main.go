@@ -182,7 +182,7 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 
 	handlers := httpadapter.Handlers{
 		Subscription:        httpadapter.NewSubscriptionHandler(subscriptionService, tokenRepo, logger),
-		Auth:                httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, logger),
+		Auth:                httpadapter.NewAuthHandler(adminRepo, jwtService, totpService, cfg.App.SecureCookies, logger),
 		Token:               httpadapter.NewTokenManagementHandler(tokenRepo, groupRepo, nodeRepo, inboundRepo, runtime, logger),
 		Node:                httpadapter.NewNodeManagementHandler(nodeRepo, groupRepo, runtime, countryResolver, cfg.App.ExternalHost, logger),
 		Group:               httpadapter.NewGroupManagementHandler(groupRepo, topUpRepo, nodeRepo, subscriptionService, topUpScheduler, logger),

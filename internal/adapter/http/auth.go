@@ -16,10 +16,11 @@ import (
 
 // AuthHandler handles admin authentication endpoints.
 type AuthHandler struct {
-	adminRepo   domain.AdminRepository
-	jwtService  *service.JWTService
-	totpService *service.TOTPService
-	logger      *slog.Logger
+	adminRepo     domain.AdminRepository
+	jwtService    *service.JWTService
+	totpService   *service.TOTPService
+	secureCookies bool
+	logger        *slog.Logger
 }
 
 // NewAuthHandler constructs an auth handler.
@@ -27,13 +28,15 @@ func NewAuthHandler(
 	adminRepo domain.AdminRepository,
 	jwtService *service.JWTService,
 	totpService *service.TOTPService,
+	secureCookies bool,
 	logger *slog.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
-		adminRepo:   adminRepo,
-		jwtService:  jwtService,
-		totpService: totpService,
-		logger:      logger,
+		adminRepo:     adminRepo,
+		jwtService:    jwtService,
+		totpService:   totpService,
+		secureCookies: secureCookies,
+		logger:        logger,
 	}
 }
 
@@ -119,8 +122,8 @@ func (h *AuthHandler) login(ctx context.Context, input *loginInput) (*loginOutpu
 		Path:     "/",
 		MaxAge:   86400,
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
 	}).String()
 	out.Body.Username = admin.Username
 	out.Body.TOTPRequired = false
@@ -142,8 +145,8 @@ func (h *AuthHandler) logout(_ context.Context, _ *struct{}) (*logoutOutput, err
 		Path:     "/",
 		MaxAge:   0,
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
 	}).String()
 	return out, nil
 }
