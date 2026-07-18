@@ -211,7 +211,7 @@ func testHTTP(ctx context.Context, port int, timeout time.Duration) (proxyResult
 	}
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://ipconfig.me", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ifconfig.me/ip", nil)
 	if err != nil {
 		return proxyResult{}, fmt.Errorf("creating request: %w", err)
 	}

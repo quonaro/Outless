@@ -12,46 +12,31 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"outless/internal/country"
 	"outless/internal/domain"
 )
 
 type NodeManagementHandler struct {
-	nodeRepo  domain.NodeRepository
-	groupRepo domain.GroupRepository
-	runtime   RuntimeController
-	logger    *slog.Logger
+	nodeRepo        domain.NodeRepository
+	groupRepo       domain.GroupRepository
+	runtime         RuntimeController
+	countryResolver *country.Resolver
+	logger          *slog.Logger
 }
 
 func NewNodeManagementHandler(
 	nodeRepo domain.NodeRepository,
 	groupRepo domain.GroupRepository,
 	runtime RuntimeController,
+	countryResolver *country.Resolver,
 	logger *slog.Logger,
 ) *NodeManagementHandler {
 	return &NodeManagementHandler{
-		nodeRepo:  nodeRepo,
-		groupRepo: groupRepo,
-		runtime:   runtime,
-		logger:    logger,
-	}
-}
-
-type CreateNodeInput struct {
-	Body struct {
-		URL       string   `json:"url"`
-		GroupIDs  []string `json:"group_ids" required:"true"`
-		IsSelf    bool     `json:"is_self"`
-		ExpiresAt *string  `json:"expires_at,omitempty"`
-	}
-}
-
-type CreateNodeOutput struct {
-	Body struct {
-		ID        string   `json:"id"`
-		URL       string   `json:"url"`
-		GroupIDs  []string `json:"group_ids"`
-		IsSelf    bool     `json:"is_self"`
-		ExpiresAt *string  `json:"expires_at,omitempty"`
+		nodeRepo:        nodeRepo,
+		groupRepo:       groupRepo,
+		runtime:         runtime,
+		countryResolver: countryResolver,
+		logger:          logger,
 	}
 }
 
@@ -67,15 +52,6 @@ type ListNodesInput struct {
 	Limit   int    `query:"limit"`
 	Offset  int    `query:"offset"`
 	GroupID string `query:"group_id"`
-}
-
-type UpdateNodeInput struct {
-	ID   string `path:"id" required:"true"`
-	Body struct {
-		URL       string   `json:"url,omitempty"`
-		GroupIDs  []string `json:"group_ids,omitempty"`
-		ExpiresAt *string  `json:"expires_at,omitempty"`
-	}
 }
 
 type DeleteNodeInput struct {
@@ -109,81 +85,6 @@ func (h *NodeManagementHandler) Register(api huma.API) {
 	huma.Patch(api, "/v1/nodes/{id}", h.UpdateNode)
 	huma.Delete(api, "/v1/nodes/{id}", h.DeleteNode)
 	huma.Post(api, "/v1/nodes/batch-delete", h.BatchDeleteNodes)
-}
-
-func (h *NodeManagementHandler) CreateNode(ctx context.Context, input *CreateNodeInput) (*CreateNodeOutput, error) {
-	if !input.Body.IsSelf && input.Body.URL == "" {
-		return nil, huma.Error400BadRequest("url is required when is_self is false")
-	}
-
-	if len(input.Body.GroupIDs) == 0 {
-		return nil, huma.Error400BadRequest("group_ids is required")
-	}
-
-	for _, groupID := range input.Body.GroupIDs {
-		group, err := h.groupRepo.FindByID(ctx, groupID)
-		if err != nil {
-			if errors.Is(err, domain.ErrGroupNotFound) {
-				h.logger.Warn("group not found", slog.String("group_id", groupID))
-				return nil, huma.Error400BadRequest("group not found")
-			}
-			h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("failed to validate group")
-		}
-		if group.IsTopUp {
-			return nil, huma.Error400BadRequest("cannot add nodes to a top-up group")
-		}
-	}
-
-	if input.Body.IsSelf {
-		exists, err := h.nodeRepo.HasSelfNode(ctx)
-		if err != nil {
-			h.logger.Error("failed to check self node", slog.String("error", err.Error()))
-			return nil, huma.Error500InternalServerError("failed to validate self node")
-		}
-		if exists {
-			return nil, huma.Error409Conflict("self node already exists")
-		}
-	}
-
-	nodeID := generateNodeID(input.Body.URL, input.Body.GroupIDs)
-	if input.Body.IsSelf {
-		nodeID = "self_" + strings.Join(input.Body.GroupIDs, "_")
-	}
-
-	expiresAt, err := parseOptionalExpiresAt(input.Body.ExpiresAt)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid expires_at")
-	}
-
-	node := domain.Node{
-		ID:        nodeID,
-		URL:       input.Body.URL,
-		GroupIDs:  input.Body.GroupIDs,
-		IsSelf:    input.Body.IsSelf,
-		ExpiresAt: expiresAt,
-	}
-
-	if err := h.nodeRepo.Create(ctx, node); err != nil {
-		if errors.Is(err, domain.ErrDuplicateNode) {
-			return nil, huma.Error409Conflict("node already exists")
-		}
-		h.logger.Error("failed to create node", slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to create node")
-	}
-
-	if err := h.runtime.ForceSync(); err != nil {
-		h.logger.Warn("failed to sync after node creation", slog.String("error", err.Error()))
-	}
-
-	out := &CreateNodeOutput{}
-	out.Body.ID = nodeID
-	out.Body.URL = input.Body.URL
-	out.Body.GroupIDs = input.Body.GroupIDs
-	out.Body.IsSelf = input.Body.IsSelf
-	out.Body.ExpiresAt = formatOptionalExpiresAt(expiresAt)
-
-	return out, nil
 }
 
 func (h *NodeManagementHandler) ListNodes(ctx context.Context, input *ListNodesInput) (*ListNodesOutput, error) {
@@ -272,75 +173,6 @@ func (h *NodeManagementHandler) buildNodeItems(
 		return response, true
 	}
 	return response, false
-}
-
-func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNodeInput) (*struct{}, error) {
-	if input.Body.URL == "" && len(input.Body.GroupIDs) == 0 {
-		return nil, huma.Error400BadRequest("at least one field (url or group_ids) is required")
-	}
-
-	existingNode, err := h.nodeRepo.FindByID(ctx, input.ID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNodeNotFound) {
-			return nil, huma.Error404NotFound("node not found")
-		}
-		h.logger.Error("failed to find node for update", slog.String("id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to find node")
-	}
-
-	updates := domain.Node{
-		ID:        input.ID,
-		URL:       existingNode.URL,
-		GroupIDs:  existingNode.GroupIDs,
-		ExpiresAt: existingNode.ExpiresAt,
-	}
-
-	if input.Body.URL != "" {
-		updates.URL = input.Body.URL
-	}
-
-	if input.Body.ExpiresAt != nil {
-		expiresAt, err := parseOptionalExpiresAt(input.Body.ExpiresAt)
-		if err != nil {
-			return nil, huma.Error400BadRequest("invalid expires_at")
-		}
-		updates.ExpiresAt = expiresAt
-	}
-
-	if len(input.Body.GroupIDs) > 0 {
-		for _, groupID := range input.Body.GroupIDs {
-			group, err := h.groupRepo.FindByID(ctx, groupID)
-			if err != nil {
-				if errors.Is(err, domain.ErrGroupNotFound) {
-					h.logger.Warn("group not found", slog.String("group_id", groupID))
-					return nil, huma.Error400BadRequest("group not found")
-				}
-				h.logger.Error("failed to find group", slog.String("group_id", groupID), slog.String("error", err.Error()))
-				return nil, huma.Error500InternalServerError("failed to validate group")
-			}
-			if group.IsTopUp {
-				return nil, huma.Error400BadRequest("cannot add nodes to a top-up group")
-			}
-		}
-		updates.GroupIDs = input.Body.GroupIDs
-	}
-
-	if err := h.nodeRepo.Update(ctx, updates); err != nil {
-		h.logger.Error("failed to update node", slog.String("id", input.ID), slog.String("error", err.Error()))
-		return nil, huma.Error500InternalServerError("failed to update node")
-	}
-
-	if input.Body.URL != "" && input.Body.URL != existingNode.URL {
-		if err := h.nodeRepo.ResetCountryInfo(ctx, input.ID); err != nil {
-			h.logger.Warn("failed to reset country info after url change", slog.String("id", input.ID), slog.String("error", err.Error()))
-		}
-	}
-
-	if err := h.runtime.ForceSync(); err != nil {
-		h.logger.Warn("failed to sync after node update", slog.String("id", input.ID), slog.String("error", err.Error()))
-	}
-
-	return nil, nil
 }
 
 func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput) (*GetNodeOutput, error) {

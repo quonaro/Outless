@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { Node } from '~/utils/schemas/node'
 import type { Inbound } from '~/utils/schemas/inbound'
 import { parseVlessUrl } from '~/utils/vless'
+import { countryFlagEmoji } from '~/utils/country'
 import UiButton from '~/components/ui/button/button.vue'
 import {
   DropdownMenu,
@@ -31,6 +32,8 @@ interface Row {
   node: Node
   title: string
   host: string
+  flag: string
+  country: string
   port: string
   security: string
   network: string
@@ -57,6 +60,14 @@ function formatExpiresAt(iso: string): string {
   return `Expires in ${days} days`
 }
 
+function countryLabel(node: Node): string {
+  return node.country_name || node.country_code || node.country || '—'
+}
+
+function flagEmoji(node: Node): string {
+  return node.country_flag || countryFlagEmoji(node.country_code || node.country)
+}
+
 function buildRow(node: Node): Row {
   const expiresAt = node.expires_at ? new Date(node.expires_at) : null
   const expired = !!expiresAt && expiresAt.getTime() < Date.now()
@@ -73,6 +84,8 @@ function buildRow(node: Node): Row {
       node,
       title: 'Current Machine',
       host: ib?.address || '—',
+      flag: '',
+      country: '—',
       port: ib ? String(ib.port || 443) : '—',
       security: 'reality',
       network: 'tcp',
@@ -90,6 +103,8 @@ function buildRow(node: Node): Row {
       node,
       title: node.url,
       host: '—',
+      flag: '',
+      country: '—',
       port: '—',
       security: '—',
       network: '—',
@@ -105,6 +120,8 @@ function buildRow(node: Node): Row {
     node,
     title: parsed.name || parsed.host,
     host: parsed.host || '—',
+    flag: flagEmoji(node),
+    country: countryLabel(node),
     port: String(parsed.port),
     security: parsed.security || 'none',
     network: parsed.network || 'tcp',
@@ -170,6 +187,8 @@ const allVisibleSelected = computed(() => {
             />
           </th>
           <th class="px-3 py-2 text-left font-medium">Host</th>
+          <th class="px-3 py-2 text-left font-medium">Flag</th>
+          <th class="px-3 py-2 text-left font-medium">Country</th>
           <th class="px-3 py-2 text-left font-medium">Port</th>
           <th class="px-3 py-2 text-left font-medium">Security</th>
           <th class="px-3 py-2 text-left font-medium">Network</th>
@@ -203,6 +222,12 @@ const allVisibleSelected = computed(() => {
                 </div>
               </div>
             </div>
+          </td>
+          <td class="px-3 py-2 text-center whitespace-nowrap">
+            <span :title="row.country">{{ row.flag || '—' }}</span>
+          </td>
+          <td class="px-3 py-2 whitespace-nowrap">
+            <span class="block max-w-[8rem] truncate" :title="row.country">{{ row.country }}</span>
           </td>
           <td class="px-3 py-2 whitespace-nowrap font-medium">{{ row.port }}</td>
           <td class="px-3 py-2 whitespace-nowrap">{{ row.security }}</td>
