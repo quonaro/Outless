@@ -79,6 +79,11 @@ export default defineNuxtConfig({
     routeRules: {
       '/api/**': { proxy: 'http://localhost:41220/api/**' },
     },
+    prerender: {
+      crawlLinks: true,
+      ignore: ['/api'],
+      failOnError: false,
+    },
   },
 
   vite: {
