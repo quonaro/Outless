@@ -7,8 +7,10 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
 	github.com/pquerna/otp v1.5.0
 	github.com/quonaro/lota v1.16.3
+	github.com/refraction-networking/utls v1.8.2
 	github.com/sagernet/sing-box v1.10.7
 	github.com/shirou/gopsutil/v4 v4.26.5
 	golang.org/x/crypto v0.53.0
@@ -37,7 +39,6 @@ require (
 	github.com/gofrs/uuid/v5 v5.3.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect

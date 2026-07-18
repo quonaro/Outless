@@ -107,10 +107,24 @@ func (c *Checker) check(ctx context.Context, raw string, cfg domain.TopUpCheckCo
 				r.Err = err
 				return r
 			}
+		case "vless":
+			if err := c.checkVLESSStage(ctx, &r, parsed, cfg); err != nil {
+				r.Err = err
+				return r
+			}
 		}
 	}
 
 	return r
+}
+
+func (c *Checker) checkVLESSStage(ctx context.Context, r *Result, parsed vless.Parsed, cfg domain.TopUpCheckConfig) error {
+	start := time.Now()
+	if err := checkVLESS(ctx, parsed, cfg.Timeout); err != nil {
+		return fmt.Errorf("vless: %w", err)
+	}
+	r.Latency = time.Since(start)
+	return nil
 }
 
 func (c *Checker) checkProxyStage(ctx context.Context, r *Result, parsed vless.Parsed, cfg domain.TopUpCheckConfig) error {
