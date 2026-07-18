@@ -109,6 +109,10 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	adminRepo := repository.NewAdminRepository(db, logger, cfg.JWT.Secret)
 	inboundRepo := repository.NewInboundRepository(db, logger)
 
+	if err := adminRepo.MigrateTOTPSecrets(ctx); err != nil {
+		logger.Warn("totp secret migration failed", slog.String("error", err.Error()))
+	}
+
 	// Ensure default admin exists if no admins are registered.
 	if err := ensureDefaultAdmin(ctx, adminRepo, logger); err != nil {
 		return err

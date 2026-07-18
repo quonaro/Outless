@@ -175,3 +175,44 @@ func (r *AdminRepository) Delete(ctx context.Context, id string) error {
 	r.logger.Debug("admin deleted", slog.String("id", id))
 	return nil
 }
+
+// MigrateTOTPSecrets encrypts any plaintext TOTP secrets found in the database.
+// Already-encrypted secrets are skipped. This is safe to run on every startup.
+func (r *AdminRepository) MigrateTOTPSecrets(ctx context.Context) error {
+	var models []adminModel
+	if err := r.db.WithContext(ctx).Where("totp_secret != ''").Find(&models).Error; err != nil {
+		return fmt.Errorf("querying admins with totp secrets: %w", err)
+	}
+
+	migrated := 0
+	for _, m := range models {
+		if crypto.IsEncrypted(m.TOTPSecret) {
+			continue
+		}
+
+		encrypted, err := crypto.Encrypt(r.cryptoKey, m.TOTPSecret)
+		if err != nil {
+			r.logger.Error("failed to encrypt totp secret during migration",
+				slog.String("admin_id", m.ID),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		if err := r.db.WithContext(ctx).Model(&adminModel{}).
+			Where("id = ?", m.ID).
+			Update("totp_secret", encrypted).Error; err != nil {
+			r.logger.Error("failed to update encrypted totp secret",
+				slog.String("admin_id", m.ID),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		migrated++
+	}
+
+	if migrated > 0 {
+		r.logger.Info("totp secrets migrated to encrypted form", slog.Int("count", migrated))
+	}
+	return nil
+}
