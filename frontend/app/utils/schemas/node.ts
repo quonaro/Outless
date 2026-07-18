@@ -5,6 +5,9 @@ export const NodeSchema = z.object({
   url: z.string(),
   group_ids: z.array(z.string()),
   country: z.string(),
+  country_code: z.string().optional(),
+  country_name: z.string().optional(),
+  country_flag: z.string().optional(),
   is_self: z.boolean().optional().default(false),
   expires_at: z.string().datetime({ offset: true }).optional(),
 })

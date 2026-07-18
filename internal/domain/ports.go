@@ -24,6 +24,11 @@ type NodeRepository interface {
 	DeleteByGroupID(ctx context.Context, groupID string) error
 	HasSelfNode(ctx context.Context) (bool, error)
 	CleanupExpired(ctx context.Context, cutoff time.Time) (int64, error)
+
+	// Country info lookup state
+	UpdateCountryInfo(ctx context.Context, nodeID string, info *CountryInfo) error
+	ResetCountryInfo(ctx context.Context, nodeID string) error
+	ListPendingCountryLookups(ctx context.Context, limit int) ([]string, error)
 }
 
 // TokenRepository provides secure operations for subscription tokens.

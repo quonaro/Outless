@@ -23,6 +23,11 @@ func (h *ImportExportHandler) exportNodes(ctx context.Context) ([]exportNode, er
 			Country:  n.Country,
 			IsSelf:   n.IsSelf,
 		}
+		if n.CountryInfo != nil {
+			item.CountryCode = n.CountryInfo.CountryCode
+			item.CountryName = n.CountryInfo.CountryName
+			item.CountryFlag = n.CountryInfo.Flag
+		}
 		if n.ExpiresAt != nil {
 			item.ExpiresAt = n.ExpiresAt.UTC().Format(time.RFC3339)
 		}

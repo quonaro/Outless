@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"outless/internal/country"
 	"outless/internal/domain"
 )
 
@@ -39,6 +40,23 @@ func (h *ImportExportHandler) importNodes(ctx context.Context, nodes []exportNod
 			Country:  n.Country,
 			IsSelf:   n.IsSelf,
 		}
+
+		code := domain.NormalizeCountryCode(n.CountryCode)
+		if code == "" {
+			code = domain.NormalizeCountryCode(n.Country)
+		}
+		if code != "" {
+			flag := n.CountryFlag
+			if flag == "" {
+				flag = country.FlagEmoji(code)
+			}
+			node.CountryInfo = &domain.CountryInfo{
+				CountryCode: code,
+				CountryName: n.CountryName,
+				Flag:        flag,
+			}
+		}
+
 		if n.ExpiresAt != "" {
 			expiresAt, err := time.Parse(time.RFC3339, n.ExpiresAt)
 			if err != nil {

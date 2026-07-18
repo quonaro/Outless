@@ -18,8 +18,14 @@ func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.Gro
 	client := s.httpClient(topUp)
 	var allURLs []string
 
+	s.logger.Debug("fetching top-up source URLs",
+		slog.Int("count", len(topUp.URLs)),
+		slog.String("parser", topUp.ParserType),
+	)
+
 	for _, u := range topUp.URLs {
 		s.logger.Info("fetching top-up source URL", slog.String("url", u))
+		s.logger.Debug("fetching top-up source URL request", slog.String("url", u))
 		content, err := s.fetchURL(ctx, client, u)
 		if err != nil {
 			s.logger.Warn("failed to fetch top-up url",
@@ -39,10 +45,12 @@ func (s *TopUpScheduler) fetchAndParseURLs(ctx context.Context, topUp domain.Gro
 			continue
 		}
 		s.logger.Info("parsed top-up source URL", slog.String("url", u), slog.Int("nodes", len(urls)))
+		s.logger.Debug("appending parsed top-up URLs", slog.String("url", u), slog.Int("nodes", len(urls)))
 		allURLs = append(allURLs, urls...)
 	}
 
 	s.logger.Info("top-up source URLs fetched", slog.Int("sources", len(topUp.URLs)), slog.Int("total_urls", len(allURLs)))
+	s.logger.Debug("top-up source URLs fetch complete", slog.Int("total_urls", len(allURLs)))
 	return allURLs, nil
 }
 
@@ -51,6 +59,7 @@ func (s *TopUpScheduler) httpClient(_ domain.GroupTopUp) *http.Client {
 }
 
 func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u string) (string, error) {
+	s.logger.Debug("creating HTTP request", slog.String("url", u))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", err
@@ -62,6 +71,8 @@ func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u st
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	s.logger.Debug("top-up URL response", slog.String("url", u), slog.Int("status", resp.StatusCode))
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
@@ -70,10 +81,12 @@ func (s *TopUpScheduler) fetchURL(ctx context.Context, client *http.Client, u st
 	if err != nil {
 		return "", err
 	}
+	s.logger.Debug("top-up URL body read", slog.String("url", u), slog.Int("body_len", len(body)))
 	return string(body), nil
 }
 
 func (s *TopUpScheduler) replaceGroupNodes(ctx context.Context, groupID string, urls []string) (int, error) {
+	s.logger.Debug("deleting existing group nodes", slog.String("group_id", groupID))
 	if err := s.nodeRepo.DeleteByGroupID(ctx, groupID); err != nil {
 		return 0, err
 	}
@@ -89,6 +102,7 @@ func (s *TopUpScheduler) replaceGroupNodes(ctx context.Context, groupID string, 
 			URL:      u,
 			GroupIDs: []string{groupID},
 		}
+		s.logger.Debug("creating top-up node", slog.String("node_id", node.ID), slog.String("url", u))
 		if err := s.nodeRepo.Create(ctx, node); err != nil {
 			s.logger.Warn("failed to create node from top-up",
 				slog.String("node_id", node.ID),
@@ -96,14 +110,17 @@ func (s *TopUpScheduler) replaceGroupNodes(ctx context.Context, groupID string, 
 			)
 			continue
 		}
+		s.logger.Debug("top-up node created", slog.String("node_id", node.ID))
 		added++
 	}
 
 	s.logger.Info("group nodes replaced", slog.String("group_id", groupID), slog.Int("added", added))
+	s.logger.Debug("replace group nodes complete", slog.String("group_id", groupID), slog.Int("added", added))
 	return added, nil
 }
 
 func (s *TopUpScheduler) finishRun(ctx context.Context, topUp domain.GroupTopUp, ok bool) {
+	s.logger.Debug("finishing top-up run", slog.String("id", topUp.ID), slog.Bool("ok", ok))
 	now := time.Now().UTC()
 	topUp.LastRunAt = &now
 
@@ -114,11 +131,13 @@ func (s *TopUpScheduler) finishRun(ctx context.Context, topUp domain.GroupTopUp,
 	}
 	topUp.NextRunAt = next
 	topUp.Enabled = keepEnabled
+	s.logger.Debug("computed next run", slog.String("id", topUp.ID), slog.Time("next_run_at", next), slog.Bool("enabled", keepEnabled))
 
 	if err := s.topUpRepo.Update(ctx, topUp); err != nil {
 		s.logger.Error("failed to update top-up after run", slog.String("id", topUp.ID), slog.String("error", err.Error()))
 		return
 	}
+	s.logger.Debug("top-up record updated", slog.String("id", topUp.ID))
 
 	if ok {
 		s.logger.Info("top-up finished", slog.String("id", topUp.ID), slog.Time("next_run_at", next))

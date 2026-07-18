@@ -56,18 +56,17 @@ const groupsWithResults = computed(() =>
 async function runAll() {
   isRunning.value = true
   try {
-    const res = await runAllTopUps()
     const map: Record<string, Result> = {}
-    for (const r of res) {
-      map[r.group_id] = {
-        status: r.status,
-        total: r.total,
-        passed: r.passed,
-        added: r.added,
-        error: r.error,
-      }
+    for (const group of topUpGroups.value) {
+      map[group.id] = { status: 'pending', total: 0, passed: 0, added: 0 }
     }
     results.value = map
+
+    await runAllTopUps()
+    info('Top-up runs started', 'All top-up groups are being refilled in the background.')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    error('Top-up run failed', msg)
   } finally {
     isRunning.value = false
   }

@@ -17,6 +17,7 @@ import (
 	httpadapter "outless/internal/adapter/http"
 	"outless/internal/adapter/repository"
 	"outless/internal/adapter/singbox"
+	"outless/internal/country"
 	"outless/internal/domain"
 	"outless/internal/service"
 	"outless/internal/topup/checker"
@@ -69,7 +70,7 @@ func main() {
 	}
 }
 
-//nolint:funlen
+//nolint:funlen,gocognit,gocyclo
 func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	cfgPath := os.Getenv("OUTLESS_CONFIG")
 	if cfgPath == "" {
@@ -136,6 +137,22 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	totpService := service.NewTOTPService()
 	topUpChecker := checker.New(logger)
 	topUpScheduler := service.NewTopUpScheduler(topUpRepo, groupRepo, nodeRepo, topUpChecker, logger)
+
+	// Country lookup watcher
+	countryResolver := country.NewResolver(nil)
+	if cfg.App.CountryLookup.Timeout > 0 {
+		countryResolver = country.NewResolver(&http.Client{Timeout: cfg.App.CountryLookup.Timeout})
+	}
+	countryWatcher := service.NewCountryWatcher(
+		nodeRepo,
+		countryResolver,
+		logger,
+		service.WatcherConfig{
+			Interval:   cfg.App.CountryLookup.Interval,
+			BatchSize:  cfg.App.CountryLookup.BatchSize,
+			RetryDelay: cfg.App.CountryLookup.RetryDelay,
+		},
+	)
 
 	// Runtime controller (embedded sing-box)
 	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0, broadcaster.Broadcast)
@@ -207,6 +224,8 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	defer func() {
 		topUpScheduler.Stop()
 	}()
+
+	countryWatcher.RunAsync(ctx)
 
 	if err := trafficCollector.Start(ctx); err != nil {
 		return fmt.Errorf("starting traffic collector: %w", err)

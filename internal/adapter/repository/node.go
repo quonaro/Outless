@@ -24,6 +24,31 @@ type nodeModel struct {
 
 func (nodeModel) TableName() string { return "nodes" }
 
+type nodeCountryModel struct {
+	NodeID       string     `gorm:"column:node_id;primaryKey"`
+	CountryCode  string     `gorm:"column:country_code"`
+	CountryName  string     `gorm:"column:country_name"`
+	Flag         string     `gorm:"column:flag"`
+	LastLookupAt *time.Time `gorm:"column:last_lookup_at"`
+	NextRetryAt  *time.Time `gorm:"column:next_retry_at"`
+	Attempts     int        `gorm:"column:attempts"`
+	LastError    string     `gorm:"column:last_error"`
+}
+
+func (nodeCountryModel) TableName() string { return "node_countries" }
+
+func (m nodeCountryModel) toDomain() *domain.CountryInfo {
+	return &domain.CountryInfo{
+		CountryCode:  m.CountryCode,
+		CountryName:  m.CountryName,
+		Flag:         m.Flag,
+		LastLookupAt: m.LastLookupAt,
+		NextRetryAt:  m.NextRetryAt,
+		Attempts:     m.Attempts,
+		LastError:    m.LastError,
+	}
+}
+
 type nodeGroupModel struct {
 	NodeID  string `gorm:"column:node_id;primaryKey"`
 	GroupID string `gorm:"column:group_id;primaryKey"`
@@ -44,6 +69,91 @@ func NewNodeRepository(db *gorm.DB, logger *slog.Logger) *NodeRepository {
 
 func (r *NodeRepository) toDomain(m nodeModel) domain.Node {
 	return domain.Node{ID: m.ID, URL: m.URL, Country: m.Country, IsSelf: m.IsSelf, ExpiresAt: m.ExpiresAt}
+}
+
+func (r *NodeRepository) fillCountryInfo(ctx context.Context, nodes []domain.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	ids := make([]string, len(nodes))
+	for i := range nodes {
+		ids[i] = nodes[i].ID
+	}
+	var models []nodeCountryModel
+	if err := r.db.WithContext(ctx).Where("node_id IN ?", ids).Find(&models).Error; err != nil {
+		return fmt.Errorf("loading country info: %w", err)
+	}
+	infoMap := make(map[string]*nodeCountryModel, len(models))
+	for i := range models {
+		infoMap[models[i].NodeID] = &models[i]
+	}
+	for i := range nodes {
+		if m, ok := infoMap[nodes[i].ID]; ok {
+			nodes[i].CountryInfo = m.toDomain()
+			if m.CountryCode != "" {
+				nodes[i].Country = m.CountryCode
+			}
+		}
+	}
+	return nil
+}
+
+func (r *NodeRepository) upsertCountryInfoFromNode(ctx context.Context, node domain.Node) error {
+	if node.CountryInfo != nil {
+		return r.UpdateCountryInfo(ctx, node.ID, node.CountryInfo)
+	}
+	return r.ResetCountryInfo(ctx, node.ID)
+}
+
+// UpdateCountryInfo upserts the country details for a node and keeps nodes.country in sync.
+func (r *NodeRepository) UpdateCountryInfo(ctx context.Context, nodeID string, info *domain.CountryInfo) error {
+	if info == nil {
+		return nil
+	}
+	m := nodeCountryModel{
+		NodeID:       nodeID,
+		CountryCode:  info.CountryCode,
+		CountryName:  info.CountryName,
+		Flag:         info.Flag,
+		LastLookupAt: info.LastLookupAt,
+		NextRetryAt:  info.NextRetryAt,
+		Attempts:     info.Attempts,
+		LastError:    info.LastError,
+	}
+	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
+		return fmt.Errorf("upserting country info: %w", err)
+	}
+	if info.CountryCode != "" {
+		if err := r.db.WithContext(ctx).Model(&nodeModel{}).Where("id = ?", nodeID).Update("country", info.CountryCode).Error; err != nil {
+			return fmt.Errorf("updating node country: %w", err)
+		}
+	}
+	return nil
+}
+
+// ResetCountryInfo clears the country data and schedules an immediate retry.
+func (r *NodeRepository) ResetCountryInfo(ctx context.Context, nodeID string) error {
+	now := time.Now().UTC()
+	return r.UpdateCountryInfo(ctx, nodeID, &domain.CountryInfo{NextRetryAt: &now})
+}
+
+// ListPendingCountryLookups returns node IDs that need a country lookup.
+func (r *NodeRepository) ListPendingCountryLookups(ctx context.Context, limit int) ([]string, error) {
+	var ids []string
+	now := time.Now().UTC()
+	condition := "node_countries.node_id IS NULL OR " +
+		"node_countries.country_code = '' OR " +
+		"COALESCE(node_countries.next_retry_at, '1970-01-01T00:00:00Z') <= ?"
+	err := r.db.WithContext(ctx).Model(&nodeModel{}).
+		Joins("LEFT JOIN node_countries ON node_countries.node_id = nodes.id").
+		Where(condition, now).
+		Order("nodes.created_at ASC").
+		Limit(limit).
+		Pluck("nodes.id", &ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing pending country lookups: %w", err)
+	}
+	return ids, nil
 }
 
 func (r *NodeRepository) fillGroupIDs(ctx context.Context, nodes []domain.Node) error {
@@ -110,6 +220,10 @@ func (r *NodeRepository) IterateNodes(ctx context.Context) iter.Seq2[domain.Node
 			nodes = append(nodes, r.toDomain(m))
 		}
 		if err := r.fillGroupIDs(ctx, nodes); err != nil {
+			yield(domain.Node{}, err)
+			return
+		}
+		if err := r.fillCountryInfo(ctx, nodes); err != nil {
 			yield(domain.Node{}, err)
 			return
 		}
@@ -181,6 +295,9 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 	if err := r.createGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
 		return err
 	}
+	if err := r.upsertCountryInfoFromNode(ctx, node); err != nil {
+		return err
+	}
 	r.logger.Debug("node created", slog.String("node_id", node.ID))
 	return nil
 }
@@ -203,6 +320,9 @@ func (r *NodeRepository) CreateIfAbsent(ctx context.Context, node domain.Node) (
 	}
 	if tx.RowsAffected > 0 {
 		if err := r.createGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
+			return false, err
+		}
+		if err := r.upsertCountryInfoFromNode(ctx, node); err != nil {
 			return false, err
 		}
 	}
@@ -269,6 +389,9 @@ func (r *NodeRepository) BulkCreateIfAbsent(ctx context.Context, nodes []domain.
 		if err := r.createGroupLinks(ctx, n.ID, n.GroupIDs); err != nil {
 			r.logger.Warn("failed to create node groups", slog.String("node_id", n.ID), slog.String("error", err.Error()))
 		}
+		if err := r.upsertCountryInfoFromNode(ctx, n); err != nil {
+			r.logger.Warn("failed to create country info", slog.String("node_id", n.ID), slog.String("error", err.Error()))
+		}
 	}
 
 	r.logger.Debug("nodes bulk-created", slog.Int("count", len(inserted)))
@@ -296,6 +419,11 @@ func (r *NodeRepository) Upsert(ctx context.Context, node domain.Node) error {
 	if err := r.replaceGroupLinks(ctx, node.ID, node.GroupIDs); err != nil {
 		return err
 	}
+	if node.CountryInfo != nil {
+		if err := r.UpdateCountryInfo(ctx, node.ID, node.CountryInfo); err != nil {
+			return err
+		}
+	}
 	r.logger.Debug("node upserted", slog.String("node_id", node.ID))
 	return nil
 }
@@ -314,6 +442,9 @@ func (r *NodeRepository) FindByID(ctx context.Context, id string) (domain.Node, 
 	if err := r.fillGroupIDs(ctx, []domain.Node{node}); err != nil {
 		return domain.Node{}, err
 	}
+	if err := r.fillCountryInfo(ctx, []domain.Node{node}); err != nil {
+		return domain.Node{}, err
+	}
 	return node, nil
 }
 
@@ -328,6 +459,9 @@ func (r *NodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 		nodes = append(nodes, r.toDomain(m))
 	}
 	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
+	}
+	if err := r.fillCountryInfo(ctx, nodes); err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -345,6 +479,9 @@ func (r *NodeRepository) ListPage(ctx context.Context, limit int, offset int) ([
 		nodes = append(nodes, r.toDomain(m))
 	}
 	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
+	}
+	if err := r.fillCountryInfo(ctx, nodes); err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -366,6 +503,9 @@ func (r *NodeRepository) ListPageByGroup(ctx context.Context, groupID string, li
 	if err := r.fillGroupIDs(ctx, nodes); err != nil {
 		return nil, err
 	}
+	if err := r.fillCountryInfo(ctx, nodes); err != nil {
+		return nil, err
+	}
 	return nodes, nil
 }
 
@@ -383,6 +523,9 @@ func (r *NodeRepository) ListByGroup(ctx context.Context, groupID string) ([]dom
 		nodes = append(nodes, r.toDomain(m))
 	}
 	if err := r.fillGroupIDs(ctx, nodes); err != nil {
+		return nil, err
+	}
+	if err := r.fillCountryInfo(ctx, nodes); err != nil {
 		return nil, err
 	}
 	return nodes, nil
@@ -427,6 +570,14 @@ func (r *NodeRepository) CleanupExpired(ctx context.Context, cutoff time.Time) (
 		return 0, fmt.Errorf("deleting expired node group links: %w", err)
 	}
 
+	if err := tx.Where(
+		"node_id IN (SELECT id FROM nodes WHERE expires_at IS NOT NULL AND expires_at <= ?)",
+		cutoff,
+	).Delete(&nodeCountryModel{}).Error; err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("deleting expired country info: %w", err)
+	}
+
 	result := tx.Where("expires_at IS NOT NULL AND expires_at <= ?", cutoff).Delete(&nodeModel{})
 	if result.Error != nil {
 		_ = tx.Rollback()
@@ -452,6 +603,9 @@ func (r *NodeRepository) HasSelfNode(ctx context.Context) (bool, error) {
 func (r *NodeRepository) Delete(ctx context.Context, id string) error {
 	if err := r.db.WithContext(ctx).Where("node_id = ?", id).Delete(&nodeGroupModel{}).Error; err != nil {
 		return fmt.Errorf("deleting node groups: %w", err)
+	}
+	if err := r.db.WithContext(ctx).Where("node_id = ?", id).Delete(&nodeCountryModel{}).Error; err != nil {
+		return fmt.Errorf("deleting country info: %w", err)
 	}
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&nodeModel{})
 	if result.Error != nil {
@@ -490,6 +644,10 @@ func (r *NodeRepository) DeleteByGroupID(ctx context.Context, groupID string) er
 	}
 
 	if len(nodeIDs) > 0 {
+		if err := tx.Where("node_id IN ?", nodeIDs).Delete(&nodeCountryModel{}).Error; err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("deleting country info by group: %w", err)
+		}
 		if err := tx.Where("id IN ?", nodeIDs).Delete(&nodeModel{}).Error; err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("deleting group nodes: %w", err)

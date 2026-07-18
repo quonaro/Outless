@@ -48,6 +48,7 @@ func (h *GroupTopUpManagementHandler) Register(api huma.API) {
 }
 
 func (h *GroupTopUpManagementHandler) ListTopUps(ctx context.Context, _ *struct{}) (*ListTopUpsOutput, error) {
+	h.logger.Debug("listing top-ups")
 	topUps, err := h.topUpRepo.List(ctx)
 	if err != nil {
 		h.logger.Error("failed to list top-ups", slog.String("error", err.Error()))
@@ -58,10 +59,12 @@ func (h *GroupTopUpManagementHandler) ListTopUps(ctx context.Context, _ *struct{
 	for _, t := range topUps {
 		items = append(items, toTopUpOutput(t))
 	}
+	h.logger.Debug("top-ups listed", slog.Int("count", len(items)))
 	return &ListTopUpsOutput{Body: items}, nil
 }
 
 func (h *GroupTopUpManagementHandler) GetTopUp(ctx context.Context, input *GetTopUpInput) (*GetTopUpOutput, error) {
+	h.logger.Debug("getting top-up", slog.String("id", input.ID))
 	topUp, err := h.topUpRepo.FindByID(ctx, input.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrGroupTopUpNotFound) {
@@ -70,10 +73,12 @@ func (h *GroupTopUpManagementHandler) GetTopUp(ctx context.Context, input *GetTo
 		h.logger.Error("failed to find top-up", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to find top-up")
 	}
+	h.logger.Debug("top-up found", slog.String("id", topUp.ID))
 	return &GetTopUpOutput{Body: toTopUpOutput(topUp)}, nil
 }
 
 func (h *GroupTopUpManagementHandler) RunTopUp(ctx context.Context, input *RunTopUpInput) (*struct{}, error) {
+	h.logger.Debug("run top-up requested", slog.String("id", input.ID))
 	if h.scheduler == nil {
 		return nil, huma.Error500InternalServerError("scheduler not available")
 	}
@@ -85,8 +90,10 @@ func (h *GroupTopUpManagementHandler) RunTopUp(ctx context.Context, input *RunTo
 		h.logger.Error("failed to find top-up for run", slog.String("id", input.ID), slog.String("error", err.Error()))
 		return nil, huma.Error500InternalServerError("failed to find top-up")
 	}
+	h.logger.Debug("top-up found, starting background run", slog.String("id", input.ID), slog.String("group_id", topUp.GroupID))
 
 	go func() {
+		h.logger.Debug("background top-up run started", slog.String("id", input.ID))
 		if _, err := h.scheduler.RunNow(context.Background(), topUp.ID); err != nil {
 			h.logger.Error("failed to run top-up", slog.String("id", input.ID), slog.String("error", err.Error()))
 		}
@@ -96,34 +103,18 @@ func (h *GroupTopUpManagementHandler) RunTopUp(ctx context.Context, input *RunTo
 }
 
 func (h *GroupTopUpManagementHandler) RunAllTopUps(ctx context.Context, _ *RunAllTopUpsInput) (*RunAllTopUpsOutput, error) {
+	h.logger.Debug("run all top-ups requested")
 	if h.scheduler == nil {
 		return nil, huma.Error500InternalServerError("scheduler not available")
 	}
 
-	runResults := h.scheduler.RunAll(ctx)
-	output := make([]TopUpRunResultOutput, 0, len(runResults))
-	for _, r := range runResults {
-		status := "ok"
-		if r.Failed {
-			status = "failed"
-		}
-		groupName := ""
-		if group, err := h.groupRepo.FindByID(ctx, r.GroupID); err == nil {
-			groupName = group.Name
-		}
-		output = append(output, TopUpRunResultOutput{
-			TopUpID:   r.TopUpID,
-			GroupID:   r.GroupID,
-			GroupName: groupName,
-			Status:    status,
-			Total:     r.Total,
-			Passed:    r.Passed,
-			Added:     r.Added,
-			Error:     r.Error,
-		})
-	}
+	go func() {
+		h.logger.Debug("background run all top-ups started")
+		runResults := h.scheduler.RunAll(context.Background())
+		h.logger.Debug("background run all top-ups completed", slog.Int("count", len(runResults)))
+	}()
 
-	return &RunAllTopUpsOutput{Body: output}, nil
+	return &RunAllTopUpsOutput{Body: []TopUpRunResultOutput{}}, nil
 }
 
 func (h *GroupTopUpManagementHandler) DeleteTopUp(ctx context.Context, input *DeleteTopUpInput) (*struct{}, error) {

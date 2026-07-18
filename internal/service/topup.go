@@ -82,18 +82,23 @@ func (s *TopUpScheduler) loop() {
 }
 
 func (s *TopUpScheduler) runTick(ctx context.Context) {
+	s.logger.Debug("top-up tick started")
 	topUps, err := s.topUpRepo.ListDue(ctx, time.Now().UTC())
 	if err != nil {
 		s.logger.Error("failed to list due top-ups", slog.String("error", err.Error()))
 		return
 	}
 
+	s.logger.Debug("due top-ups listed", slog.Int("count", len(topUps)))
+
 	for _, topUp := range topUps {
 		topUp := topUp
 		mu := s.getOrCreateLock(topUp.ID)
 		if !mu.TryLock() {
+			s.logger.Debug("top-up run already in progress, skipping", slog.String("id", topUp.ID))
 			continue
 		}
+		s.logger.Debug("starting scheduled top-up run", slog.String("id", topUp.ID))
 
 		if err := s.updateNextRunBeforeJob(ctx, &topUp); err != nil {
 			s.logger.Error("failed to update next run for top-up", slog.String("id", topUp.ID), slog.String("error", err.Error()))
@@ -118,13 +123,16 @@ func (s *TopUpScheduler) getOrCreateLock(id string) *sync.Mutex {
 // RunNow triggers a top-up run immediately and returns the run result.
 func (s *TopUpScheduler) RunNow(ctx context.Context, id string) (TopUpRunResult, error) {
 	var result TopUpRunResult
+	s.logger.Debug("run top-up requested", slog.String("id", id))
 	topUp, err := s.topUpRepo.FindByID(ctx, id)
 	if err != nil {
 		return result, err
 	}
+	s.logger.Debug("top-up loaded, acquiring lock", slog.String("id", id), slog.String("group_id", topUp.GroupID))
 
 	mu := s.getOrCreateLock(id)
 	mu.Lock()
+	s.logger.Debug("top-up lock acquired", slog.String("id", id))
 	defer mu.Unlock()
 
 	return s.runTopUp(ctx, topUp)
@@ -147,6 +155,11 @@ func (s *TopUpScheduler) runTopUp(ctx context.Context, topUp domain.GroupTopUp) 
 	result := TopUpRunResult{TopUpID: topUp.ID, GroupID: topUp.GroupID}
 	logger := s.logger.With(slog.String("top_up_id", topUp.ID), slog.String("group_id", topUp.GroupID))
 	logger.Info("starting top-up run")
+	logger.Debug("top-up configuration",
+		slog.Bool("check_enabled", topUp.CheckEnabled),
+		slog.Int("url_count", len(topUp.URLs)),
+		slog.String("parser_type", topUp.ParserType),
+	)
 
 	rawURLs, err := s.fetchAndParseURLs(ctx, topUp)
 	if err != nil {
@@ -157,10 +170,16 @@ func (s *TopUpScheduler) runTopUp(ctx context.Context, topUp domain.GroupTopUp) 
 		return result, err
 	}
 	result.Total = len(rawURLs)
+	logger.Debug("urls fetched and parsed", slog.Int("total", result.Total))
 
 	var urls []string
 	if topUp.CheckEnabled {
 		logger.Info("running checker", slog.Int("urls", len(rawURLs)))
+		logger.Debug("checker configuration",
+			slog.Int("workers", topUp.CheckConfig.Workers),
+			slog.String("timeout", topUp.CheckConfig.Timeout.String()),
+			slog.Any("stages", topUp.CheckConfig.Stages),
+		)
 		results, err := s.checker.Run(ctx, rawURLs, topUp.CheckConfig)
 		if err != nil {
 			logger.Error("failed to run checker", slog.String("error", err.Error()))
@@ -176,11 +195,14 @@ func (s *TopUpScheduler) runTopUp(ctx context.Context, topUp domain.GroupTopUp) 
 		}
 		result.Passed = len(urls)
 		logger.Info("checker completed", slog.Int("total", len(results)), slog.Int("passed", result.Passed))
+		logger.Debug("checker results", slog.Int("passed", result.Passed), slog.Int("failed", len(results)-result.Passed))
 	} else {
 		urls = rawURLs
 		result.Passed = result.Total
+		logger.Debug("checker disabled, using all urls", slog.Int("urls", result.Total))
 	}
 
+	logger.Debug("replacing group nodes", slog.String("group_id", topUp.GroupID), slog.Int("urls", len(urls)))
 	added, err := s.replaceGroupNodes(ctx, topUp.GroupID, urls)
 	result.Added = added
 	if err != nil {
@@ -196,12 +218,14 @@ func (s *TopUpScheduler) runTopUp(ctx context.Context, topUp domain.GroupTopUp) 
 		slog.Int("passed", result.Passed),
 		slog.Int("added", result.Added),
 	)
+	logger.Debug("top-up run finished", slog.Bool("failed", result.Failed))
 	s.finishRun(ctx, topUp, true)
 	return result, nil
 }
 
 // RunAll runs every enabled top-up and returns a result for each.
 func (s *TopUpScheduler) RunAll(ctx context.Context) []TopUpRunResult {
+	s.logger.Debug("run all top-ups started")
 	topUps, err := s.topUpRepo.List(ctx)
 	if err != nil {
 		s.logger.Error("failed to list top-ups", slog.String("error", err.Error()))
@@ -212,11 +236,15 @@ func (s *TopUpScheduler) RunAll(ctx context.Context) []TopUpRunResult {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
+	s.logger.Debug("top-ups listed", slog.Int("count", len(topUps)))
+
 	for _, topUp := range topUps {
 		if !topUp.Enabled {
+			s.logger.Debug("skipping disabled top-up", slog.String("id", topUp.ID))
 			continue
 		}
 		topUp := topUp
+		s.logger.Debug("queuing top-up run", slog.String("id", topUp.ID))
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -232,5 +260,6 @@ func (s *TopUpScheduler) RunAll(ctx context.Context) []TopUpRunResult {
 	}
 	wg.Wait()
 
+	s.logger.Debug("run all top-ups finished", slog.Int("results", len(results)))
 	return results
 }

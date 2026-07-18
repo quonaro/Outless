@@ -268,7 +268,7 @@ func (s *SubscriptionService) buildNodeRemark(
 		}
 		templateData := template.BuildTemplateData(
 			vlessData,
-			groupLabel,
+			normalizeCountry(node.Country),
 			normalizeCountry(node.Country),
 			groupLabel,
 			token.Owner,

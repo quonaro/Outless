@@ -151,7 +151,7 @@ const filteredFlatNodes = computed<Node[]>(() => {
   if (!searchValue) return list
   return list.filter((node) => {
     const groupNames = node.group_ids.map((id) => groupNameByID.value[id] ?? '').join(' ')
-    return `${node.url} ${node.id} ${node.country} ${groupNames}`
+    return `${node.url} ${node.id} ${node.country} ${node.country_code ?? ''} ${node.country_name ?? ''} ${node.country_flag ?? ''} ${groupNames}`
       .toLowerCase()
       .includes(searchValue)
   })

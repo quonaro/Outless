@@ -43,12 +43,15 @@ func NewImportExportHandler(
 
 // exportNode is a serializable node representation.
 type exportNode struct {
-	ID        string   `json:"id"`
-	URL       string   `json:"url"`
-	GroupIDs  []string `json:"group_ids"`
-	Country   string   `json:"country"`
-	IsSelf    bool     `json:"is_self"`
-	ExpiresAt string   `json:"expires_at,omitempty"`
+	ID          string   `json:"id"`
+	URL         string   `json:"url"`
+	GroupIDs    []string `json:"group_ids"`
+	Country     string   `json:"country"`
+	CountryCode string   `json:"country_code"`
+	CountryName string   `json:"country_name"`
+	CountryFlag string   `json:"country_flag"`
+	IsSelf      bool     `json:"is_self"`
+	ExpiresAt   string   `json:"expires_at,omitempty"`
 }
 
 // exportGroup is a serializable group representation.

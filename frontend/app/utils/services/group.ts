@@ -62,13 +62,18 @@ export async function pingSourceURL(url: string): Promise<PingSourceURLResponse>
 }
 
 export async function fetchTopUp(id: string): Promise<unknown> {
+  console.debug('[group.ts] fetchTopUp', id)
   const { $api } = useNuxtApp()
-  return $api(`/v1/group-top-ups/${id}`)
+  const response = await $api(`/v1/group-top-ups/${id}`)
+  console.debug('[group.ts] fetchTopUp response', response)
+  return response
 }
 
 export async function runTopUp(id: string): Promise<void> {
+  console.debug('[group.ts] runTopUp', id)
   const { $api } = useNuxtApp()
   await $api(`/v1/group-top-ups/${id}/run`, { method: 'POST' })
+  console.debug('[group.ts] runTopUp done', id)
 }
 
 export interface TopUpRunResult {
@@ -83,10 +88,12 @@ export interface TopUpRunResult {
 }
 
 export async function runAllTopUps(): Promise<TopUpRunResult[]> {
+  console.debug('[group.ts] runAllTopUps')
   const { $api } = useNuxtApp()
   const response = await $api<{ results: TopUpRunResult[] }>('/v1/group-top-ups/run', {
     method: 'POST',
   })
+  console.debug('[group.ts] runAllTopUps response', response)
   return response.results || []
 }
 

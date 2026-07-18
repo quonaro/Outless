@@ -91,12 +91,15 @@ type GetNodeOutput struct {
 }
 
 type NodeItem struct {
-	ID        string   `json:"id"`
-	URL       string   `json:"url"`
-	GroupIDs  []string `json:"group_ids"`
-	Country   string   `json:"country"`
-	IsSelf    bool     `json:"is_self"`
-	ExpiresAt *string  `json:"expires_at,omitempty"`
+	ID          string   `json:"id"`
+	URL         string   `json:"url"`
+	GroupIDs    []string `json:"group_ids"`
+	Country     string   `json:"country"`
+	CountryCode string   `json:"country_code"`
+	CountryName string   `json:"country_name"`
+	CountryFlag string   `json:"country_flag"`
+	IsSelf      bool     `json:"is_self"`
+	ExpiresAt   *string  `json:"expires_at,omitempty"`
 }
 
 func (h *NodeManagementHandler) Register(api huma.API) {
@@ -248,14 +251,20 @@ func (h *NodeManagementHandler) buildNodeItems(
 ) ([]NodeItem, bool) {
 	response := make([]NodeItem, 0, len(nodes))
 	for _, n := range nodes {
-		response = append(response, NodeItem{
+		item := NodeItem{
 			ID:        n.ID,
 			URL:       n.URL,
 			GroupIDs:  n.GroupIDs,
 			Country:   domain.NormalizeCountryCode(n.Country),
 			IsSelf:    n.IsSelf,
 			ExpiresAt: formatOptionalExpiresAt(n.ExpiresAt),
-		})
+		}
+		if n.CountryInfo != nil {
+			item.CountryCode = n.CountryInfo.CountryCode
+			item.CountryName = n.CountryInfo.CountryName
+			item.CountryFlag = n.CountryInfo.Flag
+		}
+		response = append(response, item)
 	}
 
 	if len(response) > limit {
@@ -321,6 +330,12 @@ func (h *NodeManagementHandler) UpdateNode(ctx context.Context, input *UpdateNod
 		return nil, huma.Error500InternalServerError("failed to update node")
 	}
 
+	if input.Body.URL != "" && input.Body.URL != existingNode.URL {
+		if err := h.nodeRepo.ResetCountryInfo(ctx, input.ID); err != nil {
+			h.logger.Warn("failed to reset country info after url change", slog.String("id", input.ID), slog.String("error", err.Error()))
+		}
+	}
+
 	if err := h.runtime.ForceSync(); err != nil {
 		h.logger.Warn("failed to sync after node update", slog.String("id", input.ID), slog.String("error", err.Error()))
 	}
@@ -338,16 +353,20 @@ func (h *NodeManagementHandler) GetNode(ctx context.Context, input *GetNodeInput
 		return nil, huma.Error500InternalServerError("failed to get node")
 	}
 
-	return &GetNodeOutput{
-		Body: NodeItem{
-			ID:        node.ID,
-			URL:       node.URL,
-			GroupIDs:  node.GroupIDs,
-			Country:   domain.NormalizeCountryCode(node.Country),
-			IsSelf:    node.IsSelf,
-			ExpiresAt: formatOptionalExpiresAt(node.ExpiresAt),
-		},
-	}, nil
+	item := NodeItem{
+		ID:        node.ID,
+		URL:       node.URL,
+		GroupIDs:  node.GroupIDs,
+		Country:   domain.NormalizeCountryCode(node.Country),
+		IsSelf:    node.IsSelf,
+		ExpiresAt: formatOptionalExpiresAt(node.ExpiresAt),
+	}
+	if node.CountryInfo != nil {
+		item.CountryCode = node.CountryInfo.CountryCode
+		item.CountryName = node.CountryInfo.CountryName
+		item.CountryFlag = node.CountryInfo.Flag
+	}
+	return &GetNodeOutput{Body: item}, nil
 }
 
 func (h *NodeManagementHandler) DeleteNode(ctx context.Context, input *DeleteNodeInput) (*struct{}, error) {

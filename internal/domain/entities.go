@@ -7,14 +7,27 @@ import (
 	"time"
 )
 
+// CountryInfo holds the ISO country code, full name, derived flag emoji,
+// and optional lookup/retry state used by the country watcher.
+type CountryInfo struct {
+	CountryCode  string
+	CountryName  string
+	Flag         string
+	LastLookupAt *time.Time
+	NextRetryAt  *time.Time
+	Attempts     int
+	LastError    string
+}
+
 // Node represents a proxy endpoint (exit VLESS server) managed by Outless.
 type Node struct {
-	ID        string
-	URL       string
-	GroupIDs  []string
-	Country   string
-	IsSelf    bool
-	ExpiresAt *time.Time
+	ID          string
+	URL         string
+	GroupIDs    []string
+	Country     string
+	CountryInfo *CountryInfo
+	IsSelf      bool
+	ExpiresAt   *time.Time
 }
 
 // Token describes subscription access token metadata.

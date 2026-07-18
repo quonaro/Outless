@@ -1,6 +1,7 @@
 package template
 
 import (
+	"outless/internal/country"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,7 +33,7 @@ type TemplateData struct {
 func BuildTemplateData(vless VLESSData, nodeCountry, nodeCountryShort, nodeGroupID string, tokenOwner string) TemplateData {
 	vless.Country = nodeCountry
 	vless.CountryShort = strings.ToUpper(nodeCountryShort)
-	vless.CountryFlag = countryFlagEmoji(nodeCountryShort)
+	vless.CountryFlag = country.FlagEmoji(nodeCountryShort)
 	vless.Group = nodeGroupID
 	vless.User = tokenOwner
 	return TemplateData{VLESS: vless}
@@ -98,7 +99,7 @@ func getFieldValue(key string, data TemplateData) string {
 			return data.VLESS.Country
 		case "country_short":
 			return data.VLESS.CountryShort
-		case "country_flag":
+		case "country_flag", "flag":
 			return data.VLESS.CountryFlag
 		case "group":
 			return data.VLESS.Group
@@ -107,22 +108,4 @@ func getFieldValue(key string, data TemplateData) string {
 		}
 	}
 	return ""
-}
-
-// countryFlagEmoji converts a 2-letter country code to flag emoji.
-func countryFlagEmoji(code string) string {
-	if len(code) != 2 {
-		return "🏳️"
-	}
-	code = strings.ToUpper(code)
-	first := rune(code[0])
-	second := rune(code[1])
-	if first < 'A' || first > 'Z' || second < 'A' || second > 'Z' {
-		return "🏳️"
-	}
-	const regionalIndicatorA = rune(0x1F1E6)
-	return string([]rune{
-		regionalIndicatorA + (first - 'A'),
-		regionalIndicatorA + (second - 'A'),
-	})
 }

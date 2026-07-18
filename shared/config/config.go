@@ -22,12 +22,22 @@ type Config struct {
 type AppConfig struct {
 	ShutdownGracetime time.Duration `yaml:"shutdown_gracetime"`
 	HTTPPort          int           `yaml:"http_port"`
-	ExternalHost      string        `yaml:"external_host"`     // host used in subscription URLs when inbound.URLHost is empty
-	SingboxLogLevel   string        `yaml:"singbox_log_level"` // sing-box log level: trace/debug/info/warn/error/fatal/panic; empty = warn
-	LogLevel          string        `yaml:"log_level"`         // process log level: debug/info/warn/error
-	DisableDocs       bool          `yaml:"disable_docs"`
-	PprofEnabled      bool          `yaml:"pprof_enabled"` // enable Go pprof endpoint
-	PprofBind         string        `yaml:"pprof_bind"`    // pprof bind address, default 127.0.0.1:6060
+	ExternalHost      string        `yaml:"external_host"` // host used in subscription URLs when inbound.URLHost is empty
+	// sing-box log level: trace/debug/info/warn/error/fatal/panic; empty = warn
+	SingboxLogLevel string              `yaml:"singbox_log_level"`
+	LogLevel        string              `yaml:"log_level"` // process log level: debug/info/warn/error
+	DisableDocs     bool                `yaml:"disable_docs"`
+	PprofEnabled    bool                `yaml:"pprof_enabled"` // enable Go pprof endpoint
+	PprofBind       string              `yaml:"pprof_bind"`    // pprof bind address, default 127.0.0.1:6060
+	CountryLookup   CountryLookupConfig `yaml:"country_lookup"`
+}
+
+// CountryLookupConfig holds optional settings for the IP geolocation watcher.
+type CountryLookupConfig struct {
+	Interval   time.Duration `yaml:"check_interval"`
+	BatchSize  int           `yaml:"batch_size"`
+	RetryDelay time.Duration `yaml:"retry_delay"`
+	Timeout    time.Duration `yaml:"provider_timeout"`
 }
 
 // Database is the path to the SQLite database file.
