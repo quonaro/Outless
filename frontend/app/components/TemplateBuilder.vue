@@ -20,6 +20,9 @@ const TOKEN_PREVIEW: Record<string, string> = {
   'vless.flow': 'xtls-rprx-vision',
   'vless.fp': 'chrome',
   'vless.user': 'user-123',
+  'vless.country': 'Netherlands',
+  'vless.country_short': 'NL',
+  'vless.flag': '🇳🇱',
 }
 
 const TOKENS = [
@@ -32,6 +35,9 @@ const TOKENS = [
   { label: 'Flow', value: '{{vless.flow}}', key: 'vless.flow' },
   { label: 'Fingerprint', value: '{{vless.fp}}', key: 'vless.fp' },
   { label: 'User', value: '{{vless.user}}', key: 'vless.user' },
+  { label: 'Country', value: '{{vless.country}}', key: 'vless.country' },
+  { label: 'Country Code', value: '{{vless.country_short}}', key: 'vless.country_short' },
+  { label: 'Flag', value: '{{vless.flag}}', key: 'vless.flag' },
 ]
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
