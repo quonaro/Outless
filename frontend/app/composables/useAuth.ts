@@ -1,22 +1,19 @@
 const COOKIE_MAX_AGE = 60 * 60 * 24 // 24 hours
 
 export function useAuth() {
-  const user = useState<{ username: string } | null>('auth_user', () => null)
+  const userCookie = useCookie<{ username: string } | null>('auth_user', {
+    maxAge: COOKIE_MAX_AGE,
+  })
+  const user = useState<{ username: string } | null>('auth_user', () => userCookie.value ?? null)
   const isAuthenticated = computed(() => !!user.value)
 
   const setUser = (newUser: { username: string }) => {
     user.value = newUser
-    const userCookie = useCookie<{ username: string } | null>('auth_user', {
-      maxAge: COOKIE_MAX_AGE,
-    })
     userCookie.value = newUser
   }
 
   const clearUser = () => {
     user.value = null
-    const userCookie = useCookie<{ username: string } | null>('auth_user', {
-      maxAge: COOKIE_MAX_AGE,
-    })
     userCookie.value = null
   }
 
