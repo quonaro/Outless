@@ -56,6 +56,7 @@ const emit = defineEmits<{
       name: string
       random_enabled: boolean
       random_limit: number | null
+      show_origins: boolean
     },
   ]
   deleteGroup: [groupId: string]
@@ -70,6 +71,7 @@ const deleteDialogOpen = ref(false)
 const editName = ref('')
 const editRandomEnabled = ref(false)
 const editRandomLimit = ref<string>('')
+const editShowOrigins = ref(false)
 const canSaveEdit = computed(() => editName.value.trim().length > 0 && !props.editingGroup)
 
 const accordionStorageKey = computed(() => `outless:nodes:group-accordion:${props.group.id}`)
@@ -156,6 +158,7 @@ function openEditDialog() {
   editName.value = props.group.name
   editRandomEnabled.value = props.group.random_enabled ?? false
   editRandomLimit.value = props.group.random_limit?.toString() ?? ''
+  editShowOrigins.value = props.group.show_origins ?? false
   editDialogOpen.value = true
 }
 
@@ -165,6 +168,7 @@ function confirmEdit() {
     name: editName.value.trim(),
     random_enabled: editRandomEnabled.value,
     random_limit: editRandomLimit.value ? parseInt(editRandomLimit.value) : null,
+    show_origins: editShowOrigins.value,
   })
   editDialogOpen.value = false
 }
@@ -316,6 +320,15 @@ function confirmEditGroups() {
           <p class="text-xs text-muted-foreground">
             Maximum number of nodes to return in subscriptions
           </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="edit-show-origins"
+            v-model="editShowOrigins"
+            type="checkbox"
+            class="h-4 w-4 rounded border-input"
+          />
+          <label for="edit-show-origins" class="text-sm">Show direct node links</label>
         </div>
       </div>
       <SheetFooter>

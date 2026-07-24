@@ -26,6 +26,7 @@ export const GroupSchema = z.object({
   total_nodes: z.number().int().nonnegative().optional().default(0),
   random_enabled: z.boolean().optional().default(false),
   random_limit: z.number().int().nonnegative().nullable().optional(),
+  show_origins: z.boolean().optional().default(false),
   is_topup: z.boolean().optional().default(false),
   top_up_id: z.string().optional().default(''),
   created_at: z.string(),
@@ -35,6 +36,7 @@ export const CreateGroupSchema = z.object({
   name: z.string().min(1),
   random_enabled: z.boolean().optional().default(false),
   random_limit: z.number().int().nonnegative().nullable().optional(),
+  show_origins: z.boolean().optional(),
   top_up: TopUpInputSchema.optional(),
 })
 

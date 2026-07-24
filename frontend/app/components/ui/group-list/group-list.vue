@@ -44,6 +44,7 @@ const selectedGroup = ref<Group | null>(null)
 const groupName = ref('')
 const randomEnabled = ref(false)
 const randomLimit = ref<number | null>(null)
+const showOrigins = ref(false)
 const showTopUp = ref(false)
 const topUpForm = ref<TopUpFormValues>(defaultTopUpForm())
 const isCreateSubmitting = ref(false)
@@ -80,6 +81,7 @@ function buildPayload(): CreateGroup {
     name: groupName.value,
     random_enabled: randomEnabled.value,
     random_limit: randomLimit.value,
+    show_origins: showOrigins.value,
   }
   if (showTopUp.value) {
     payload.top_up = buildTopUpInput(topUpForm.value)
@@ -139,6 +141,7 @@ function openEditDialog(group: Group) {
   groupName.value = group.name
   randomEnabled.value = group.random_enabled ?? false
   randomLimit.value = group.random_limit ?? null
+  showOrigins.value = group.show_origins ?? false
   showTopUp.value = group.is_topup ?? false
   topUpForm.value = defaultTopUpForm()
   if (group.is_topup && group.top_up_id) {
@@ -198,6 +201,7 @@ function openCreateDialog() {
   groupName.value = ''
   randomEnabled.value = false
   randomLimit.value = null
+  showOrigins.value = false
   showTopUp.value = false
   topUpForm.value = defaultTopUpForm()
   showCreateDialog.value = true
@@ -277,6 +281,11 @@ function closeEditDialog() {
           </div>
 
           <div class="flex items-center gap-2">
+            <input id="create-show-origins" v-model="showOrigins" type="checkbox" class="h-4 w-4" />
+            <UiLabel for="create-show-origins">Show direct node links</UiLabel>
+          </div>
+
+          <div class="flex items-center gap-2">
             <input id="create-top-up" v-model="showTopUp" type="checkbox" class="h-4 w-4" />
             <UiLabel for="create-top-up">Self-refilling (top-up) group</UiLabel>
           </div>
@@ -303,6 +312,11 @@ function closeEditDialog() {
           <div class="space-y-2">
             <UiLabel>Group Name</UiLabel>
             <UiInput v-model="groupName" placeholder="Enter group name" />
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input id="edit-show-origins" v-model="showOrigins" type="checkbox" class="h-4 w-4" />
+            <UiLabel for="edit-show-origins">Show direct node links</UiLabel>
           </div>
 
           <div v-if="!selectedGroup?.is_topup" class="flex items-center gap-2">

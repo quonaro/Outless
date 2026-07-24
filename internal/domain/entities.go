@@ -74,6 +74,7 @@ type Group struct {
 	RandomEnabled bool
 	RandomLimit   *int
 	IsTopUp       bool
+	ShowOrigins   bool
 	CreatedAt     time.Time
 }
 

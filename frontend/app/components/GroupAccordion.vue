@@ -52,12 +52,14 @@ const editGroupMutation = useMutation({
     name,
     random_enabled,
     random_limit,
+    show_origins,
   }: {
     id: string
     name: string
     random_enabled: boolean
     random_limit?: number | null
-  }) => updateGroup(id, { name, random_enabled, random_limit }),
+    show_origins: boolean
+  }) => updateGroup(id, { name, random_enabled, random_limit, show_origins }),
   onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
 })
 async function removeNode(node: Node) {
@@ -84,6 +86,7 @@ function handleEditGroup(group: {
   name: string
   random_enabled: boolean
   random_limit: number | null
+  show_origins: boolean
 }) {
   const existingGroup = props.groups.find((g) => g.id === group.id)
   if (!existingGroup) return
@@ -97,6 +100,7 @@ function handleEditGroup(group: {
       name: group.name,
       random_enabled: group.random_enabled,
       random_limit: group.random_limit,
+      show_origins: group.show_origins,
     },
     {
       onSettled: () => {

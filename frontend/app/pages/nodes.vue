@@ -78,6 +78,7 @@ const showCreateNodeDialog = ref(false)
 const groupNameInput = ref('')
 const groupRandomEnabledInput = ref(false)
 const groupRandomLimitInput = ref<string>('')
+const groupShowOriginsInput = ref(false)
 const nodeURLInput = ref('')
 const nodeGroupIDsInput = ref<string[]>([])
 const nodeIsSelfInput = ref(false)
@@ -98,6 +99,7 @@ const createGroupMutation = useMutation({
     name: string
     random_enabled: boolean
     random_limit: number | null
+    show_origins: boolean
     top_up?: TopUpInput
   }) => createGroup(payload),
   onSuccess: () => {
@@ -106,6 +108,7 @@ const createGroupMutation = useMutation({
     groupNameInput.value = ''
     groupRandomEnabledInput.value = false
     groupRandomLimitInput.value = ''
+    groupShowOriginsInput.value = false
     showTopUp.value = false
     topUpForm.value = defaultTopUpForm()
   },
@@ -170,6 +173,7 @@ function submitCreateGroup() {
         const n = parseInt(groupRandomLimitInput.value)
         return Number.isNaN(n) || n <= 0 ? null : n
       })(),
+      show_origins: groupShowOriginsInput.value,
       top_up: showTopUp.value ? buildTopUpInput(topUpForm.value) : undefined,
     },
     {
@@ -446,6 +450,15 @@ onBeforeUnmount(() => {
               <p class="text-xs text-muted-foreground">
                 Maximum number of nodes to return in subscriptions
               </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <input
+                id="node-create-show-origins"
+                v-model="groupShowOriginsInput"
+                type="checkbox"
+                class="h-4 w-4 rounded border-input"
+              />
+              <label for="node-create-show-origins" class="text-sm">Show direct node links</label>
             </div>
             <div class="flex items-center gap-2">
               <input

@@ -36,6 +36,7 @@ const queryClient = useQueryClient()
 const name = ref('')
 const randomEnabled = ref(false)
 const randomLimit = ref<number | undefined>(undefined)
+const showOrigins = ref(false)
 const showTopUp = ref(false)
 const topUpForm = ref<TopUpFormValues>(defaultTopUpForm())
 const isTopUpLoading = ref(false)
@@ -57,6 +58,7 @@ watch(
     name.value = props.group.name
     randomEnabled.value = props.group.random_enabled ?? false
     randomLimit.value = props.group.random_limit ?? undefined
+    showOrigins.value = props.group.show_origins ?? false
     showTopUp.value = props.group.is_topup ?? false
     topUpForm.value = defaultTopUpForm()
     if (props.group.is_topup && props.group.top_up_id) {
@@ -115,6 +117,7 @@ function buildPayload(): UpdateGroup {
     name: name.value,
     random_enabled: randomEnabled.value,
     random_limit: randomLimit.value ?? null,
+    show_origins: showOrigins.value,
   }
   if (showTopUp.value) {
     payload.top_up = buildTopUpInput(topUpForm.value)
@@ -157,6 +160,11 @@ function close() {
           <p class="text-xs text-muted-foreground">
             Maximum number of nodes to return in subscriptions
           </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input id="edit-show-origins" v-model="showOrigins" type="checkbox" class="h-4 w-4" />
+          <UiLabel for="edit-show-origins">Show direct node links</UiLabel>
         </div>
 
         <div v-if="!props.group?.is_topup" class="flex items-center gap-2">

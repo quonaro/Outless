@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,14 +122,26 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 		}
 	}
 
+	selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings, groupNames)
 	var allURLs []string
-	for _, hub := range hubs {
-		hubURLs := s.buildHubURLsWithGroupSettings(tokenInfo, nodes, groupNames, groupSettings, hub)
-		allURLs = append(allURLs, hubURLs...)
+	for _, node := range selectedNodes {
+		if s.nodeUsesOrigins(node, groupSettings, tokenInfo) {
+			if node.URL != "" {
+				allURLs = append(allURLs, node.URL)
+			}
+		}
+		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
+			for _, hub := range hubs {
+				url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
+				if url != "" {
+					allURLs = append(allURLs, url)
+				}
+			}
+		}
 	}
 
 	if len(allURLs) == 0 {
-		s.logger.Warn("no hub URLs generated for token", slog.String("token_id", tokenInfo.ID))
+		s.logger.Warn("no URLs generated for token", slog.String("token_id", tokenInfo.ID))
 		return "", nil
 	}
 
@@ -228,8 +241,8 @@ func (s *SubscriptionService) buildNodeRemark(
 				Host:       s.externalHost,
 				Port:       hub.Port,
 				SNI:        hub.SNI,
-				Security:   "reality",
-				Encryption: "none",
+				Security:   originSecurityReality,
+				Encryption: originSecurityNone,
 				Flow:       defaultFlow,
 				FP:         hub.Fingerprint,
 			}
@@ -284,106 +297,6 @@ func (s *SubscriptionService) buildNodeRemark(
 	return buildConnectionRemark(groupLabel, hostLabel, normalizeCountry(node.Country)), true
 }
 
-func (s *SubscriptionService) buildHubURLs(
-	token domain.Token,
-	allNodes []domain.Node,
-	groupNames map[string]string,
-	hub HubConfig,
-) []string {
-	urls := make([]string, 0, len(allNodes))
-	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
-	for _, groupID := range token.GroupIDs {
-		allowedGroups[groupID] = struct{}{}
-	}
-	if len(allowedGroups) == 0 && token.GroupID != "" {
-		allowedGroups[token.GroupID] = struct{}{}
-	}
-	allGroupsAllowed := len(allowedGroups) == 0
-
-	for _, node := range allNodes {
-		if !allGroupsAllowed {
-			allowed := false
-			for _, gid := range node.GroupIDs {
-				if _, ok := allowedGroups[gid]; ok {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				continue
-			}
-		}
-		primaryGroup := ""
-		if len(node.GroupIDs) > 0 {
-			primaryGroup = node.GroupIDs[0]
-		}
-		groupLabel := resolveGroupLabel(groupNames, primaryGroup)
-
-		remark, ok := s.buildNodeRemark(node, groupLabel, hub, token)
-		if !ok {
-			continue
-		}
-
-		uuid := utils.GenerateUUIDFromTokenNode(token.ID, node.ID)
-		urls = append(urls, s.formatVLESSURL(uuid, remark, hub))
-	}
-
-	return urls
-}
-
-func (s *SubscriptionService) buildHubURLsWithGroupSettings(
-	token domain.Token,
-	allNodes []domain.Node,
-	groupNames map[string]string,
-	groupSettings map[string]domain.Group,
-	hub HubConfig,
-) []string {
-	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
-	for _, groupID := range token.GroupIDs {
-		allowedGroups[groupID] = struct{}{}
-	}
-	if len(allowedGroups) == 0 && token.GroupID != "" {
-		allowedGroups[token.GroupID] = struct{}{}
-	}
-	allGroupsAllowed := len(allowedGroups) == 0
-
-	nodesByGroup := make(map[string][]domain.Node)
-	for _, node := range allNodes {
-		if !allGroupsAllowed {
-			allowed := false
-			for _, gid := range node.GroupIDs {
-				if _, ok := allowedGroups[gid]; ok {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				continue
-			}
-		}
-		for _, gid := range node.GroupIDs {
-			nodesByGroup[gid] = append(nodesByGroup[gid], node)
-		}
-	}
-
-	var selectedNodes []domain.Node
-	for groupID, nodes := range nodesByGroup {
-		settings := groupSettings[groupID]
-		groupNodes := nodes
-		if settings.RandomEnabled {
-			shuffleNodes(groupNodes)
-		}
-		if settings.RandomLimit != nil && *settings.RandomLimit > 0 && len(groupNodes) > *settings.RandomLimit {
-			groupNodes = groupNodes[:*settings.RandomLimit]
-		}
-		selectedNodes = append(selectedNodes, groupNodes...)
-	}
-
-	urls := s.buildHubURLs(token, selectedNodes, groupNames, hub)
-
-	return urls
-}
-
 func shuffleNodes(nodes []domain.Node) {
 	for i := len(nodes) - 1; i > 0; i-- {
 		j := int(time.Now().UnixNano()) % (i + 1)
@@ -413,9 +326,9 @@ func (s *SubscriptionService) formatVLESSURL(uuid string, remark string, hub Hub
 	}
 
 	params := url.Values{}
-	params.Set("encryption", "none")
-	params.Set("security", "reality")
-	params.Set("type", "tcp")
+	params.Set("encryption", originSecurityNone)
+	params.Set("security", originSecurityReality)
+	params.Set("type", originNetworkTCP)
 	params.Set("flow", defaultFlow)
 	params.Set("sni", sni)
 	params.Set("fp", fingerprint)
@@ -691,16 +604,9 @@ func (s *SubscriptionService) BuildClashMetaYAML(ctx context.Context, token stri
 		ProxyGroups: []ClashProxyGroup{},
 	}
 
-	proxyNames := []string{}
-
-	for _, hub := range hubs {
-		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
-		for _, node := range selectedNodes {
-			proxy, name := s.buildClashMetaProxy(node, groupNames, hub, tokenInfo)
-			config.Proxies = append(config.Proxies, proxy)
-			proxyNames = append(proxyNames, name)
-		}
-	}
+	selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings, groupNames)
+	var proxyNames []string
+	config.Proxies, proxyNames = s.buildClashMetaProxies(selectedNodes, groupNames, hubs, tokenInfo, groupSettings)
 
 	if len(config.Proxies) > 0 {
 		config.ProxyGroups = []ClashProxyGroup{
@@ -786,13 +692,8 @@ func (s *SubscriptionService) BuildSingBoxJSON(ctx context.Context, token string
 		},
 	}
 
-	for _, hub := range hubs {
-		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
-		for _, node := range selectedNodes {
-			outbound := s.buildSingBoxOutbound(node, groupNames, hub, tokenInfo)
-			config.Outbounds = append(config.Outbounds, outbound)
-		}
-	}
+	selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings, groupNames)
+	config.Outbounds = s.buildSingBoxOutbounds(selectedNodes, groupNames, hubs, tokenInfo, groupSettings)
 
 	if len(config.Outbounds) > 0 {
 		config.Route.Rules[0]["outbound"] = config.Outbounds[0].Tag
@@ -847,13 +748,20 @@ func (s *SubscriptionService) BuildV2RayBase64(ctx context.Context, token string
 		}
 	}
 
+	selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings, groupNames)
 	var allURLs []string
-	for _, hub := range hubs {
-		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
-		for _, node := range selectedNodes {
-			url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
-			if url != "" {
-				allURLs = append(allURLs, url)
+	for _, node := range selectedNodes {
+		if s.nodeUsesOrigins(node, groupSettings, tokenInfo) {
+			if node.URL != "" {
+				allURLs = append(allURLs, node.URL)
+			}
+		}
+		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
+			for _, hub := range hubs {
+				url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
+				if url != "" {
+					allURLs = append(allURLs, url)
+				}
 			}
 		}
 	}
@@ -911,13 +819,22 @@ func (s *SubscriptionService) BuildSurgeConf(ctx context.Context, token string, 
 	lines = append(lines, "[Proxy]")
 
 	proxyNames := []string{}
-	for _, hub := range hubs {
-		selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings)
-		for _, node := range selectedNodes {
-			line, name := s.buildSurgeProxy(node, groupNames, hub, tokenInfo)
+	selectedNodes := s.getSelectedNodes(tokenInfo, nodes, groupSettings, groupNames)
+	for _, node := range selectedNodes {
+		if s.nodeUsesOrigins(node, groupSettings, tokenInfo) {
+			line, name := s.buildSurgeProxyFromOrigin(node)
 			if line != "" {
 				lines = append(lines, line)
 				proxyNames = append(proxyNames, name)
+			}
+		}
+		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
+			for _, hub := range hubs {
+				line, name := s.buildSurgeProxy(node, groupNames, hub, tokenInfo)
+				if line != "" {
+					lines = append(lines, line)
+					proxyNames = append(proxyNames, name)
+				}
 			}
 		}
 	}
@@ -931,11 +848,61 @@ func (s *SubscriptionService) BuildSurgeConf(ctx context.Context, token string, 
 	return strings.Join(lines, "\n"), nil
 }
 
-func (s *SubscriptionService) getSelectedNodes(
+func (s *SubscriptionService) buildClashMetaProxies(
+	nodes []domain.Node,
+	groupNames map[string]string,
+	hubs []HubConfig,
 	token domain.Token,
-	allNodes []domain.Node,
 	groupSettings map[string]domain.Group,
-) []domain.Node {
+) ([]ClashMetaProxy, []string) {
+	var proxies []ClashMetaProxy
+	var names []string
+	for _, node := range nodes {
+		if s.nodeUsesOrigins(node, groupSettings, token) {
+			proxy, name := s.buildClashMetaProxyFromOrigin(node)
+			if name != "" {
+				proxies = append(proxies, proxy)
+				names = append(names, name)
+			}
+		}
+		if s.nodeUsesHub(node, groupSettings, token) {
+			for _, hub := range hubs {
+				proxy, name := s.buildClashMetaProxy(node, groupNames, hub, token)
+				if name != "" {
+					proxies = append(proxies, proxy)
+					names = append(names, name)
+				}
+			}
+		}
+	}
+	return proxies, names
+}
+
+func (s *SubscriptionService) buildSingBoxOutbounds(
+	nodes []domain.Node,
+	groupNames map[string]string,
+	hubs []HubConfig,
+	token domain.Token,
+	groupSettings map[string]domain.Group,
+) []SingBoxOutbound {
+	var outbounds []SingBoxOutbound
+	for _, node := range nodes {
+		if s.nodeUsesOrigins(node, groupSettings, token) {
+			outbound := s.buildSingBoxOutboundFromOrigin(node)
+			if outbound.Tag != "" {
+				outbounds = append(outbounds, outbound)
+			}
+		}
+		if s.nodeUsesHub(node, groupSettings, token) {
+			for _, hub := range hubs {
+				outbounds = append(outbounds, s.buildSingBoxOutbound(node, groupNames, hub, token))
+			}
+		}
+	}
+	return outbounds
+}
+
+func allowedGroupsForToken(token domain.Token) map[string]struct{} {
 	allowedGroups := make(map[string]struct{}, len(token.GroupIDs))
 	for _, groupID := range token.GroupIDs {
 		allowedGroups[groupID] = struct{}{}
@@ -943,29 +910,55 @@ func (s *SubscriptionService) getSelectedNodes(
 	if len(allowedGroups) == 0 && token.GroupID != "" {
 		allowedGroups[token.GroupID] = struct{}{}
 	}
+	return allowedGroups
+}
+
+func (s *SubscriptionService) getSelectedNodes(
+	token domain.Token,
+	allNodes []domain.Node,
+	groupSettings map[string]domain.Group,
+	groupNames map[string]string,
+) []domain.Node {
+	allowedGroups := allowedGroupsForToken(token)
 	allGroupsAllowed := len(allowedGroups) == 0
+
+	var orderedGroupIDs []string
+	if allGroupsAllowed {
+		orderedGroupIDs = make([]string, 0, len(groupSettings))
+		for id := range groupSettings {
+			orderedGroupIDs = append(orderedGroupIDs, id)
+		}
+		sort.Slice(orderedGroupIDs, func(i, j int) bool {
+			nameI := resolveGroupLabel(groupNames, orderedGroupIDs[i])
+			nameJ := resolveGroupLabel(groupNames, orderedGroupIDs[j])
+			if nameI == nameJ {
+				return orderedGroupIDs[i] < orderedGroupIDs[j]
+			}
+			return nameI < nameJ
+		})
+	} else {
+		orderedGroupIDs = token.GroupIDs
+	}
 
 	nodesByGroup := make(map[string][]domain.Node)
 	for _, node := range allNodes {
-		if !allGroupsAllowed {
-			allowed := false
-			for _, gid := range node.GroupIDs {
-				if _, ok := allowedGroups[gid]; ok {
-					allowed = true
-					break
+		for _, gid := range node.GroupIDs {
+			if !allGroupsAllowed {
+				if _, ok := allowedGroups[gid]; !ok {
+					continue
 				}
 			}
-			if !allowed {
-				continue
-			}
-		}
-		for _, gid := range node.GroupIDs {
 			nodesByGroup[gid] = append(nodesByGroup[gid], node)
 		}
 	}
 
 	var selectedNodes []domain.Node
-	for groupID, nodes := range nodesByGroup {
+	seen := make(map[string]struct{})
+	for _, groupID := range orderedGroupIDs {
+		nodes := nodesByGroup[groupID]
+		if len(nodes) == 0 {
+			continue
+		}
 		settings := groupSettings[groupID]
 		groupNodes := nodes
 		if settings.RandomEnabled {
@@ -974,9 +967,14 @@ func (s *SubscriptionService) getSelectedNodes(
 		if settings.RandomLimit != nil && *settings.RandomLimit > 0 && len(groupNodes) > *settings.RandomLimit {
 			groupNodes = groupNodes[:*settings.RandomLimit]
 		}
-		selectedNodes = append(selectedNodes, groupNodes...)
+		for _, node := range groupNodes {
+			if _, ok := seen[node.ID]; ok {
+				continue
+			}
+			seen[node.ID] = struct{}{}
+			selectedNodes = append(selectedNodes, node)
+		}
 	}
-
 	return selectedNodes
 }
 
@@ -1013,13 +1011,13 @@ func (s *SubscriptionService) buildClashMetaProxy(
 
 	return ClashMetaProxy{
 		Name:        remark,
-		Type:        "vless",
+		Type:        originVlessScheme,
 		Server:      s.externalHost,
 		Port:        hub.Port,
 		UUID:        uuid,
 		UDP:         true,
 		Flow:        defaultFlow,
-		Network:     "tcp",
+		Network:     originNetworkTCP,
 		TLS:         true,
 		ServerName:  sni,
 		Fingerprint: fingerprint,
@@ -1063,13 +1061,13 @@ func (s *SubscriptionService) buildSingBoxOutbound(
 	}
 
 	return SingBoxOutbound{
-		Type:           "vless",
+		Type:           originVlessScheme,
 		Tag:            remark,
 		Server:         s.externalHost,
 		ServerPort:     hub.Port,
 		UUID:           uuid,
 		Flow:           defaultFlow,
-		Network:        "tcp",
+		Network:        originNetworkTCP,
 		PacketEncoding: "xudp",
 		TLS: &SingBoxTLS{
 			Enabled:    true,

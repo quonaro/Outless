@@ -45,6 +45,7 @@ type CreateGroupInput struct {
 		Name          string      `json:"name" required:"true" maxLength:"100"`
 		RandomEnabled bool        `json:"random_enabled"`
 		RandomLimit   *int        `json:"random_limit"`
+		ShowOrigins   bool        `json:"show_origins"`
 		TopUp         *TopUpInput `json:"top_up,omitempty"`
 	}
 }
@@ -55,6 +56,7 @@ type CreateGroupOutput struct {
 		Name          string       `json:"name"`
 		RandomEnabled bool         `json:"random_enabled"`
 		RandomLimit   *int         `json:"random_limit"`
+		ShowOrigins   bool         `json:"show_origins"`
 		IsTopUp       bool         `json:"is_topup"`
 		TopUp         *TopUpOutput `json:"top_up,omitempty"`
 		CreatedAt     time.Time    `json:"created_at"`
@@ -71,6 +73,7 @@ type UpdateGroupInput struct {
 		Name          string      `json:"name" required:"true" maxLength:"100"`
 		RandomEnabled bool        `json:"random_enabled"`
 		RandomLimit   *int        `json:"random_limit"`
+		ShowOrigins   bool        `json:"show_origins"`
 		TopUp         *TopUpInput `json:"top_up,omitempty"`
 	}
 }
@@ -85,6 +88,7 @@ type GroupItem struct {
 	TotalNodes    int       `json:"total_nodes"`
 	RandomEnabled bool      `json:"random_enabled"`
 	RandomLimit   *int      `json:"random_limit"`
+	ShowOrigins   bool      `json:"show_origins"`
 	IsTopUp       bool      `json:"is_topup"`
 	TopUpID       string    `json:"top_up_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -115,6 +119,7 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 		RandomEnabled: input.Body.RandomEnabled,
 		RandomLimit:   input.Body.RandomLimit,
 		IsTopUp:       input.Body.TopUp != nil,
+		ShowOrigins:   input.Body.ShowOrigins,
 		CreatedAt:     time.Now().UTC(),
 	}
 
@@ -132,6 +137,7 @@ func (h *GroupManagementHandler) CreateGroup(ctx context.Context, input *CreateG
 	out.Body.Name = group.Name
 	out.Body.RandomEnabled = group.RandomEnabled
 	out.Body.RandomLimit = group.RandomLimit
+	out.Body.ShowOrigins = group.ShowOrigins
 	out.Body.IsTopUp = group.IsTopUp
 	out.Body.CreatedAt = group.CreatedAt
 
@@ -183,6 +189,7 @@ func (h *GroupManagementHandler) ListGroups(ctx context.Context, _ *struct{}) (*
 			TotalNodes:    g.TotalNodes,
 			RandomEnabled: g.RandomEnabled,
 			RandomLimit:   g.RandomLimit,
+			ShowOrigins:   g.ShowOrigins,
 			IsTopUp:       g.IsTopUp,
 			TopUpID:       topUpID,
 			CreatedAt:     g.CreatedAt,
@@ -213,6 +220,7 @@ func (h *GroupManagementHandler) UpdateGroup(ctx context.Context, input *UpdateG
 	group.Name = input.Body.Name
 	group.RandomEnabled = input.Body.RandomEnabled
 	group.RandomLimit = input.Body.RandomLimit
+	group.ShowOrigins = input.Body.ShowOrigins
 	if !group.RandomEnabled && group.RandomLimit != nil {
 		group.RandomEnabled = true
 	}
