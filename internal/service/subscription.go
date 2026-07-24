@@ -39,6 +39,7 @@ type HubConfig struct {
 	ShortID      string
 	Fingerprint  string
 	NameTemplate string
+	tagIndex     int
 }
 
 // SubscriptionService prepares subscription payloads.
@@ -47,6 +48,7 @@ type SubscriptionService struct {
 	tokenRepo    domain.TokenRepository
 	groupRepo    domain.GroupRepository
 	inboundRepo  domain.InboundRepository
+	runtime      TrafficSnapshotProvider
 	externalHost string
 	logger       *slog.Logger
 	groupCache   map[string]cachedGroupNames
@@ -59,11 +61,14 @@ type cachedGroupNames struct {
 }
 
 // NewSubscriptionService constructs a subscription service.
+// runtime is optional — when non-nil, inbounds are sorted by active
+// connection count (least loaded first) in subscription responses.
 func NewSubscriptionService(
 	repo domain.NodeRepository,
 	tokenRepo domain.TokenRepository,
 	groupRepo domain.GroupRepository,
 	inboundRepo domain.InboundRepository,
+	runtime TrafficSnapshotProvider,
 	externalHost string,
 	logger *slog.Logger,
 ) *SubscriptionService {
@@ -72,6 +77,7 @@ func NewSubscriptionService(
 		tokenRepo:    tokenRepo,
 		groupRepo:    groupRepo,
 		inboundRepo:  inboundRepo,
+		runtime:      runtime,
 		externalHost: externalHost,
 		logger:       logger,
 		groupCache:   make(map[string]cachedGroupNames),
@@ -131,11 +137,10 @@ func (s *SubscriptionService) BuildBase64VLESS(ctx context.Context, token string
 			}
 		}
 		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
-			for _, hub := range hubs {
-				url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
-				if url != "" {
-					allURLs = append(allURLs, url)
-				}
+			hub := s.pickHubForNode(hubs)
+			url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
+			if url != "" {
+				allURLs = append(allURLs, url)
 			}
 		}
 	}
@@ -170,12 +175,12 @@ func (s *SubscriptionService) resolveInbound(ctx context.Context, inboundID stri
 	}
 
 	if inboundID == "" {
-		return toHubConfig(inbounds[0]), nil
+		return toHubConfig(inbounds[0], 0), nil
 	}
 
-	for _, inbound := range inbounds {
+	for i, inbound := range inbounds {
 		if inbound.ID == inboundID {
-			return toHubConfig(inbound), nil
+			return toHubConfig(inbound, i), nil
 		}
 	}
 	return HubConfig{}, nil
@@ -193,8 +198,8 @@ func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token
 	// If token has no inbound restrictions, return all inbounds.
 	if len(token.InboundIDs) == 0 {
 		hubs := make([]HubConfig, 0, len(inbounds))
-		for _, inbound := range inbounds {
-			hubs = append(hubs, toHubConfig(inbound))
+		for i, inbound := range inbounds {
+			hubs = append(hubs, toHubConfig(inbound, i))
 		}
 		return hubs, nil
 	}
@@ -205,9 +210,9 @@ func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token
 	}
 
 	var hubs []HubConfig
-	for _, inbound := range inbounds {
+	for i, inbound := range inbounds {
 		if _, ok := allowed[inbound.ID]; ok {
-			hubs = append(hubs, toHubConfig(inbound))
+			hubs = append(hubs, toHubConfig(inbound, i))
 		}
 	}
 	if len(hubs) == 0 {
@@ -216,7 +221,7 @@ func (s *SubscriptionService) resolveInboundsForToken(ctx context.Context, token
 	return hubs, nil
 }
 
-func toHubConfig(inbound domain.Inbound) HubConfig {
+func toHubConfig(inbound domain.Inbound, index int) HubConfig {
 	return HubConfig{
 		Port:         inbound.Port,
 		SNI:          inbound.SNI,
@@ -225,6 +230,7 @@ func toHubConfig(inbound domain.Inbound) HubConfig {
 		ShortID:      inbound.ShortID,
 		Fingerprint:  inbound.Fingerprint,
 		NameTemplate: inbound.NameTemplate,
+		tagIndex:     index,
 	}
 }
 
@@ -757,11 +763,10 @@ func (s *SubscriptionService) BuildV2RayBase64(ctx context.Context, token string
 			}
 		}
 		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
-			for _, hub := range hubs {
-				url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
-				if url != "" {
-					allURLs = append(allURLs, url)
-				}
+			hub := s.pickHubForNode(hubs)
+			url := s.buildV2RayURL(node, groupNames, hub, tokenInfo)
+			if url != "" {
+				allURLs = append(allURLs, url)
 			}
 		}
 	}
@@ -829,12 +834,11 @@ func (s *SubscriptionService) BuildSurgeConf(ctx context.Context, token string, 
 			}
 		}
 		if s.nodeUsesHub(node, groupSettings, tokenInfo) {
-			for _, hub := range hubs {
-				line, name := s.buildSurgeProxy(node, groupNames, hub, tokenInfo)
-				if line != "" {
-					lines = append(lines, line)
-					proxyNames = append(proxyNames, name)
-				}
+			hub := s.pickHubForNode(hubs)
+			line, name := s.buildSurgeProxy(node, groupNames, hub, tokenInfo)
+			if line != "" {
+				lines = append(lines, line)
+				proxyNames = append(proxyNames, name)
 			}
 		}
 	}
@@ -866,12 +870,11 @@ func (s *SubscriptionService) buildClashMetaProxies(
 			}
 		}
 		if s.nodeUsesHub(node, groupSettings, token) {
-			for _, hub := range hubs {
-				proxy, name := s.buildClashMetaProxy(node, groupNames, hub, token)
-				if name != "" {
-					proxies = append(proxies, proxy)
-					names = append(names, name)
-				}
+			hub := s.pickHubForNode(hubs)
+			proxy, name := s.buildClashMetaProxy(node, groupNames, hub, token)
+			if name != "" {
+				proxies = append(proxies, proxy)
+				names = append(names, name)
 			}
 		}
 	}
@@ -894,9 +897,8 @@ func (s *SubscriptionService) buildSingBoxOutbounds(
 			}
 		}
 		if s.nodeUsesHub(node, groupSettings, token) {
-			for _, hub := range hubs {
-				outbounds = append(outbounds, s.buildSingBoxOutbound(node, groupNames, hub, token))
-			}
+			hub := s.pickHubForNode(hubs)
+			outbounds = append(outbounds, s.buildSingBoxOutbound(node, groupNames, hub, token))
 		}
 	}
 	return outbounds

@@ -144,7 +144,6 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 		}()
 	}
 	publicService := service.NewPublicService(nodeRepo, publicSourceRepo, groupRepo, logger)
-	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, cfg.App.ExternalHost, logger)
 	totpService := service.NewTOTPService()
 
 	countryResolver := country.NewResolver(nil)
@@ -171,6 +170,8 @@ func runServer(ctx context.Context, nctx engine.NativeContext) error {
 	// Runtime controller (embedded sing-box)
 	runtime := singbox.NewRuntimeController(logger, tokenRepo, nodeRepo, inboundRepo, cfg.App.SingboxLogLevel, 0, broadcaster.Broadcast)
 	logger.Info("using embedded sing-box runtime")
+
+	subscriptionService := service.NewSubscriptionService(nodeRepo, tokenRepo, groupRepo, inboundRepo, runtime, cfg.App.ExternalHost, logger)
 
 	trafficRepo := repository.NewTrafficRepository(db)
 	trafficCollector := service.NewTrafficCollector(runtime, trafficRepo, tokenRepo, logger)
