@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { LogIn, Github, ArrowRight } from 'lucide-vue-next'
 import { login } from '~/utils/services/auth'
 import { useAuth } from '~/composables/useAuth'
+import PinInput from '~/components/ui/pin-input/PinInput.vue'
 
 definePageMeta({
   layout: false,
@@ -170,16 +171,7 @@ onMounted(async () => {
 
             <div v-if="totpRequired" class="space-y-2">
               <Label for="totp_code" class="text-foreground">TOTP Code</Label>
-              <Input
-                id="totp_code"
-                v-model="totpCode"
-                type="text"
-                inputmode="numeric"
-                maxlength="6"
-                autocomplete="one-time-code"
-                placeholder="Enter 6-digit code"
-                class="bg-input border-border text-foreground placeholder:text-muted-foreground"
-              />
+              <PinInput id="totp_code" v-model="totpCode" />
               <p v-if="errors.totp_code" class="text-sm text-destructive">
                 {{ errors.totp_code }}
               </p>

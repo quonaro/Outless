@@ -18,6 +18,7 @@ import UiCard from '~/components/ui/card/card.vue'
 import CardContent from '~/components/ui/card/CardContent.vue'
 import UiButton from '~/components/ui/button/button.vue'
 import UiInput from '~/components/ui/input/input.vue'
+import PinInput from '~/components/ui/pin-input/PinInput.vue'
 import UiSelect from '~/components/ui/select/select.vue'
 import ChangePasswordDialog from '~/components/ui/change-password-dialog/change-password-dialog.vue'
 import { useAuth } from '~/composables/useAuth'
@@ -358,14 +359,7 @@ async function handleSave(options?: { danger?: boolean }) {
               </div>
               <div class="space-y-2">
                 <label class="text-sm font-medium" for="totp-verify-code">Verification Code</label>
-                <UiInput
-                  id="totp-verify-code"
-                  v-model="setupCode"
-                  type="text"
-                  inputmode="numeric"
-                  maxlength="6"
-                  placeholder="6-digit code"
-                />
+                <PinInput id="totp-verify-code" v-model="setupCode" />
               </div>
               <div class="flex gap-2">
                 <UiButton :disabled="!setupCode" @click="handleVerify">Verify & Enable</UiButton>
@@ -390,14 +384,7 @@ async function handleSave(options?: { danger?: boolean }) {
                 </div>
                 <div class="space-y-2">
                   <label class="text-sm font-medium" for="totp-disable-code">TOTP Code</label>
-                  <UiInput
-                    id="totp-disable-code"
-                    v-model="disableCode"
-                    type="text"
-                    inputmode="numeric"
-                    maxlength="6"
-                    placeholder="6-digit code"
-                  />
+                  <PinInput id="totp-disable-code" v-model="disableCode" />
                 </div>
                 <div class="flex gap-2">
                   <UiButton
